@@ -62,6 +62,27 @@ export default function Emails() {
     }
   };
 
+  const [polling, setPolling] = useState(false);
+  const pollNow = async () => {
+    setPolling(true);
+    try {
+      const res = await fetch("/api/email/poll", { cache: "no-store" });
+      const data = await res.json();
+      if (data.ok) {
+        toast(
+          "success",
+          `Polled Outlook — ${data.processed} new, ${data.linked} linked, ${data.queued} queued.`
+        );
+      } else {
+        toast("error", data.error || "Poll failed.");
+      }
+    } catch {
+      toast("error", "Poll request failed.");
+    } finally {
+      setPolling(false);
+    }
+  };
+
   return (
     <div className="space-y-5">
       {/* header */}
@@ -72,9 +93,14 @@ export default function Emails() {
             Inbound bank/client emails, auto-matched to cases. {unmatchedEmails.length} need a glance.
           </p>
         </div>
-        {unmatchedEmails.length > 0 && (
-          <Chip tone="amber" dot>{unmatchedEmails.length} to review</Chip>
-        )}
+        <div className="flex items-center gap-2">
+          {unmatchedEmails.length > 0 && (
+            <Chip tone="amber" dot>{unmatchedEmails.length} to review</Chip>
+          )}
+          <button className="btn btn-ghost btn-sm" onClick={pollNow} disabled={polling} title="Read unread emails from the Outlook shared mailbox now">
+            {polling ? "Polling…" : "Poll Outlook now"}
+          </button>
+        </div>
       </div>
 
       {/* review queue */}
