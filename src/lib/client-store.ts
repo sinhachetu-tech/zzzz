@@ -141,13 +141,13 @@ export const useHfmcStore = create<HfmcState>((set, get) => ({
         // If we cleared data, a late-resolving 401 would wipe a 200 that had
         // just loaded the workspace. `me` stays as the caller set it; data
         // stays as it was (empty on first load, populated after a 200).
-        set({ loaded: true, loading: false });
+        set((s) => ({ loaded: true, loading: false, me: s.me }));
         return;
       }
       const data = await res.json();
       set({ ...data, loaded: true, loading: false });
     } catch {
-      set({ loaded: true, loading: false });
+      set((s) => ({ loaded: true, loading: false, me: s.me }));
     }
   },
 

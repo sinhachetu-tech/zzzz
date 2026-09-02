@@ -34,7 +34,7 @@ function Kpi({ label, value, format, tone, sub }: { label: string; value: number
 const STATE_TABS: ("Active" | "Booked" | "Lost" | "All")[] = ["Active", "Booked", "Lost", "All"];
 
 export default function Dashboard() {
-  const { cases, tasks, activities, stages, banks, whyPending, waitingFor, users, me, nav, userById, visibleCases, visibleTasks, escalations, bulletin } = useHfmcStore();
+  const { cases, tasks, activities, stages, banks, whyPending, waitingFor, users, me, nav, userById, visibleCases, visibleTasks, escalations, bulletin, visibleCaseIds, visibleTaskIds } = useHfmcStore();
   useTick(30000);
   const [search, setSearch] = useState("");
   const [stage, setStage] = useState("All");
@@ -43,8 +43,11 @@ export default function Dashboard() {
   const [sort, setSort] = useState("urgency");
   const [stateTab, setStateTab] = useState<(typeof STATE_TABS)[number]>("Active");
 
-  const visCases = useMemo(() => visibleCases(), [visibleCases]);
-  const visTasks = useMemo(() => visibleTasks(), [visibleTasks]);
+  // deps must include the data arrays (cases/visibleCaseIds/tasks/visibleTaskIds)
+  // — NOT the store function references, which are stable and would prevent
+  // the memo from recomputing when data loads after mount (the login case).
+  const visCases = useMemo(() => visibleCases(), [visibleCases, cases, visibleCaseIds]);
+  const visTasks = useMemo(() => visibleTasks(), [visibleTasks, tasks, visibleTaskIds]);
   const k = useMemo(
     () => computeKpis(visCases, visTasks, (c) => caseStatusOf(c, tasks), banks, escalations),
     [visCases, visTasks, banks, escalations, tasks]

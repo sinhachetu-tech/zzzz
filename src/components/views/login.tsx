@@ -58,12 +58,18 @@ export default function Login() {
       setShake(true); window.setTimeout(() => setShake(false), 550);
       return;
     }
-    // Login succeeded — the session cookie is now in the jar. Do a full page
-    // reload so the app bootstraps cleanly with the cookie, avoiding any race
-    // between the mount-time hydrate (sent pre-cookie) and the post-login
-    // hydrate. A reload is ~200ms and guarantees the workspace loads.
+    // Set `me` immediately from the login response so the UI switches to the
+    // Shell. The cookie is in the jar, but a mount-time hydrate may still be
+    // racing — the store's 401 handler preserves `me`, so we retry hydrate
+    // until the workspace loads. No page reload (the reload races the cookie).
+    const { user } = await res.json();
+    useHfmcStore.setState({ me: user, loaded: true });
     toast("success", "Signed in. The pipeline is live.");
-    window.location.reload();
+    for (let attempt = 0; attempt < 6; attempt++) {
+      await hydrate();
+      if (useHfmcStore.getState().cases.length > 0) break;
+      await new Promise((r) => setTimeout(r, 150));
+    }
   };
 
   return (
