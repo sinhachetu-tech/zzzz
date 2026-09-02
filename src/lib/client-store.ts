@@ -6,6 +6,7 @@ import type {
   LoanCase, MasterItem, PartnerItem, SlaRule, StageItem, Task, User,
 } from "./types";
 import type { RoleFlags } from "./domain";
+import type { EmailLogDto, UnmatchedEmailDto } from "./ser";
 
 interface Me {
   id: number;
@@ -33,6 +34,8 @@ interface StateSnapshot {
   slaRules: SlaRule[];
   instructions: Instruction[];
   bulletin: BulletinItem[];
+  emails: EmailLogDto[];
+  unmatchedEmails: UnmatchedEmailDto[];
   escalations: number;
 }
 
@@ -49,6 +52,7 @@ export type Route =
   | { name: "bulletin" }
   | { name: "calculator" }
   | { name: "reports" }
+  | { name: "emails" }
   | { name: "admin" };
 
 interface HfmcState extends StateSnapshot {
@@ -83,6 +87,10 @@ interface HfmcState extends StateSnapshot {
   completeInstruction: (id: number) => Promise<void>;
   replyInstruction: (id: number, text: string) => Promise<void>;
 
+  // email review queue
+  linkEmail: (unmatchedId: number, caseId: number) => Promise<void>;
+  ignoreEmail: (unmatchedId: number) => Promise<void>;
+
   // selectors
   userById: (id: number) => User | undefined;
   caseById: (id: number) => LoanCase | undefined;
@@ -94,7 +102,8 @@ interface HfmcState extends StateSnapshot {
 const empty: StateSnapshot = {
   me: null, flags: null, users: [], designations: [], cases: [], visibleCaseIds: [], tasks: [],
   visibleTaskIds: [], activities: [], stages: [], whyPending: [], waitingFor: [], banks: [],
-  partners: [], slaRules: [], instructions: [], bulletin: [], escalations: 0,
+  partners: [], slaRules: [], instructions: [], bulletin: [],
+  emails: [], unmatchedEmails: [], escalations: 0,
 };
 
 let toastSeq = 1;
@@ -204,6 +213,21 @@ export const useHfmcStore = create<HfmcState>((set, get) => ({
   },
   replyInstruction: async (id, text) => {
     await fetch(`/api/instructions/${id}/replies`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
+    await get().hydrate();
+  },
+
+  linkEmail: async (unmatchedId, caseId) => {
+    await fetch(`/api/email/unmatched/${unmatchedId}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "link", caseId }),
+    });
+    await get().hydrate();
+  },
+  ignoreEmail: async (unmatchedId) => {
+    await fetch(`/api/email/unmatched/${unmatchedId}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "ignore" }),
+    });
     await get().hydrate();
   },
 

@@ -69,6 +69,7 @@ model LoanCase {
   activities Activity[]
   instructions Instruction[]
   bulletins  BulletinItem[]
+  emails     EmailLog[]
 }
 
 model Task {
@@ -250,3 +251,34 @@ model Session {
   expiresAt DateTime
   user      User     @relation(fields: [userId], references: [id])
 }
+
+// Matched email — linked to a case, shown as a timeline entry on Case 360.
+// Deliberately no body stored — just enough to know it happened + a deep link
+// back to Outlook so the case officer can open the original.
+model EmailLog {
+  id          Int      @id @default(autoincrement())
+  caseId      Int
+  subject     String
+  sender      String
+  direction   String   @default("from_bank") // from_bank | from_client | internal
+  receivedAt DateTime @default(now())
+  outlookLink String?
+  messageId   String?  @unique // dedup key from the inbound webhook
+
+  case LoanCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+}
+
+// Unmatched email — fuzzy match wasn't confident enough to auto-link.
+// Waits in a review queue until a human confirms, picks a different case, or ignores.
+model UnmatchedEmail {
+  id              Int       @id @default(autoincrement())
+  subject         String
+  sender          String
+  receivedAt      DateTime  @default(now())
+  bestGuessCaseId Int?
+  status          String    @default("Pending") // Pending | Linked | Ignored
+  messageId       String?   @unique
+  resolvedBy      Int?
+  resolvedAt      DateTime?
+}
+

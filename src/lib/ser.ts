@@ -134,3 +134,51 @@ export function serBulletin(b: PrismaBulletin): BulletinItem {
     replies: b.replies.map(serReply),
   };
 }
+
+/* ---------------- email ---------------- */
+
+export interface EmailLogDto {
+  id: number;
+  caseId: number;
+  subject: string;
+  sender: string;
+  direction: string;
+  receivedAt: string;
+  outlookLink: string | null;
+}
+
+type PrismaEmailLog = {
+  id: number; caseId: number; subject: string; sender: string;
+  direction: string; receivedAt: Date; outlookLink: string | null;
+};
+
+export function serEmail(e: PrismaEmailLog): EmailLogDto {
+  return {
+    id: e.id, caseId: e.caseId, subject: e.subject, sender: e.sender,
+    direction: e.direction, receivedAt: e.receivedAt.toISOString(),
+    outlookLink: e.outlookLink,
+  };
+}
+
+export interface UnmatchedEmailDto {
+  id: number;
+  subject: string;
+  sender: string;
+  receivedAt: string;
+  bestGuessCaseId: number | null;
+  status: string;
+}
+
+type PrismaUnmatchedEmail = {
+  id: number; subject: string; sender: string; receivedAt: Date;
+  bestGuessCaseId: number | null; status: string;
+};
+
+export function serUnmatchedEmail(u: PrismaUnmatchedEmail): UnmatchedEmailDto {
+  return {
+    id: u.id, subject: u.subject, sender: u.sender,
+    receivedAt: u.receivedAt.toISOString(),
+    bestGuessCaseId: u.bestGuessCaseId, status: u.status,
+  };
+}
+

@@ -259,3 +259,50 @@ Agent Browser verification (all passed):
 
 Stage Summary:
 - Application fully ported and verified end-to-end. Lint clean. Server stable. All three AI features (Case Copilot, Mortgage Advisor, Document Reader) wired and returning real LLM/VLM output.
+
+---
+Task ID: PWA+EMAIL
+Agent: orchestrator
+Task: Add PWA (installable app) + Outlook email integration
+
+Work Log:
+PWA:
+- scripts/gen-icons.ts — renders the HFMC amber-wave logo to PNG via sharp (192, 512, maskable-512, apple-touch-180, favicon-32)
+- src/app/manifest.ts — Next.js metadata route manifest (name, short_name, theme_color #0b171d, standalone display, 4 icons, shortcuts to Dashboard + New case)
+- public/sw.js — service worker: network-first for /api/* (no stale data), cache-first for /_next/static/* + icons, navigation falls back to cached shell
+- src/components/sw-register.tsx — registers SW in production only (skips dev to not fight HMR)
+- layout.tsx — added manifest link, theme-color meta, apple-touch-icon, apple-web-app meta, SwRegister component
+- Verified: /manifest.webmanifest serves 200 with correct JSON, all icons serve 200, sw.js serves 200, theme-color in <head>
+
+Email integration:
+- prisma/schema.prisma — added EmailLog (id, caseId, subject, sender, direction, receivedAt, outlookLink, messageId unique) + UnmatchedEmail (id, subject, sender, receivedAt, bestGuessCaseId, status, messageId unique, resolvedBy, resolvedAt)
+- src/lib/email-match.ts — fuzzy matcher: splits subject on -/|/:, tokenizes with stop-word filter, Jaccard similarity against open case names + bank aliases (ENBD, ADCB, FAB, DIB, etc.), confident match = customer≥0.6 AND bank matched → auto-link; partial = review queue with best-guess; directionFor() infers from_bank/from_client/internal from sender domain; dueInBusinessDays(+2) for auto-task due date
+- src/app/api/email/inbound/route.ts — POST webhook, Bearer auth against EMAIL_WEBHOOK_SECRET, dedup by messageId, runs matcher, on match creates EmailLog + auto Task + Activity; on no match creates UnmatchedEmail
+- src/app/api/email/unmatched/[id]/route.ts — PATCH {action:"link",caseId} moves to EmailLog+Task+Activity, or {action:"ignore"} marks Ignored
+- src/lib/ser.ts — added serEmail + serUnmatchedEmail serializers
+- src/app/api/state/route.ts — now returns emails[] + unmatchedEmails[]
+- src/lib/client-store.ts — added emails, unmatchedEmails, linkEmail(), ignoreEmail(), Route "emails"
+- src/components/views/emails.tsx — review queue (best-guess chip, Link/Pick another/Not relevant) + recent email log table with search; PickCaseModal for manual case selection
+- src/components/views/shell.tsx — added "Emails" nav item with unmatched count badge
+- src/components/views/case-detail.tsx — added email timeline card (direction chip + subject + sender + Outlook deep link)
+- .env — added EMAIL_WEBHOOK_SECRET
+
+Webhook test results (all passed):
+1. "Mohammed Al Mansoori - DIB - Valuation Report" → linked to case 1, bank DIB, confidence high
+2. "Sara Al Rashid - document query" → queued (case is Closed, not eligible)
+3. "Mashreq monthly newsletter August 2026" → queued, no match
+4. Same MessageID → duplicate (dedup works)
+5. Wrong secret → 401
+6. "Mohammed Al Mansoori - KYC documents" → queued with bestGuessCaseId 1 (customer matched, no bank)
+7. "Vikram Patel / ENBD / pre-approval update" → linked to case 7, bank ENBD
+
+Browser verification:
+- Emails nav badge shows 3 (unmatched count)
+- Emails view renders review queue with best-guess suggestions + action buttons
+- Linked the KYC email → badge dropped to 2, email disappeared from queue
+- Case detail for HFMC-0001 shows Email timeline with both emails (auto-linked DIB + manually-linked KYC)
+- PWA manifest, icons, theme-color, and SW all serve correctly
+
+Stage Summary:
+- PWA: installable, instant shell load, no stale data (API calls always go to network)
+- Email: full pipeline working — webhook → fuzzy matcher → auto-link or review queue → human confirms → case timeline. No email bodies stored, only subject/sender/direction + optional Outlook deep link.

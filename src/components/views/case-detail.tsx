@@ -281,7 +281,7 @@ function inline(s: string): string {
 /* ---------------- Case Detail ---------------- */
 
 export default function CaseDetail({ id }: { id: number }) {
-  const { cases, tasks, activities, stages, banks, users, instructions, me, nav, userById, caseById, updateCase, completeTask, deleteTask, toast, flags, canInstruct } = useHfmcStore();
+  const { cases, tasks, activities, stages, banks, users, instructions, emails, me, nav, userById, caseById, updateCase, completeTask, deleteTask, toast, flags, canInstruct } = useHfmcStore();
   const c = caseById(id);
   const [showAddTask, setShowAddTask] = useState(false);
   const [showStage, setShowStage] = useState(false);
@@ -292,6 +292,7 @@ export default function CaseDetail({ id }: { id: number }) {
   const caseTasks = useMemo(() => tasks.filter((t) => t.caseId === id), [tasks, id]);
   const caseActivities = useMemo(() => activities.filter((a) => a.caseId === id).sort((a, b) => b.at.localeCompare(a.at)), [activities, id]);
   const caseInstr = useMemo(() => instructions.filter((i) => i.caseId === id), [instructions, id]);
+  const caseEmails = useMemo(() => emails.filter((e) => e.caseId === id).sort((a, b) => b.receivedAt.localeCompare(a.receivedAt)), [emails, id]);
   const stageList = useMemo(() => [...stages].sort((a, b) => a.sortOrder - b.sortOrder), [stages]);
 
   if (!c) {
@@ -445,6 +446,40 @@ export default function CaseDetail({ id }: { id: number }) {
                           <ICheck size={13} /> Mark done
                         </button>
                       )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* email timeline */}
+          {caseEmails.length > 0 && (
+            <div className="card anim-fade-up">
+              <div className="p-4 border-b flex items-center gap-2" style={{ borderColor: "var(--line-soft)" }}>
+                <IBank size={14} className="text-[var(--amber)]" />
+                <h3 className="font-disp font-semibold text-[14px] m-0">Email timeline</h3>
+                <span className="text-[11.5px] text-[var(--ink-faint)] ml-auto">{caseEmails.length} logged</span>
+              </div>
+              <div className="p-4 space-y-2.5">
+                {caseEmails.map((e) => {
+                  const tone = e.direction === "from_bank" ? "amber" : e.direction === "from_client" ? "sky" : "slate";
+                  const dirLabel = e.direction === "from_bank" ? "Bank" : e.direction === "from_client" ? "Client" : "Internal";
+                  return (
+                    <div key={e.id} className="flex items-start gap-3 rounded-lg px-3 py-2.5" style={{ background: "var(--tint)", border: "1px solid var(--line-soft)" }}>
+                      <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{ background: "rgba(242,176,76,0.1)", color: "var(--amber)" }}>
+                        <IBank size={14} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Chip tone={tone as "amber" | "sky" | "slate"}>{dirLabel}</Chip>
+                          <span className="text-[12.5px] font-medium truncate">{e.subject}</span>
+                        </div>
+                        <p className="text-[11px] text-[var(--ink-faint)] m-0 mt-1">
+                          from <span className="mono text-[var(--ink-dim)]">{e.sender}</span> · {fmtDateTime(e.receivedAt)}
+                          {e.outlookLink && <> · <a href={e.outlookLink} target="_blank" rel="noreferrer" className="text-[var(--sky)] hover:underline">open in Outlook ↗</a></>}
+                        </p>
+                      </div>
                     </div>
                   );
                 })}

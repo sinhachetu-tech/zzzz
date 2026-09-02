@@ -7,7 +7,7 @@ import {
 } from "@/lib/domain";
 import {
   serUser, serCase, serTask, serActivity, serBank, serPartner, serStage,
-  serMaster, serSla, serInstruction, serBulletin,
+  serMaster, serSla, serInstruction, serBulletin, serEmail, serUnmatchedEmail,
 } from "@/lib/ser";
 import { caseStatusOf } from "@/lib/format";
 
@@ -19,7 +19,7 @@ export async function GET() {
 
   const [
     users, designations, cases, tasks, activities, stages, masters, banks,
-    partners, slaRules, instructions, bulletinsRaw,
+    partners, slaRules, instructions, bulletinsRaw, emails, unmatchedEmails,
   ] = await Promise.all([
     db.user.findMany({ orderBy: { id: "asc" } }),
     db.designation.findMany({ orderBy: { id: "asc" } }),
@@ -33,6 +33,8 @@ export async function GET() {
     db.slaRule.findMany({ orderBy: { id: "asc" } }),
     db.instruction.findMany({ orderBy: { id: "asc" }, include: { replies: true } }),
     db.bulletinItem.findMany({ orderBy: { id: "asc" }, include: { targets: true, replies: true } }),
+    db.emailLog.findMany({ orderBy: { receivedAt: "desc" }, take: 500 }),
+    db.unmatchedEmail.findMany({ orderBy: { receivedAt: "desc" }, where: { status: "Pending" } }),
   ]);
 
   const usersDto = users.map(serUser);
@@ -66,6 +68,8 @@ export async function GET() {
     slaRules: slaRules.map(serSla),
     instructions: instructions.map(serInstruction),
     bulletin: bulletinsDto,
+    emails: emails.map(serEmail),
+    unmatchedEmails: unmatchedEmails.map(serUnmatchedEmail),
     escalations: escalations.length,
   });
 }

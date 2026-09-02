@@ -10,7 +10,7 @@ import { fmtMoney, inDaysISO, todayISO } from "@/lib/format";
 import { Avatar, Modal, ThemeToggle } from "@/components/hfmc/ui";
 import { Toaster } from "@/components/hfmc/toaster";
 import {
-  IBank, IBriefcase, ICalc, IChart, IFlag, IGrid, ILogout, IPlus, IShield, ITasks, LogoMark,
+  IBank, IBriefcase, ICalc, IChart, IFlag, IGrid, IInbox, ILogout, IPlus, IShield, ITasks, LogoMark,
 } from "@/components/icons";
 
 function Clock() {
@@ -203,7 +203,7 @@ function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void })
 }
 
 export default function Shell({ children }: { children: ReactNode }) {
-  const { me, route, nav, logout, escalations, instructions, bulletin, visibleCases } = useHfmcStore();
+  const { me, route, nav, logout, escalations, instructions, bulletin, visibleCases, unmatchedEmails } = useHfmcStore();
   const [showNew, setShowNew] = useState(false);
   const flags = useHfmcStore((s) => s.flags);
 
@@ -221,6 +221,7 @@ export default function Shell({ children }: { children: ReactNode }) {
     { label: "Morning Bulletin", route: { name: "bulletin" }, icon: IFlag, badge: myOpenDirectives },
     { label: "Calculator", route: { name: "calculator" }, icon: ICalc },
     { label: "Task Queue", route: { name: "tasks" }, icon: ITasks },
+    { label: "Emails", route: { name: "emails" }, icon: IInbox, badge: unmatchedEmails.length },
     { label: "Reports", route: { name: "reports" }, icon: IChart },
     ...(isAdmin ? [{ label: "Admin", route: { name: "admin" as const }, icon: IShield }] : []),
   ];
@@ -231,7 +232,8 @@ export default function Shell({ children }: { children: ReactNode }) {
     route.name === "tasks" ? "Task Queue" :
     route.name === "bulletin" ? "Morning Bulletin" :
     route.name === "calculator" ? "Calculator" :
-    route.name === "reports" ? "Reports" : "Admin";
+    route.name === "reports" ? "Reports" :
+    route.name === "emails" ? "Emails" : "Admin";
 
   return (
     <div className="flex h-screen overflow-hidden">

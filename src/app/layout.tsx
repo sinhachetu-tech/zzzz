@@ -1,7 +1,8 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Space_Grotesk, IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
+import { SwRegister } from "@/components/sw-register";
 
 const spaceGrotesk = Space_Grotesk({
   variable: "--font-disp",
@@ -27,7 +28,27 @@ export const metadata: Metadata = {
   title: "HFMC — Mortgage Case Tracker",
   description:
     "HFMC mortgage case tracker for UAE home finance — pipeline, tasks, morning bulletin, and a CBUAE-style affordability calculator with an AI copilot.",
-  icons: { icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg" },
+  manifest: "/manifest.webmanifest",
+  icons: {
+    icon: [
+      { url: "/favicon-32.png", sizes: "32x32", type: "image/png" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "HFMC",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#0b171d",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
 };
 
 const themeScript = `
@@ -45,6 +66,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         style={{ background: "var(--bg)", color: "var(--ink)" }}
       >
         <Providers>{children}</Providers>
+        <SwRegister />
       </body>
     </html>
   );
