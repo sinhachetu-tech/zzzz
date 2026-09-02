@@ -373,3 +373,19 @@ Stage Summary:
 - Fully mobile-responsive: hamburger drawer + bottom nav on mobile, full sidebar on desktop
 - PWA: installable, instant shell load, no stale data, proper icons + manifest + SW
 - Zero horizontal page overflow at any viewport, all controls reachable, tap targets ≥40px on mobile
+
+---
+Task ID: ADD-CLIENT-PROMINENT
+Agent: orchestrator
+Task: Make "Add client" the most prominent action on web + mobile
+
+Work Log:
+- Lifted newCaseOpen state into the Zustand store (openNewCase / closeNewCase) so any component can trigger the modal — FAB, dashboard CTA, header button all call the same handler
+- Relabelled "New case" → "Add client" everywhere (header button, modal title) to match how users think about it
+- Header button: bumped from btn-sm to full btn (8px×14px → 8px×14px padding, 13px font, full "Add client" label visible from sm up)
+- Desktop dashboard: added a prominent CTA banner right below the pipeline header — full-width card with amber left border, a 48px amber rounded icon tile, "Add a new client" title, one-line description, and "Open form →" hint. It's the first thing you see after the pipeline title.
+- Mobile: added a floating action button (FAB) — 56px circular, amber, bottom-right at 72px from bottom (above the 57px bottom nav with a 15px gap), always visible on every view. Standard mobile pattern (Gmail/WhatsApp/Maps). Hidden on desktop via md:hidden.
+- Verified: desktop CTA opens modal, mobile FAB opens modal, FAB hidden on desktop, header button visible on desktop, zero overflow at both viewports, lint clean
+
+Stage Summary:
+- "Add client" is now the most prominent action in the app: a dashboard CTA banner on desktop (first thing below the pipeline title), a header button on every view, and a mobile FAB that floats above every screen. Three ways to reach it, all calling the same store action.

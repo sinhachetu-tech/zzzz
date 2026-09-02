@@ -60,6 +60,9 @@ interface HfmcState extends StateSnapshot {
   loading: boolean;
   toasts: ToastMsg[];
   route: Route;
+  newCaseOpen: boolean;
+  openNewCase: () => void;
+  closeNewCase: () => void;
   setRoute: (r: Route) => void;
   nav: (r: Route) => void;
   hydrate: () => Promise<void>;
@@ -114,6 +117,9 @@ export const useHfmcStore = create<HfmcState>((set, get) => ({
   loading: false,
   toasts: [],
   route: { name: "dashboard" },
+  newCaseOpen: false,
+  openNewCase: () => set({ newCaseOpen: true }),
+  closeNewCase: () => set({ newCaseOpen: false }),
   setRoute: (r) => set({ route: r }),
   nav: (r) => set({ route: r }),
   toast: (kind, msg) => {

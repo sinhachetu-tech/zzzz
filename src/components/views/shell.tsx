@@ -82,7 +82,7 @@ function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void })
   };
 
   return (
-    <Modal onClose={onClose} title="Open a new case" width={580}>
+    <Modal onClose={onClose} title="Add client" width={580}>
       <div className="space-y-3.5">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
@@ -203,8 +203,7 @@ function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void })
 }
 
 export default function Shell({ children }: { children: ReactNode }) {
-  const { me, route, nav, logout, escalations, instructions, bulletin, visibleCases, unmatchedEmails } = useHfmcStore();
-  const [showNew, setShowNew] = useState(false);
+  const { me, route, nav, logout, escalations, instructions, bulletin, visibleCases, unmatchedEmails, newCaseOpen, openNewCase, closeNewCase } = useHfmcStore();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const flags = useHfmcStore((s) => s.flags);
 
@@ -291,8 +290,8 @@ export default function Shell({ children }: { children: ReactNode }) {
           <div className="ml-auto flex items-center gap-2 md:gap-3">
             <Clock />
             <ThemeToggle compact />
-            <button className="btn btn-primary btn-sm" onClick={() => setShowNew(true)}>
-              <IPlus size={14} /> <span className="hidden sm:inline">New case</span>
+            <button className="btn btn-primary" onClick={openNewCase}>
+              <IPlus size={16} /> <span className="hidden sm:inline">Add client</span>
             </button>
           </div>
         </header>
@@ -330,7 +329,20 @@ export default function Shell({ children }: { children: ReactNode }) {
         })}
       </nav>
 
-      <NewCaseModal open={showNew} onClose={() => setShowNew(false)} />
+      {/* Mobile floating action button — the primary action, always visible */}
+      <button
+        className="fixed bottom-[72px] right-4 z-40 md:hidden flex items-center justify-center rounded-full anim-fade-up"
+        onClick={openNewCase}
+        aria-label="Add client"
+        style={{
+          width: 56, height: 56, background: "var(--amber)", color: "#fff8ec",
+          boxShadow: "0 8px 24px -6px rgba(180,83,9,0.5), 0 2px 8px rgba(0,0,0,0.15)",
+        }}
+      >
+        <IPlus size={26} />
+      </button>
+
+      <NewCaseModal open={newCaseOpen} onClose={closeNewCase} />
       <Toaster />
     </div>
   );

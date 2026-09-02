@@ -9,7 +9,7 @@ import { TONE_HEX, ageDays, caseStatusOf, commissionFor, fmtMoney, relTime, toda
 import { Avatar, Chip, EmptyState, StatusChip } from "@/components/hfmc/ui";
 import { BankChips, CaseStateChip, SourceChip } from "@/components/hfmc/bits";
 import { BarList, Donut, Spark, useCountUp } from "@/components/hfmc/charts";
-import { IArrowR, IBriefcase, IFlag, IInbox } from "@/components/icons";
+import { IArrowR, IBriefcase, IFlag, IInbox, IPlus } from "@/components/icons";
 
 function useTick(intervalMs: number) {
   const [, setT] = useState(0);
@@ -34,7 +34,7 @@ function Kpi({ label, value, format, tone, sub }: { label: string; value: number
 const STATE_TABS: ("Active" | "Booked" | "Lost" | "All")[] = ["Active", "Booked", "Lost", "All"];
 
 export default function Dashboard() {
-  const { cases, tasks, activities, stages, banks, whyPending, waitingFor, users, me, nav, userById, visibleCases, visibleTasks, escalations, bulletin, visibleCaseIds, visibleTaskIds } = useHfmcStore();
+  const { cases, tasks, activities, stages, banks, whyPending, waitingFor, users, me, nav, userById, visibleCases, visibleTasks, escalations, bulletin, visibleCaseIds, visibleTaskIds, openNewCase } = useHfmcStore();
   useTick(30000);
   const [search, setSearch] = useState("");
   const [stage, setStage] = useState("All");
@@ -134,6 +134,26 @@ export default function Dashboard() {
           <Spark points={spark} width={130} height={34} />
         </div>
       </div>
+
+      {/* prominent Add client CTA — the single most important action */}
+      <button
+        onClick={openNewCase}
+        className="card card-hover w-full flex items-center gap-4 p-4 md:p-5 anim-fade-up text-left group"
+        style={{ borderLeft: "3px solid var(--amber)" }}
+      >
+        <div className="w-11 h-11 md:w-12 md:h-12 rounded-xl flex items-center justify-center shrink-0" style={{ background: "var(--amber)", color: "var(--amber-ink)" }}>
+          <IPlus size={24} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="font-disp font-bold text-[16px] md:text-[18px] leading-tight">Add a new client</div>
+          <div className="text-[12px] md:text-[13px] text-[var(--ink-dim)] mt-0.5">
+            Open a case file — customer, banks, loan amount, and the first task, all in one go.
+          </div>
+        </div>
+        <span className="font-disp font-semibold text-[12px] hidden sm:inline shrink-0 transition-colors" style={{ color: "var(--amber)" }}>
+          Open form →
+        </span>
+      </button>
 
       <div className="flex gap-3 overflow-x-auto pb-1 stagger">
         <Kpi label="Cases in flight" value={k.openCases} />
