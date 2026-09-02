@@ -272,13 +272,13 @@ export default function Reports() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button className="btn btn-ghost btn-sm" onClick={exportCases} title="Export every visible case">
+          <button className="btn btn-ghost sm:btn-sm" onClick={exportCases} title="Export every visible case">
             <IDownload size={14} /> Cases
           </button>
-          <button className="btn btn-ghost btn-sm" onClick={exportTasks} title="Export every visible task">
+          <button className="btn btn-ghost sm:btn-sm" onClick={exportTasks} title="Export every visible task">
             <IDownload size={14} /> Tasks
           </button>
-          <button className="btn btn-primary btn-sm" onClick={exportCommission} title="Export commission breakdown for booked cases">
+          <button className="btn btn-primary sm:btn-sm" onClick={exportCommission} title="Export commission breakdown for booked cases">
             <IDownload size={14} /> Commission
           </button>
         </div>
@@ -511,14 +511,14 @@ export default function Reports() {
             </span>
           }
         >
-          <div className="flex items-end gap-4">
+          <div className="flex flex-wrap items-end gap-4">
             <div className="flex flex-col">
               <span className="text-[10.5px] uppercase tracking-[0.1em] text-[var(--ink-faint)] font-disp font-semibold">14-day total</span>
               <span className="font-disp font-bold text-[30px] leading-tight" style={{ color: "var(--amber)" }}>
                 <CountUp target={trendTotal} />
               </span>
             </div>
-            <div className="flex-1 flex flex-col items-end">
+            <div className="flex-1 min-w-[180px] flex flex-col items-end overflow-x-auto">
               <Spark points={trend} color={TONE_HEX.amber} width={260} height={56} />
               <span className="text-[10.5px] text-[var(--ink-faint)] mt-1">today →</span>
             </div>

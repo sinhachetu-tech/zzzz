@@ -75,3 +75,5 @@ export const ITarget = make(<><circle cx="12" cy="12" r="8.5" /><circle cx="12" 
 export const IRobot = make(<><rect x="4" y="8" width="16" height="11" rx="3" /><circle cx="9" cy="13" r="1.3" fill="currentColor" stroke="none" /><circle cx="15" cy="13" r="1.3" fill="currentColor" stroke="none" /><path d="M12 3v5" /><circle cx="12" cy="3" r="1.4" /><path d="M9 16.5h6" /></>);
 export const ISparkles = make(<><path d="M12 3l1.8 4.7L18.5 9.5 13.8 11.3 12 16l-1.8-4.7L5.5 9.5l4.7-1.8L12 3Z" /><path d="M18.5 14l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7.7-1.8Z" /></>);
 export const IUpload = make(<><path d="M12 16V4" /><path d="m7.5 8.5 4.5-4.5 4.5 4.5" /><path d="M4 16v2.5A1.5 1.5 0 0 0 5.5 20h13A1.5 1.5 0 0 0 20 18.5V16" /></>);
+export const IMenu = make(<><path d="M4 6h16" /><path d="M4 12h16" /><path d="M4 18h16" /></>);
+export const IHome = make(<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1Z" />);

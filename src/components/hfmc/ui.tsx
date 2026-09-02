@@ -155,7 +155,7 @@ export function Seg<T extends string>({
         <button
           key={o.value}
           onClick={() => onChange(o.value)}
-          className="px-3 py-[5px] rounded-[6px] font-disp text-[12.5px] font-medium transition-all"
+          className="px-3 py-[5px] rounded-[6px] font-disp text-[12.5px] font-medium transition-all whitespace-nowrap"
           style={
             value === o.value
               ? { background: "var(--raised)", color: "var(--ink)", boxShadow: "0 1px 4px rgba(15,23,42,0.12)", border: "1px solid var(--line)" }

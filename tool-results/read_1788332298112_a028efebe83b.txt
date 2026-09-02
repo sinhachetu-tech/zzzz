@@ -1,0 +1,632 @@
+     1→"use client";
+     2→
+     3→import { useMemo } from "react";
+     4→import type { ReactNode } from "react";
+     5→import { useHfmcStore } from "@/lib/client-store";
+     6→import type { CaseSource, LoanCase } from "@/lib/types";
+     7→import { SOURCES } from "@/lib/types";
+     8→import { computeEscalations, activityPerDay } from "@/lib/domain";
+     9→import {
+    10→  TONE_HEX, ageDays, commissionFor, downloadCSV, fmtMoney, fmtMoneyFull, fmtRate,
+    11→  primaryBank, todayISO,
+    12→} from "@/lib/format";
+    13→import { Avatar, Chip, EmptyState, SectionLabel } from "@/components/hfmc/ui";
+    14→import { BarList, Donut, Spark, useCountUp } from "@/components/hfmc/charts";
+    15→import {
+    16→  IBank, IBriefcase, IChart, IClock, IDownload, IInbox, ITarget, ITrophy, IUsers,
+    17→} from "@/components/icons";
+    18→
+    19→/* ---------- helpers ---------- */
+    20→
+    21→const SOURCE_COLORS: Record<CaseSource, string> = {
+    22→  Direct: TONE_HEX.mint,
+    23→  Agent: TONE_HEX.amber,
+    24→  Broker: TONE_HEX.sky,
+    25→  Website: TONE_HEX.slate,
+    26→  Referral: TONE_HEX.coral,
+    27→};
+    28→
+    29→const STAGE_PALETTE = [TONE_HEX.amber, TONE_HEX.sky, TONE_HEX.mint, TONE_HEX.coral, TONE_HEX.slate];
+    30→
+    31→interface ReportCardProps {
+    32→  title: string;
+    33→  sub: string;
+    34→  icon: ReactNode;
+    35→  span?: boolean; // span two columns on lg
+    36→  extra?: ReactNode;
+    37→  children: ReactNode;
+    38→}
+    39→
+    40→function ReportCard({ title, sub, icon, span, extra, children }: ReportCardProps) {
+    41→  return (
+    42→    <div className={`card p-4 anim-fade-up ${span ? "lg:col-span-2" : ""}`}>
+    43→      <div className="flex items-start justify-between gap-3 mb-1">
+    44→        <div className="flex items-start gap-2.5 min-w-0">
+    45→          <span
+    46→            className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+    47→            style={{ background: "var(--amber-tint)", color: "var(--amber)", border: "1px solid var(--amber-line)" }}
+    48→          >
+    49→            {icon}
+    50→          </span>
+    51→          <div className="min-w-0">
+    52→            <h3 className="font-disp font-semibold text-[14px] m-0">{title}</h3>
+    53→            <p className="text-[11.5px] text-[var(--ink-faint)] mt-0.5 mb-0 leading-snug">{sub}</p>
+    54→          </div>
+    55→        </div>
+    56→        {extra}
+    57→      </div>
+    58→      <div className="mt-3">{children}</div>
+    59→    </div>
+    60→  );
+    61→}
+    62→
+    63→function GroupLabel({ children }: { children: ReactNode }) {
+    64→  return (
+    65→    <div className="col-span-1 lg:col-span-2 flex items-center gap-3 mt-2">
+    66→      <span
+    67→        className="font-disp font-bold text-[12px] uppercase tracking-[0.16em]"
+    68→        style={{ color: "var(--amber)" }}
+    69→      >
+    70→        {children}
+    71→      </span>
+    72→      <span className="h-px flex-1" style={{ background: "var(--line-soft)" }} />
+    73→    </div>
+    74→  );
+    75→}
+    76→
+    77→function MiniStat({ label, value, tone }: { label: string; value: string; tone: "mint" | "amber" | "coral" | "sky" | "slate" }) {
+    78→  return (
+    79→    <div className="flex flex-col">
+    80→      <span className="text-[10.5px] uppercase tracking-[0.1em] text-[var(--ink-faint)] font-disp font-semibold">{label}</span>
+    81→      <span className="mono font-semibold text-[14px]" style={{ color: `var(--${tone})` }}>{value}</span>
+    82→    </div>
+    83→  );
+    84→}
+    85→
+    86→function CountUp({ target, format }: { target: number; format?: (n: number) => string }) {
+    87→  const v = useCountUp(target);
+    88→  return <>{format ? format(v) : v}</>;
+    89→}
+    90→
+    91→/* ---------- view ---------- */
+    92→
+    93→export default function Reports() {
+    94→  const {
+    95→    cases, tasks, activities, banks, partners, users, stages, slaRules,
+    96→    nav, userById, visibleCases, visibleTasks, toast,
+    97→  } = useHfmcStore();
+    98→
+    99→  const visCases = useMemo(() => visibleCases(), [visibleCases]);
+   100→  const visTasks = useMemo(() => visibleTasks(), [visibleTasks]);
+   101→
+   102→  /* ---- slice cases by lifecycle state ---- */
+   103→  const active = useMemo(() => visCases.filter((c) => c.caseStatus === "Active"), [visCases]);
+   104→  const booked = useMemo(() => visCases.filter((c) => c.caseStatus === "Closed"), [visCases]);
+   105→  const lost = useMemo(() => visCases.filter((c) => c.caseStatus === "Lost"), [visCases]);
+   106→
+   107→  /* ---- 1 · pipeline by stage ---- */
+   108→  const sortedStages = useMemo(
+   109→    () => [...stages].sort((a, b) => a.sortOrder - b.sortOrder),
+   110→    [stages],
+   111→  );
+   112→  const stageRows = useMemo(
+   113→    () =>
+   114→      sortedStages
+   115→        .map((s, i) => {
+   116→          const inStage = active.filter((c) => c.stage === s.label);
+   117→          const value = inStage.reduce((sum, c) => sum + c.loanAmount, 0);
+   118→          return {
+   119→            label: s.label,
+   120→            value: inStage.length,
+   121→            color: STAGE_PALETTE[i % STAGE_PALETTE.length],
+   122→            sub: inStage.length ? `· ${fmtMoney(value)}` : "",
+   123→            amount: value,
+   124→          };
+   125→        })
+   126→        .filter((r) => r.value > 0),
+   127→    [sortedStages, active],
+   128→  );
+   129→
+   130→  /* ---- 2 · source mix ---- */
+   131→  const sourceSegs = useMemo(
+   132→    () =>
+   133→      SOURCES
+   134→        .map((src) => ({
+   135→          label: src,
+   136→          value: visCases.filter((c) => c.source === src).length,
+   137→          color: SOURCE_COLORS[src],
+   138→        }))
+   139→        .filter((s) => s.value > 0),
+   140→    [visCases],
+   141→  );
+   142→
+   143→  /* ---- 3 · bank win rate ---- */
+   144→  const bankRows = useMemo(
+   145→    () =>
+   146→      banks
+   147→        .map((b) => {
+   148→          const submitted = visCases.filter((c) => c.banks.includes(b.name));
+   149→          const won = booked.filter((c) => c.wonBank === b.name);
+   150→          const lostCount = lost.filter((c) => c.banks.includes(b.name)).length;
+   151→          const decided = won.length + lostCount;
+   152→          const winPct = decided > 0 ? Math.round((won.length / decided) * 100) : 0;
+   153→          const grossEarned = won.reduce((s, c) => s + commissionFor(c, banks).gross, 0);
+   154→          return { b, submitted: submitted.length, won: won.length, lostCount, winPct, grossEarned };
+   155→        })
+   156→        .filter((r) => r.submitted > 0 || r.won > 0)
+   157→        .sort((a, b) => b.grossEarned - a.grossEarned),
+   158→    [banks, visCases, booked, lost],
+   159→  );
+   160→
+   161→  /* ---- 4 · owner leaderboard ---- */
+   162→  const owners = useMemo(
+   163→    () =>
+   164→      users
+   165→        .filter((u) => u.role !== "Head of Company" && u.role !== "PA to HoC")
+   166→        .map((u) => {
+   167→          const mine = visCases.filter((c) => c.ownerId === u.id);
+   168→          const won = mine.filter((c) => c.caseStatus === "Closed");
+   169→          const lostMine = mine.filter((c) => c.caseStatus === "Lost").length;
+   170→          const decided = won.length + lostMine;
+   171→          const winPct = decided > 0 ? Math.round((won.length / decided) * 100) : 0;
+   172→          const bookedValue = won.reduce((s, c) => s + c.loanAmount, 0);
+   173→          const netEarn = won.reduce((s, c) => s + commissionFor(c, banks).net, 0);
+   174→          return { u, mine: mine.length, won: won.length, lostMine, winPct, bookedValue, netEarn };
+   175→        })
+   176→        .filter((r) => r.mine > 0)
+   177→        .sort((a, b) => b.bookedValue - a.bookedValue),
+   178→    [users, visCases, banks],
+   179→  );
+   180→
+   181→  /* ---- 5 · conversion funnel ---- */
+   182→  const funnel = useMemo(() => {
+   183→    const total = visCases.length;
+   184→    const bookedN = booked.length;
+   185→    const lostN = lost.length;
+   186→    const activeN = active.length;
+   187→    const decided = bookedN + lostN;
+   188→    const conv = total > 0 ? Math.round((bookedN / total) * 100) : 0;
+   189→    const hitRate = decided > 0 ? Math.round((bookedN / decided) * 100) : 0;
+   190→    return { total, bookedN, lostN, activeN, conv, hitRate };
+   191→  }, [visCases, booked, lost, active]);
+   192→
+   193→  /* ---- 6 · commission summary ---- */
+   194→  const commission = useMemo(() => {
+   195→    const gross = booked.reduce((s, c) => s + commissionFor(c, banks).gross, 0);
+   196→    const partnerCut = booked.reduce((s, c) => s + commissionFor(c, banks).partnerCut, 0);
+   197→    const net = gross - partnerCut;
+   198→    const pipelineGross = active.reduce((s, c) => s + commissionFor(c, banks).gross, 0);
+   199→    return { gross, partnerCut, net, pipelineGross };
+   200→  }, [booked, active, banks]);
+   201→
+   202→  /* ---- 7 · SLA breaches ---- */
+   203→  const escalations = useMemo(
+   204→    () => computeEscalations(visCases, slaRules),
+   205→    [visCases, slaRules],
+   206→  );
+   207→  const slaCases = useMemo(
+   208→    () =>
+   209→      escalations
+   210→        .map((e) => ({ e, c: visCases.find((c) => c.id === e.caseId) }))
+   211→        .filter((r): r is { e: typeof escalations[number]; c: LoanCase } => !!r.c)
+   212→        .sort((a, b) => b.e.breachDays - a.e.breachDays),
+   213→    [escalations, visCases],
+   214→  );
+   215→
+   216→  /* ---- 8 · activity trend (14 days) ---- */
+   217→  const trend = useMemo(() => activityPerDay(activities, 14), [activities]);
+   218→  const trendTotal = useMemo(() => trend.reduce((s, n) => s + n, 0), [trend]);
+   219→
+   220→  /* ---- CSV exports ---- */
+   221→  const exportCases = () => {
+   222→    const header = ["Case #", "Customer", "Status", "Stage", "Source", "Banks", "Won bank", "Loan amount (AED)", "Owner", "Partner", "Share %", "Created", "Closed"];
+   223→    const rows = visCases.map((c) => [
+   224→      c.caseNumber, c.customer, c.caseStatus, c.stage, c.source,
+   225→      c.banks.join(" / ") || "TBC", c.wonBank ?? "", Math.round(c.loanAmount),
+   226→      userById(c.ownerId)?.name ?? "", c.partner?.name ?? "", c.partner?.sharePct ?? "",
+   227→      c.createdAt.slice(0, 10), c.closedDate ?? "",
+   228→    ]);
+   229→    downloadCSV("hfmc-cases.csv", header, rows);
+   230→    toast("success", "Cases exported.");
+   231→  };
+   232→
+   233→  const exportTasks = () => {
+   234→    const header = ["Case #", "Task", "Owner", "Status", "Waiting for", "Why pending", "Due", "Created"];
+   235→    const rows = visTasks.map((t) => {
+   236→      const c = cases.find((x) => x.id === t.caseId);
+   237→      return [
+   238→        c?.caseNumber ?? "", t.description, userById(t.ownerId)?.name ?? "",
+   239→        t.status, t.waitingFor, t.whyPending, t.dueDate, t.createdAt.slice(0, 10),
+   240→      ];
+   241→    });
+   242→    downloadCSV("hfmc-tasks.csv", header, rows);
+   243→    toast("success", "Tasks exported.");
+   244→  };
+   245→
+   246→  const exportCommission = () => {
+   247→    const header = ["Case #", "Customer", "Won bank", "Rate %", "Loan amount (AED)", "Gross (AED)", "Partner", "Share %", "Partner cut (AED)", "Net (AED)", "Closed"];
+   248→    const rows = booked.map((c) => {
+   249→      const m = commissionFor(c, banks);
+   250→      return [
+   251→        c.caseNumber, c.customer, m.bank ?? "", m.ratePct, Math.round(c.loanAmount),
+   252→        Math.round(m.gross), c.partner?.name ?? "", c.partner?.sharePct ?? "",
+   253→        Math.round(m.partnerCut), Math.round(m.net), c.closedDate ?? "",
+   254→      ];
+   255→    });
+   256→    downloadCSV("hfmc-commission.csv", header, rows);
+   257→    toast("success", "Commission exported.");
+   258→  };
+   259→
+   260→  /* ---- render ---- */
+   261→
+   262→  return (
+   263→    <div className="space-y-5">
+   264→      {/* header */}
+   265→      <div className="flex flex-wrap items-end justify-between gap-3 anim-fade-up">
+   266→        <div>
+   267→          <h1 className="font-disp font-bold text-[24px] tracking-tight m-0 flex items-center gap-2.5">
+   268→            <IChart size={22} className="text-[var(--amber)]" /> Reports
+   269→          </h1>
+   270→          <p className="text-[13px] text-[var(--ink-dim)] mt-0.5 mb-0">
+   271→            {visCases.length} cases · {booked.length} booked · {fmtMoney(booked.reduce((s, c) => s + c.loanAmount, 0))} closed volume
+   272→          </p>
+   273→        </div>
+   274→        <div className="flex flex-wrap items-center gap-2">
+   275→          <button className="btn btn-ghost btn-sm" onClick={exportCases} title="Export every visible case">
+   276→            <IDownload size={14} /> Cases
+   277→          </button>
+   278→          <button className="btn btn-ghost btn-sm" onClick={exportTasks} title="Export every visible task">
+   279→            <IDownload size={14} /> Tasks
+   280→          </button>
+   281→          <button className="btn btn-primary btn-sm" onClick={exportCommission} title="Export commission breakdown for booked cases">
+   282→            <IDownload size={14} /> Commission
+   283→          </button>
+   284→        </div>
+   285→      </div>
+   286→
+   287→      {/* KPI strip */}
+   288→      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 stagger">
+   289→        <KpiCard label="Active pipeline" value={<CountUp target={active.length} />} sub={fmtMoney(active.reduce((s, c) => s + c.loanAmount, 0))} tone="amber" icon={<IBriefcase size={15} />} />
+   290→        <KpiCard label="Booked" value={<CountUp target={booked.length} />} sub={fmtMoney(booked.reduce((s, c) => s + c.loanAmount, 0))} tone="mint" icon={<ITrophy size={15} />} />
+   291→        <KpiCard label="Lost" value={<CountUp target={lost.length} />} sub={`${funnel.hitRate}% hit rate`} tone="coral" icon={<ITarget size={15} />} />
+   292→        <KpiCard label="Net commission" value={<CountUp target={Math.round(commission.net)} format={fmtMoney} />} sub={`of ${fmtMoney(commission.gross)} gross`} tone="sky" icon={<IBank size={15} />} />
+   293→      </div>
+   294→
+   295→      {/* report grid */}
+   296→      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+   297→        <GroupLabel>Pipeline</GroupLabel>
+   298→
+   299→        {/* 1 · pipeline by stage */}
+   300→        <ReportCard
+   301→          title="Pipeline by stage"
+   302→          sub="Live cases and loan amount per stage"
+   303→          icon={<IBriefcase size={15} />}
+   304→        >
+   305→          {stageRows.length ? (
+   306→            <BarList items={stageRows} />
+   307→          ) : (
+   308→            <p className="text-[12.5px] text-[var(--ink-faint)] m-0">No active cases in any stage.</p>
+   309→          )}
+   310→        </ReportCard>
+   311→
+   312→        {/* 2 · source mix */}
+   313→        <ReportCard
+   314→          title="Source mix"
+   315→          sub="Where the case introductions come from"
+   316→          icon={<IUsers size={15} />}
+   317→        >
+   318→          {sourceSegs.length ? (
+   319→            <Donut segments={sourceSegs} centerLabel="cases" />
+   320→          ) : (
+   321→            <p className="text-[12.5px] text-[var(--ink-faint)] m-0">No cases to break down.</p>
+   322→          )}
+   323→        </ReportCard>
+   324→
+   325→        {/* 3 · bank win rate */}
+   326→        <ReportCard
+   327→          title="Bank win rate"
+   328→          sub="Submitted vs booked per bank, and commission earned"
+   329→          icon={<IBank size={15} />}
+   330→          span
+   331→        >
+   332→          {bankRows.length === 0 ? (
+   333→            <p className="text-[12.5px] text-[var(--ink-faint)] m-0">No bank activity yet.</p>
+   334→          ) : (
+   335→            <div className="overflow-x-auto">
+   336→              <table className="tbl min-w-[640px]">
+   337→                <thead>
+   338→                  <tr>
+   339→                    <th>Bank</th>
+   340→                    <th>Rate</th>
+   341→                    <th>Submitted</th>
+   342→                    <th>Won</th>
+   343→                    <th>Win %</th>
+   344→                    <th>Commission earned</th>
+   345→                  </tr>
+   346→                </thead>
+   347→                <tbody>
+   348→                  {bankRows.map((r) => (
+   349→                    <tr key={r.b.id} style={{ cursor: "default" }}>
+   350→                      <td className="font-medium">{r.b.name}</td>
+   351→                      <td className="mono">{fmtRate(r.b.ratePct)}</td>
+   352→                      <td className="mono">{r.submitted}</td>
+   353→                      <td className="mono">{r.won}</td>
+   354→                      <td>
+   355→                        <WinPill pct={r.winPct} />
+   356→                      </td>
+   357→                      <td className="mono" style={{ color: r.grossEarned > 0 ? "var(--mint)" : undefined }}>
+   358→                        {r.grossEarned > 0 ? fmtMoney(r.grossEarned) : "—"}
+   359→                      </td>
+   360→                    </tr>
+   361→                  ))}
+   362→                </tbody>
+   363→              </table>
+   364→            </div>
+   365→          )}
+   366→        </ReportCard>
+   367→
+   368→        <GroupLabel>People</GroupLabel>
+   369→
+   370→        {/* 4 · owner leaderboard */}
+   371→        <ReportCard
+   372→          title="Owner leaderboard"
+   373→          sub="Ranked by booked volume — with win rate and net commission"
+   374→          icon={<ITrophy size={15} />}
+   375→          span
+   376→        >
+   377→          {owners.length === 0 ? (
+   378→            <p className="text-[12.5px] text-[var(--ink-faint)] m-0">No cases assigned yet.</p>
+   379→          ) : (
+   380→            <div className="overflow-x-auto">
+   381→              <table className="tbl min-w-[640px]">
+   382→                <thead>
+   383→                  <tr>
+   384→                    <th className="w-[34px]">#</th>
+   385→                    <th>Owner</th>
+   386→                    <th>Cases</th>
+   387→                    <th>Booked</th>
+   388→                    <th>Win %</th>
+   389→                    <th>Booked volume</th>
+   390→                    <th>Net commission</th>
+   391→                  </tr>
+   392→                </thead>
+   393→                <tbody>
+   394→                  {owners.map((r, i) => (
+   395→                    <tr key={r.u.id} style={{ cursor: "default", background: i === 0 ? "rgba(242,176,76,0.06)" : undefined }}>
+   396→                      <td className="mono text-center" style={{ color: i === 0 ? "var(--amber)" : "var(--ink-faint)" }}>
+   397→                        {i + 1}
+   398→                      </td>
+   399→                      <td>
+   400→                        <span className="flex items-center gap-2">
+   401→                          <Avatar name={r.u.name} size={24} />
+   402→                          <span className="font-medium">{r.u.name}</span>
+   403→                        </span>
+   404→                      </td>
+   405→                      <td className="mono">{r.mine}</td>
+   406→                      <td className="mono">{r.won}</td>
+   407→                      <td><WinPill pct={r.winPct} /></td>
+   408→                      <td className="mono">{fmtMoney(r.bookedValue)}</td>
+   409→                      <td className="mono" style={{ color: "var(--mint)" }}>{fmtMoney(r.netEarn)}</td>
+   410→                    </tr>
+   411→                  ))}
+   412→                </tbody>
+   413→              </table>
+   414→            </div>
+   415→          )}
+   416→        </ReportCard>
+   417→
+   418→        <GroupLabel>Performance</GroupLabel>
+   419→
+   420→        {/* 5 · conversion funnel */}
+   421→        <ReportCard
+   422→          title="Conversion funnel"
+   423→          sub="From active to booked vs lost"
+   424→          icon={<ITarget size={15} />}
+   425→        >
+   426→          <FunnelBar label="Active" value={funnel.activeN} total={funnel.total} color={TONE_HEX.amber} />
+   427→          <FunnelBar label="Booked" value={funnel.bookedN} total={funnel.total} color={TONE_HEX.mint} />
+   428→          <FunnelBar label="Lost" value={funnel.lostN} total={funnel.total} color={TONE_HEX.coral} />
+   429→          <div className="flex items-center justify-between gap-3 mt-3 pt-2.5 text-[11.5px]" style={{ borderTop: "1px dashed var(--line)" }}>
+   430→            <span className="text-[var(--ink-faint)]">Conversion <span className="mono" style={{ color: "var(--amber)" }}>{funnel.conv}%</span></span>
+   431→            <span className="text-[var(--ink-faint)]">Hit rate (decided) <span className="mono" style={{ color: "var(--mint)" }}>{funnel.hitRate}%</span></span>
+   432→          </div>
+   433→        </ReportCard>
+   434→
+   435→        {/* 6 · commission summary */}
+   436→        <ReportCard
+   437→          title="Commission summary"
+   438→          sub="Booked gross, partner payouts, and what the firm keeps"
+   439→          icon={<IBank size={15} />}
+   440→        >
+   441→          <div className="space-y-2.5">
+   442→            <CommissionRow label="Gross earned" value={commission.gross} tone="amber" />
+   443→            <CommissionRow label="Partner payouts" value={-commission.partnerCut} tone="coral" prefix="− " />
+   444→            <div className="flex items-center justify-between pt-2.5" style={{ borderTop: "1px dashed var(--line)" }}>
+   445→              <span className="font-disp font-semibold text-[13.5px]">We keep</span>
+   446→              <span className="mono font-bold text-[16px]" style={{ color: "var(--mint)" }}>
+   447→                <CountUp target={Math.round(commission.net)} format={fmtMoney} />
+   448→              </span>
+   449→            </div>
+   450→          </div>
+   451→          <div className="mt-3 pt-2.5 text-[11.5px] text-[var(--ink-faint)]" style={{ borderTop: "1px dashed var(--line)" }}>
+   452→            Active pipeline at current rates ·{" "}
+   453→            <span className="mono" style={{ color: "var(--ink-dim)" }}>{fmtMoney(commission.pipelineGross)}</span>{" "}projected gross
+   454→          </div>
+   455→        </ReportCard>
+   456→
+   457→        <GroupLabel>Risk & rhythm</GroupLabel>
+   458→
+   459→        {/* 7 · SLA breaches */}
+   460→        <ReportCard
+   461→          title="SLA breaches"
+   462→          sub="Active cases past their allowed stage age — click to drill in"
+   463→          icon={<IClock size={15} />}
+   464→          span
+   465→          extra={
+   466→            slaCases.length > 0 ? (
+   467→              <span className="chip" style={{ color: "var(--coral)", background: "rgba(217,45,32,0.08)", borderColor: "rgba(217,45,32,0.3)" }}>
+   468→                {slaCases.length} over SLA
+   469→              </span>
+   470→            ) : undefined
+   471→          }
+   472→        >
+   473→          {slaCases.length === 0 ? (
+   474→            <div className="flex items-center gap-2 text-[12.5px] py-2" style={{ color: "var(--mint)" }}>
+   475→              <IInbox size={16} /> Every active case is inside its stage SLA.
+   476→            </div>
+   477→          ) : (
+   478→            <div className="grid sm:grid-cols-2 gap-2 max-h-[320px] overflow-y-auto pr-1">
+   479→              {slaCases.map(({ e, c }) => (
+   480→                <button
+   481→                  key={c.id}
+   482→                  className="rowlink flex items-center gap-3 text-left px-3 py-2.5 rounded-lg transition-colors hover:bg-[rgba(242,115,99,0.08)]"
+   483→                  style={{ border: "1px solid rgba(242,115,99,0.25)" }}
+   484→                  onClick={() => nav({ name: "case", id: c.id })}
+   485→                >
+   486→                  <span className="dot-overdue shrink-0" />
+   487→                  <span className="min-w-0 flex-1">
+   488→                    <span className="mono text-[11.5px] block" style={{ color: "var(--coral)" }}>{c.caseNumber}</span>
+   489→                    <span className="text-[12px] text-[var(--ink-dim)] block truncate">
+   490→                      {c.customer} · {c.stage} @ {primaryBank(c) ?? "bank TBC"}
+   491→                    </span>
+   492→                  </span>
+   493→                  <span className="text-right shrink-0">
+   494→                    <span className="mono text-[13px] font-semibold block" style={{ color: "var(--coral)" }}>{e.ageDays}d</span>
+   495→                    <span className="text-[10.5px] text-[var(--ink-faint)] block">SLA {e.maxDays}d · +{e.breachDays}d</span>
+   496→                  </span>
+   497→                </button>
+   498→              ))}
+   499→            </div>
+   500→          )}
+   501→        </ReportCard>
+   502→
+   503→        {/* 8 · activity trend */}
+   504→        <ReportCard
+   505→          title="Activity trend"
+   506→          sub="Last 14 days of case updates"
+   507→          icon={<IChart size={15} />}
+   508→          extra={
+   509→            <span className="mono text-[11.5px] text-[var(--ink-faint)]">
+   510→              {trendTotal} events
+   511→            </span>
+   512→          }
+   513→        >
+   514→          <div className="flex items-end gap-4">
+   515→            <div className="flex flex-col">
+   516→              <span className="text-[10.5px] uppercase tracking-[0.1em] text-[var(--ink-faint)] font-disp font-semibold">14-day total</span>
+   517→              <span className="font-disp font-bold text-[30px] leading-tight" style={{ color: "var(--amber)" }}>
+   518→                <CountUp target={trendTotal} />
+   519→              </span>
+   520→            </div>
+   521→            <div className="flex-1 flex flex-col items-end">
+   522→              <Spark points={trend} color={TONE_HEX.amber} width={260} height={56} />
+   523→              <span className="text-[10.5px] text-[var(--ink-faint)] mt-1">today →</span>
+   524→            </div>
+   525→          </div>
+   526→          <div className="grid grid-cols-3 gap-3 mt-3 pt-2.5" style={{ borderTop: "1px dashed var(--line)" }}>
+   527→            <MiniStat label="Peak day" value={trend.length ? `${Math.max(...trend)}` : "0"} tone="amber" />
+   528→            <MiniStat label="Today" value={trend.length ? `${trend[trend.length - 1]}` : "0"} tone="mint" />
+   529→            <MiniStat label="Avg / day" value={trend.length ? (trendTotal / trend.length).toFixed(1) : "0"} tone="sky" />
+   530→          </div>
+   531→        </ReportCard>
+   532→
+   533→        {/* partners overview (uses otherwise unused `partners` import) */}
+   534→        <ReportCard
+   535→          title="Partner roster"
+   536→          sub="Active agents, brokers and referrers with default share"
+   537→          icon={<IUsers size={15} />}
+   538→        >
+   539→          {partners.filter((p) => p.active).length === 0 ? (
+   540→            <p className="text-[12.5px] text-[var(--ink-faint)] m-0">No active partners on file.</p>
+   541→          ) : (
+   542→            <div className="space-y-1.5">
+   543→              {partners
+   544→                .filter((p) => p.active)
+   545→                .map((p) => {
+   546→                  const intros = visCases.filter((c) => c.partner?.name === p.name).length;
+   547→                  return (
+   548→                    <div
+   549→                      key={p.id}
+   550→                      className="flex items-center gap-3 px-2.5 py-2 rounded-lg"
+   551→                      style={{ background: "var(--tint)" }}
+   552→                    >
+   553→                      <Chip tone={p.kind === "Agent" ? "amber" : p.kind === "Broker" ? "sky" : "coral"}>{p.kind}</Chip>
+   554→                      <span className="text-[12.5px] font-medium flex-1 truncate">{p.name}</span>
+   555→                      <span className="mono text-[11.5px] text-[var(--ink-faint)]">{p.defaultSharePct}%</span>
+   556→                      <span className="mono text-[11.5px] text-[var(--ink-dim)]">{intros} case{intros === 1 ? "" : "s"}</span>
+   557→                    </div>
+   558→                  );
+   559→                })}
+   560→            </div>
+   561→          )}
+   562→        </ReportCard>
+   563→      </div>
+   564→    </div>
+   565→  );
+   566→}
+   567→
+   568→/* ---------- sub-components ---------- */
+   569→
+   570→function KpiCard({
+   571→  label, value, sub, tone, icon,
+   572→}: {
+   573→  label: string; value: ReactNode; sub: string; tone: "mint" | "amber" | "coral" | "sky" | "slate"; icon: ReactNode;
+   574→}) {
+   575→  return (
+   576→    <div className="card card-hover px-4 py-3.5">
+   577→      <div className="flex items-center justify-between">
+   578→        <span className="text-[11px] uppercase tracking-[0.12em] text-[var(--ink-faint)] font-disp font-semibold">{label}</span>
+   579→        <span style={{ color: `var(--${tone})` }}>{icon}</span>
+   580→      </div>
+   581→      <div className="font-disp font-bold text-[26px] leading-tight mt-0.5" style={{ color: `var(--${tone})` }}>
+   582→        {value}
+   583→      </div>
+   584→      <div className="text-[11.5px] text-[var(--ink-faint)]">{sub}</div>
+   585→    </div>
+   586→  );
+   587→}
+   588→
+   589→function WinPill({ pct }: { pct: number }) {
+   590→  const tone = pct >= 60 ? "mint" : pct >= 30 ? "amber" : "coral";
+   591→  return (
+   592→    <Chip tone={tone}>{pct}%</Chip>
+   593→  );
+   594→}
+   595→
+   596→function FunnelBar({ label, value, total, color }: { label: string; value: number; total: number; color: string }) {
+   597→  const pct = total > 0 ? (value / total) * 100 : 0;
+   598→  return (
+   599→    <div className="mb-2.5 last:mb-0">
+   600→      <div className="flex items-baseline justify-between gap-3 mb-1">
+   601→        <span className="text-[12.5px] text-[var(--ink-dim)]">{label}</span>
+   602→        <span className="mono text-[12px]">
+   603→          {value}
+   604→          <span className="text-[var(--ink-faint)] ml-1.5">{Math.round(pct)}%</span>
+   605→        </span>
+   606→      </div>
+   607→      <div className="h-[8px] rounded-full overflow-hidden" style={{ background: "var(--track)" }}>
+   608→        <div
+   609→          className="h-full rounded-full"
+   610→          style={{
+   611→            width: `${pct}%`,
+   612→            background: `linear-gradient(90deg, ${color}88, ${color})`,
+   613→            transition: "width 0.9s cubic-bezier(0.22, 1, 0.36, 1)",
+   614→          }}
+   615→        />
+   616→      </div>
+   617→    </div>
+   618→  );
+   619→}
+   620→
+   621→function CommissionRow({ label, value, tone, prefix = "" }: { label: string; value: number; tone: "mint" | "amber" | "coral"; prefix?: string }) {
+   622→  return (
+   623→    <div className="flex items-center justify-between text-[13.5px]">
+   624→      <span className="text-[var(--ink-dim)]">{label}</span>
+   625→      <span className="mono font-semibold" style={{ color: `var(--${tone})` }}>
+   626→        {prefix}
+   627→        <CountUp target={Math.abs(Math.round(value))} format={fmtMoney} />
+   628→      </span>
+   629→    </div>
+   630→  );
+   631→}
+   632→

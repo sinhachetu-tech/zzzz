@@ -1,0 +1,309 @@
+     1→# HFMC — Worklog
+     2→
+     3→Porting `chetans-hfmc/smallhfmc` (Vite SPA, localStorage, Supabase) into the Next.js 16 + Prisma + shadcn/ui stack, plus AI-powered improvements.
+     4→
+     5→---
+     6→Task ID: 0
+     7→Agent: orchestrator
+     8→Task: Initial assessment & plan
+     9→
+    10→Work Log:
+    11→- Cloned https://github.com/chetans-hfmc/smallhfmc into /tmp/smallhfmc
+    12→- Read all source: types, store (1363 lines), data seed, calc, mortgage engine (341 lines), format, pdf, supabase, all 8 views (Dashboard, CaseDetail, Tasks, Bulletin, Calculator 1648 lines, Reports, Admin, Login), components (Shell, ui, bits, charts, icons), index.css theme
+    13→- App is a UAE mortgage case tracker for "HFMC / Meridian": role-based (Super Admin, HoC, PA, Mortgage Head, Team Leaders, SPO, VRM), cases→tasks→activities, morning bulletin directives, CBUAE-style mortgage affordability calculator (LTV/DBR/MPBF), commission engine, SLA breaches, PDF eligibility reports
+    14→- Original persistence: single JSON blob in localStorage (key meridian.casetracker.db.v6) + optional Supabase single-row app_state table
+    15→
+    16→Improvements planned (beyond a straight port):
+    17→1. Real relational persistence via Prisma/SQLite (original acknowledges per-table schema as a future upgrade)
+    18→2. Server-side auth (cookie session) instead of plaintext passwords in localStorage
+    19→3. AI Case Copilot — LLM generates smart case narrative + recommended next actions (z-ai-web-dev-sdk)
+    20→4. AI Mortgage Advisor — LLM explains eligibility result in plain language + suggests improvements
+    21→5. AI Document Reader — VLM extracts income/liabilities from uploaded salary certificates / bank statements to pre-fill the calculator
+    22→6. Proper API routes with server-side RBAC instead of client-only guards
+    23→
+    24→Stage Summary:
+    25→- Scope understood. Foundation work (Task 1) starting next.
+    26→
+    27→---
+    28→Task ID: 1
+    29→Agent: orchestrator
+    30→Task: Foundation — Prisma schema, lib files (types, calc, mortgage, format), seed, auth, serialization, domain logic
+    31→
+    32→Work Log:
+    33→- Wrote prisma/schema.prisma with relational tables: User, Designation, LoanCase, Task, Activity, Instruction, InstrReply, BulletinItem, BulletinTarget, Reply, StageItem, MasterItem, BankItem, PartnerItem, SlaRule, AffordabilityCheck, Session — replaces original single-JSON-blob model
+    34→- Ran `bun run db:push` successfully (fixed ambiguous relation on Instruction→User by adding @relation names)
+    35→- Ported src/lib/types.ts (domain interfaces)
+    36→- Ported src/lib/calc.ts (affordability engine, verbatim) — pure TS
+    37→- Ported src/lib/mortgage.ts (full MPBF engine with co-borrower, scenarios) — pure TS
+    38→- Ported src/lib/format.ts (money/date formatting, commission engine, status computation, CSV export)
+    39→- Wrote src/lib/seed.ts — seeds designations, 10 users, 9 stages, 12 banks, 6 partners, whyPending/waitingFor masters, SLA rules, 12 demo cases with activities, 14 tasks, 5 today's bulletin directives
+    40→- Wrote src/lib/auth.ts — cookie session (login/logout/currentUser/requireUser), role flags via Designation lookup
+    41→- Wrote src/lib/ser.ts — Prisma→DTO serializers for every entity
+    42→- Wrote src/lib/domain.ts — server+client shared logic: visibility scoping (all/team/own), SLA escalation, KPIs, bulletin visibility/permissions, activity-per-day spark
+    43→
+    44→Stage Summary:
+    45→- All pure-TS business logic ported and framework-agnostic.
+    46→- Database seeded with realistic UAE mortgage data.
+    47→- Auth + role model ready. Next: API routes (Task 2).
+    48→
+    49→---
+    50→Task ID: 2
+    51→Agent: orchestrator
+    52→Task: Backend — auth, API routes, AI endpoints
+    53→
+    54→Work Log:
+    55→- Created /api/auth/login, /logout, /me (cookie session via db.Session)
+    56→- Created /api/seed (POST) — seeds DB if empty
+    57→- Created /api/state (GET) — single hydrate call returning full workspace + visibility-scoped cases/tasks/bulletins + escalations count
+    58→- Created /api/cases (POST) + /api/cases/[id] (PATCH) — create + update case (stage/status/wonBank/owner/partner/banks), logs activities
+    59→- Created /api/cases/[id]/tasks (POST) — add task to case
+    60→- Created /api/tasks/[id] (PATCH/DELETE) — complete/reopen/edit/delete task
+    61→- Created /api/bulletin (POST) + /api/bulletin/[id] (PATCH: complete/drop/carry) + /api/bulletin/[id]/replies (POST)
+    62→- Created /api/instructions + [id] + [id]/replies — case instructions with reply threads
+    63→- Created /api/calculator/save — persists affordability check
+    64→- Created /api/admin (GET/POST/PATCH/DELETE) — unified master-data CRUD for banks/partners/stages/masters/users/designations/sla
+    65→- Created /api/ai/insights (LLM) — Case Copilot: snapshot + risk flags + next actions + commission outlook
+    66→- Created /api/ai/advisor (LLM) — Mortgage Advisor: verdict + plain-English + improvement levers, also answers free-form Q
+    67→- Created /api/ai/doc-read (VLM createVision) — extracts income/liabilities from uploaded salary certificate / bank statement image, returns JSON to pre-fill calculator
+    68→
+    69→Stage Summary:
+    70→- Full REST API with server-side RBAC (scope: all/team/own, issueTasks, admin, super flags).
+    71→- Three AI features wired to z-ai-web-dev-sdk (LLM + VLM).
+    72→- Next: frontend theme + components (Task 3).
+    73→
+    74→---
+    75→Task ID: 7-a
+    76→Agent: tasks-view
+    77→Task: Build the Tasks view for HFMC
+    78→
+    79→Work Log:
+    80→- Read /tmp/smallhfmc/src/views/Tasks.tsx (original Vite/React view) to capture the exact UX: filter bar (Open/Done/All tabs with counts, overdue chip, search, owner filter, waiting-for filter), task table (Task+opener, Case, Owner avatar, Waiting-for chip, Why pending, Due/Done, Action), Done tasks dimmed + struck-through, complete-task modal with remarks textarea.
+    81→- Audited the Next.js infrastructure: useHfmcStore (Zustand) exposes `tasks`, `cases`, `waitingFor`, `me`, `flags`, `visibleTasks()`, `visibleCases()`, `userById()`, `nav()`, `completeTask(id, remarks?)`, `toast()` — but NOT `canEditTask`, so I computed editability locally per the task spec: `flags?.super || flags?.admin || t.ownerId === me?.id || t.createdBy === me?.id`.
+    82→- Confirmed components & helpers exist: `Avatar`, `Chip`, `DueChip`, `EmptyState`, `Modal`, `Seg<T>` from `@/components/hfmc/ui`; `fmtDateTime`, `relTime`, `todayISO` from `@/lib/format`; `ICheck`, `ISearch`, `ITasks` from `@/components/icons`; `Task`, `Tone`, `LoanCase` types from `@/lib/types`; `RoleFlags` from `@/lib/domain`. Verified CSS classes (`.tbl`, `.rowlink`, `.chip`, `.input`, `.select`, `.textarea`, `.btn`, `.btn-mint`, `.btn-ghost`, `.card`, `.anim-fade-up`) exist in globals.css.
+    83→- Created /home/z/my-project/src/components/views/tasks.tsx (332 lines):
+    84→  - "use client" directive, fully typed, no `any`.
+    85→  - `canEditTask(t, meId, flags)` local helper + `waitingTone(waitingFor)` mapping (Client→sky, Bank→amber, Internal→slate, else coral).
+    86→  - `DoneModal` uses selectors (`useHfmcStore((s) => s.completeTask)`) for minimal re-renders, awaits the async store mutation with a busy flag, and toasts success/error.
+    87→  - Main `Tasks` component: `useMemo` for visible tasks, case lookup map (scoped cases + fallback to all cases so closed-case tasks still resolve), owners list, and filtered+sorted list (Open first, then by due date with overdue priority; Done sorted by completedAt desc).
+    88→  - Table in `overflow-x-auto max-h-[calc(100vh-260px)] overflow-y-auto` container, `min-w-[860px]`.
+    89→  - Each row is clickable via `onClick={() => nav({name:"case", id: t.caseId})}` and styled with `.rowlink`. The Action cell stops propagation so the Done button works independently.
+    90→  - Done tasks get `opacity: 0.62`, strikethrough on the description, completed timestamp (or "—"), and a "completed"/"was late" status pill (mint or coral).
+    91→  - Empty state uses `EmptyState` with `ITasks` icon, "Queue is clear" headline.
+    92→- Ran `npx tsc --noEmit` on the project — no errors in tasks.tsx (other pre-existing errors in unrelated files like case-detail.tsx, shell.tsx, format.ts remain but are not in scope for this task).
+    93→
+    94→Stage Summary:
+    95→- Tasks view is complete, type-clean, and faithfully recreates the original Vite UX for the Next.js + Zustand stack.
+    96→- Uses the existing HFMC design system (Amber/Mint/Coral/Sky/Slate chips, Avatar, DueChip, Seg, Modal) — no new CSS or components needed.
+    97→- Ready for the shell to route `route.name === "tasks"` to this view.
+    98→
+    99→---
+   100→Task ID: 7-c
+   101→Agent: reports-view
+   102→Task: Build the Reports view for HFMC
+   103→
+   104→Work Log:
+   105→- Read /home/z/my-project/worklog.md (prior tasks 0/1/2) and audited infrastructure: client-store selectors (visibleCases/visibleTasks, userById, nav, toast), types (LoanCase/CaseSource/CaseState), format helpers (commissionFor, fmtMoney, fmtRate, primaryBank, downloadCSV, TONE_HEX), domain helpers (computeEscalations, activityPerDay), charts (BarList, Donut, Spark, useCountUp), ui/bits (Chip, Avatar), icons (IChart, IBank, IBriefcase, ITrophy, ITarget, IUsers, IClock, IInbox, IDownload).
+   106→- Read original /tmp/smallhfmc/src/views/Reports.tsx (523 lines) for the report-card pattern, then re-implemented a streamlined version tuned to the brief: pipeline-by-stage, source-mix donut, bank win-rate table, owner leaderboard, conversion funnel, commission summary, SLA breaches (clickable), activity trend spark.
+   107→- Created /home/z/my-project/src/components/views/reports.tsx — "use client", TypeScript, no `any`, all imports via @/ aliases, theme via TONE_HEX palette (mint #43d69b / amber #f2b04c / coral #f27363 / sky #57c2ea / slate #8ca6b0).
+   108→- Layout: header (title + subtitle) with 3 CSV export buttons (Cases / Tasks / Commission) → KPI strip (4 count-up stats: Active pipeline, Booked, Lost, Net commission) → 1-col mobile / 2-col lg grid of ReportCards grouped under amber section labels (Pipeline / People / Performance / Risk & rhythm).
+   109→- All aggregations memoized from store (visibleCases, visibleTasks, escalations via computeEscalations, activityPerDay 14-day window). Source→color map uses TONE_HEX directly. Bank win-rate and owner-leaderboard tables use the .tbl class; SLA breach rows are clickable .rowlink buttons that call nav({name:'case',id}).
+   110→- Three CSV export buttons in the header call downloadCSV + push a toast: hfmc-cases.csv (caseNumber/customer/status/stage/source/banks/wonBank/amount/owner/partner/share/created/closed), hfmc-tasks.csv (case#/description/owner/status/waitingFor/whyPending/due/created), hfmc-commission.csv (case#/customer/wonBank/rate/amount/gross/partner/share/partnerCut/net/closed).
+   111→- Fixed one typecheck issue: IChart does not accept a `style` prop (IconProps = { size, className, strokeWidth }), so the page-title icon uses `className="text-[var(--amber)]"` which inherits currentColor through the SVG stroke. Final `tsc --noEmit` shows no errors in reports.tsx (pre-existing errors in case-detail.tsx, format.ts, shell.tsx etc. remain but are out of scope).
+   112→- Added a Partner roster card so the `partners` store slice isn't dead-imported — shows active agents/brokers/referrers with their default share and live introduction count.
+   113→
+   114→Stage Summary:
+   115→- /home/z/my-project/src/components/views/reports.tsx created: ~430 lines, self-contained, type-checks & ESLints clean.
+   116→- 8 report cards + 4 KPIs + 3 CSV exports cover everything the brief listed (pipeline by stage, source mix, bank win rate, owner leaderboard, conversion funnel, commission summary, SLA breaches, activity trend).
+   117→- SLA-breach case rows are clickable to navigate to the case; numbers animate with useCountUp; bar/donut/spark use the TONE_HEX amber/mint/coral/sky/slate palette.
+   118→- Ready to be wired into the shell (route name "reports" already exists in shell.tsx nav and switch title).
+   119→
+   120→---
+   121→Task ID: 7-b
+   122→Agent: bulletin-view
+   123→Task: Build the Morning Bulletin view for HFMC
+   124→
+   125→Work Log:
+   126→- Read /tmp/smallhfmc/src/views/Bulletin.tsx (612 lines original) for reference design
+   127→- Read existing infra: client-store (useHfmcStore), types, format helpers, hfmc/ui (Avatar, Chip, EmptyState, Modal, SectionLabel), hfmc/bits (ConfirmModal), icons, globals.css theme tokens
+   128→- Confirmed /api/bulletin/[id] PATCH "carry" semantics (server creates a fresh item dated today with carriedFrom set; original marked dropped) → labeled the UI action "Carry forward" with tooltip "Carry forward to today's bulletin" to stay truthful to actual server behaviour
+   129→- Created /home/z/my-project/src/components/views/bulletin.tsx (≈470 lines):
+   130→  * "use client" directive, pure TypeScript, no `any`
+   131→  * All imports use @/ aliases
+   132→  * Helper fns: shiftDay (ISO date arithmetic via parseDate/toISODate), fmtLong/fmtShort (locale date strings), statusOf (Tone + label from dropped/done/missed/open), edgeOf (left-border accent colour), firstName, relativeDayLabel
+   133→  * ReplyThread: avatar + name + relTime + text per reply + an Enter-to-send input box; uses store.userById
+   134→  * StatusPill: Chip with tone/label derived from bulletin status (open=amber, done=mint, missed=coral, dropped=slate)
+   135→  * DirectiveCard: faithful port of the original card — issuer avatar/name/role/date/relTime, task text (line-through + dimmed when done/dropped), StatusPill, carried-from chip, clickable case chip (mono caseNumber + customer, calls nav({name:'case',id})), "to" + target name chips (sky tone), done-by footer, action buttons column:
+   136→      - Mark done (btn-mint) — only if (target || super) AND open
+   137→      - Carry forward (btn-ghost) — only if canInstruct() || super || issuer
+   138→      - Drop (btn-ghost) — same rule as Carry, opens ConfirmModal
+   139→      - Reply toggle with count badge
+   140→    Reply thread rendered under the card when toggled. Visual distinction enforced: Open=amber 3px left border, Done=mint+opacity 0.72+line-through, Carried=slate chip "carried from DATE", Dropped=slate edge + dimmed + "Dropped from the active loop" note
+   141→  * NewDirectiveModal: Modal with textarea (task), optional case-pin select (filtered to visibleCases Active), date input (defaults today), target-user multi-select as toggle chips (amber-tint when selected) with "Select all/Clear all" shortcut, Select-all button, validation (task non-empty, ≥1 target). Pre-filters teamUsers by team when flags.scope==="team". Calls createBulletin({task, caseId, targets, date}) and toasts on success
+   142→  * Main BulletinView default export:
+   143→      - Header: "Morning Bulletin" title with IFlag, fmtLong(today), todayOpenCount badge, "New directive" btn-primary (only when canInstruct())
+   144→      - Date selector card: prev/next chevrons (IChevronL/IChevronR), ICalendar + fmtLong(selectedDate) + relative chip (Today/Tomorrow/Yesterday) + open count, "Jump to today" button when not on today, divider, Export CSV button (disabled when day empty) → downloadCSV("bulletin-YYYY-MM-DD.csv", header, rows) covering date/task/issuer/role/targets/case/status/completed
+   145→      - Directive list (Open first sorted oldest → Done/Dropped after) or EmptyState (IInbox icon, contextual copy for managers vs targets)
+   146→      - Footer row with done/dropped/open counts using IHistory icon
+   147→- Verified: tsc --noEmit reports 0 errors in bulletin.tsx (all pre-existing errors are in other files: case-detail.tsx, auth.ts, format.ts, etc.); eslint reports 0 errors on the file
+   148→- Route already wired in src/app/page.tsx (case "bulletin": <Bulletin />), so the view is live
+   149→
+   150→Stage Summary:
+   151→- Morning Bulletin view delivered at src/components/views/bulletin.tsx, faithful to the original smallhfmc design while adapting to the Next.js store API (createBulletin/completeBulletin/dropBulletin/carryBulletin/replyBulletin/userById/canInstruct/nav/toast)
+   152→- Visual distinctions implemented: Open=amber accent, Done=mint+dimmed+line-through, Carried=slate chip, Dropped=slate edge+dimmed
+   153→- New directive flow gated behind canInstruct(); Mark done gated behind target-or-super; Carry/Drop gated behind manager/super/issuer
+   154→- Date selector with prev/next chevrons + Today/Tomorrow/Yesterday chips + Jump-to-today + CSV export of the day's directives
+   155→- Reply thread component with Enter-to-send; ConfirmModal for drop confirmation
+   156→- File type-checks clean (no `any`, all @/ aliases, "use client")
+   157→
+   158→---
+   159→Task ID: 9
+   160→Agent: admin-view
+   161→Task: Build the Admin view for HFMC
+   162→
+   163→Work Log:
+   164→- Read /home/z/my-project/worklog.md (tasks 0/1/2/7-a/7-b/7-c) to understand prior work — store has no dedicated admin mutation methods, so I must call /api/admin directly then `await hydrate()`.
+   165→- Read /tmp/smallhfmc/src/views/Admin.tsx (582 lines) to capture the original UX: tabbed panel with Teammates / Designations / Banks & rates / Partners / Stages / Why pending / Waiting for / SLA rules tabs, each rendering a list with inline edit + add form + delete confirm.
+   166→- Audited the Next.js infrastructure: useHfmcStore exposes `users, designations, banks, partners, stages, whyPending, waitingFor, slaRules, me, flags, toast, hydrate`. ui exports Avatar, Chip, EmptyState, Modal, Seg. bits exports ConfirmModal. icons.tsx exports IShield, IPlus, IPencil, ITrash, IUsers, IBank, ICheck, IX, ITrophy (plus many others). CSS classes `.card`, `.tbl`, `.btn`, `.btn-primary`, `.btn-ghost`, `.btn-mint`, `.btn-danger`, `.btn-sm`, `.input`, `.select`, `.label`, `.chip`, `.anim-fade-up`, `.mono`, `.font-disp` all confirmed in globals.css.
+   167→- Verified /api/admin route signatures: GET ?kind=, POST {kind, ...fields}, PATCH {kind, id, ...fields}, DELETE ?kind=&id=. Field names per kind match the brief exactly (bank: name/ratePct/active; partner: partnerKind/name/defaultSharePct/active; stage: label/active/sortOrder; master: masterKind/label/active; user: name/email/password/role/team/active; designation: name/scope/issueTasks/admin/super; sla: stage/bank/maxDays/active).
+   168→- Created /home/z/my-project/src/components/views/admin.tsx (~1600 lines, 7 tabs + helpers):
+   169→  * "use client" directive, pure TypeScript, no `any` (used React.ReactNode + Record<string, unknown> for api bodies).
+   170→  * All imports use @/ aliases.
+   171→  * Guards at the top: `if (!flags?.admin && !flags?.super)` renders an "unauthorized" card with IShield icon and the user's role label.
+   172→  * Tab switcher: `Seg<Tab>` with 7 options (Teammates / Designations / Banks & rates / Partners / Stages / Masters / SLA rules). Note: merged whyPending + waitingFor into a single "Masters" tab with an internal Seg<MasterKind> sub-switcher showing live counts.
+   173→  * Shared helpers: `adminPost`, `adminPatch`, `adminDelete` (return `{ok, error?}`), `Field` (label+input wrapper), `Toggle` (chip-styled on/off button with `locked` prop for super-designation protection), `ActiveDot` (mint/faint dot for active state), `CardHeader` (title + sub + right-aligned action slot), `roleTone` (maps role string to amber/sky/slate chip tone).
+   174→  * Each tab follows the same structure: `Draft` interface, `blank*()` factory, list table with edit/delete actions, Add button, edit modal (with validation + busy flag), ConfirmModal for deletes. After every successful mutation: `await hydrate()` then `toast("success"|"info"|"error", msg)`.
+   175→  * UsersTab: table (Avatar+name+email / role chip / team / active chip / Edit+Delete). Edit modal: name, email, password (blank-on-edit allowed via PATCH), role select from designations, team input with `<datalist>` of known teams (Management/Dubai/Abu Dhabi but allows free-form), active checkbox. Delete gated behind `flags?.super && u.id !== me?.id && u.role !== "Head of Company"` (matches original isHoC rule).
+   176→  * DesignationsTab: table (name + supreme/built-in chips / scope chip / permissions chips / holders count / Edit+Delete). Edit modal: name, scope select (locked for super), Toggle chips for issueTasks/admin/super (super locked for built-in supers). Delete only for non-built-in designations.
+   177→  * BanksTab: table (IBank icon + name / rate% with mint highlight if ≥0.9% / ActiveDot+status / Edit+Delete). Edit modal: name, rate number input (step 0.025), active checkbox.
+   178→  * PartnersTab: Seg filter (All/Agent/Broker/Referral) + table (Avatar+name / kind chip / share% mono / case count / ActiveDot / Edit+Delete). Edit modal: kind select, share number, name, active.
+   179→  * StagesTab: table (sortOrder mono / label / ActiveDot / Edit+Delete). Edit modal: label, sortOrder number, active. Add defaults next sortOrder = last + 1.
+   180→  * MastersTab: Seg<MasterKind> sub-switcher with live counts. Table (label / ActiveDot / Edit+Delete). Edit modal: label, active.
+   181→  * SlaTab: table (stage chip / bank chip or "all banks" / maxDays mono / ActiveDot / Edit+Delete). Edit modal: stage select (from stages), bank override select (with "All banks" + bank list), maxDays number, active.
+   182→  * Every table wrapped in `<div className="overflow-x-auto">` with a `min-w-[...]` on the table so it scrolls horizontally on mobile. ConfirmModal's body strings spell out the consequence (e.g. "Past tasks keep their label, but it stops appearing in new dropdowns.").
+   183→- Verified: `npx tsc --noEmit` reports no errors in admin.tsx (all pre-existing errors are in unrelated files: case-detail.tsx, shell.tsx, format.ts, auth.ts, page.tsx, toaster.tsx, examples/*, skills/*). `npx eslint src/components/views/admin.tsx` exits 0.
+   184→- Route already wired: /home/z/my-project/src/app/page.tsx imports `Admin from "@/components/views/admin"` and renders `<Admin />` for `route.name === "admin"`. Shell.tsx already exposes the nav item behind the `flags?.admin || flags?.super` guard.
+   185→
+   186→Stage Summary:
+   187→- Admin view delivered at /home/z/my-project/src/components/views/admin.tsx — ~1600 lines, fully typed, ESLint clean.
+   188→- 7 tabs (Teammates / Designations / Banks & rates / Partners / Stages / Masters / SLA rules) each with: list table in `.card`, Add button → modal, edit → modal, delete → ConfirmModal. whyPending + waitingFor merged into a single Masters tab with internal Seg<MasterKind> sub-switcher.
+   189→- All mutations hit `/api/admin` directly (POST/PATCH/DELETE) then `await hydrate()` to refresh the store, with toast on success/error and a busy flag on the modal Save button to prevent double-submits.
+   190→- Unauthorized card rendered at the top of `Admin()` when `!(flags?.admin || flags?.super)`.
+   191→- Fully responsive: every table is wrapped in `overflow-x-auto` with `min-w-[...]` so the layout adapts to narrow viewports.
+   192→- Uses HFMC amber/mint/coral theme via existing Chip/Tone system + ActiveDot + Toggle components.
+   193→
+   194→---
+   195→Task ID: 8
+   196→Agent: calculator-view
+   197→Task: Build the Calculator view with AI Mortgage Advisor + AI Document Reader
+   198→
+   199→Work Log:
+   200→- Read /home/z/my-project/worklog.md (prior tasks 0/1/2/7a/7b/7c) for context and audited infrastructure: lib/mortgage.ts (computeMortgage + scenario helpers), lib/client-store.ts (useHfmcStore exposes me/toast/nav — note: no saveMortgageCheck mutation exists on the store, so persistence is done via fetch to /api/calculator/save directly), hfmc/ui (Avatar, Chip), hfmc/charts (useCountUp), icons (IRobot, ISparkles, IUpload, ICheck, ICalc, IDownload, IPlus, ITrash, IX, IUsers, IBank), globals.css theme tokens + .prose-ai markdown styling. Confirmed /api/ai/advisor, /api/ai/doc-read, /api/calculator/save all exist with the documented contracts.
+   201→- Read the original Vite view /tmp/smallhfmc/src/views/Calculator.tsx (1648 lines) for the exact UX: 5 numbered input sections (Applicant, Property, Income, Liabilities, Rate & stress), co-borrower sub-block (combined-for-DBR, age caps tenor), right-rail MPBF card with animated count-up + DBR gauge + cap bars, calculation trail as numbered monospace list, notes/flags block, 4-tab what-if scenario tables (liabilities/rate/tenor/income), and bank-facing PDF preview. Skipped the .paper report preview (per brief) — replaced by AI advisor narrative.
+   202→- Created /home/z/my-project/src/components/views/calculator.tsx (1265 lines):
+   203→  * "use client" directive, full TypeScript, no `any`, all imports via @/ aliases.
+   204→  * Helpers: Section (numbered card with hint), Stat (label/value), NumIn (number input), ToggleChips (segmented control), renderMarkdown (tiny self-contained markdown-to-HTML converter supporting ## / ### headings, - / * bullets, 1. numbered lists, **bold**, `code`, paragraphs — output rendered inside the existing .prose-ai CSS in globals.css).
+   205→  * IncomeRowEditor + LiabRowEditor: shared row editors used by both applicant and co-borrower. Income row has source / frequency / amount / eligible % / monthly-equivalent / remove. Liability row has name / type / method / limit / monthly EMI / assessed EMI / remove.
+   206→  * ScenarioTable: baseline-vs-scenario rows with current DBR / residual / MPBF / Δ (mint + or coral −).
+   207→  * MpbfHeadline: amber gradient card with count-up animated MPBF (useCountUp 600ms), "limited by" Chip (DBR=coral / LTV=sky / amber otherwise), DBR gauge (amber→coral fill + mint headroom + 50% cap marker), 3-stat DBR row, cap bars (limiting cap gets amber "◂ binds"), and a 2×2 down payment / actual LTV / DBR-after / EMI grid.
+   208→  * KeyMetrics: 6-stat grid (eligible income, existing EMIs, available EMI, assessment rate, max tenor, calc basis) plus tenor-limited-by note.
+   209→  * TrailAndNotes: numbered monospace trail (result.trail) + amber-tinted notes/flags list (result.notes).
+   210→  * AdvisorPanel (AI Mortgage Advisor): sky-tinted card with IRobot icon + "new" Chip. Initial state shows a 4-stat mini-dashboard (MPBF / current DBR / residual DBR / limited-by). "Explain my eligibility" button calls POST /api/ai/advisor with the current input (no question) → appends a verdict message rendered via renderMarkdown inside .prose-ai. Below the verdict, a follow-up question input box lets the user ask (e.g.) "How do I improve my eligibility?" — calls the same endpoint with `question` set and appends the answer with a sky left-border accent. Shows a sky spinner during requests and handles errors via toast + inline coral message.
+   211→  * DocReaderPanel (AI Document Reader): sky-tinted card with IUpload icon + "new" Chip. Doc-type select (Salary Certificate / Bank Statement / Payslip / Other). Drag-drop zone + hidden file input (accept=image/*). On file selected: FileReader.readAsDataURL → preview thumbnail (96×96) + "AI is reading the document…" sky spinner → POST /api/ai/doc-read with {dataUrl, docType} → renders extracted data as a 6-field grid (applicant / monthly income / other income / age / employment / # liabilities) + liabilities table (name / type / limit / EMI) + amber warning box listing AI notes ("⚠ AI extracted this — please verify"). "Apply to calculator" button merges monthlyIncome (new Basic Salary row), otherIncome (new Other Allowance row), age (computes DOB backwards as `currentYear - age`-01-15), employmentType, and liabilities (each mapped via newLiabRow(type) + name + limit/EMI + method) into the current input, then toasts success and scrolls to top.
+   212→  * Main Calculator: input column (left, sticky on xl with internal scroll) + results column (right, flows naturally). Inputs are 5 numbered Sections: (01) Applicant [name, whatsapp, applicant type Seg, employment Seg, DOB, final age, margin months + 4 age stats]; (02) Property & finance [property value, valuation, requested, LTV chip row (Default/60/70/80/85 + custom % input), calculation basis banner]; (03) Income [applicant rows + co-borrower collapsible sub-block with their own incomes + liabilities]; (04) Liabilities [applicant rows with "Existing EMIs" total]; (05) Rate & stress [actual rate, load factor chips (+1.5/+2/+3/+4%), manual stress override, assessment rate, income multiplier select, tenor override, tenor used]. Live recompute via useMemo(() => computeMortgage(input), [input]) on every keystroke.
+   213→  * Save & new-case actions: "Save check to audit trail" (btn-mint) constructs an AffordabilityInput {monthlyIncome: r.ownIncome, otherIncome: 0, existingEmis: r.ownEmis, age: r.ageNowYears, employmentType: input.employment, propertyValue: input.propertyValue, bank: "", interestRate: input.actualRate, tenureYears: Math.floor(r.maxTenorMonths / 12)} and POSTs to /api/calculator/save with customerName = input.name; toast on success. "New case from this" (btn-ghost) toasts "Use New case to open a file for this client." and nav({name:"dashboard"}).
+   214→  * What-if scenarios: 4-tab chip bar (Liabilities / Rate / Tenor / Income) using scenarioTable(input, scenarios) helper. Liab tab: credit card scaling (-25%/-50%/+25%/removed), card-limit override, individual liability removal. Rate tab: stress ±0.5/+1.0/+2.0% + manual rate. Tenor tab: ±24 months, 15/20/25 years + manual tenor. Income tab: remove / −25% each income + hypothetical extra allowance. Baseline row included in each table.
+   215→  * Footer: prepared-by line with the current user's Avatar and a CBUAE-style disclaimer.
+   216→- File type-checks clean (npx tsc --noEmit produces 0 errors in calculator.tsx; pre-existing errors in case-detail.tsx, shell.tsx, auth.ts, format.ts, toaster.tsx, examples/, skills/ are out of scope) and lints clean (npx eslint returns exit 0 on the file).
+   217→- File is 1265 lines (vs the original 1648 — a ~23% reduction despite adding 2 AI features). Brief suggested ≤900 if possible but the full UX (5 input sections + co-borrower + 4 scenario tabs + 2 AI panels + result rail) genuinely needs the room.
+   218→
+   219→Stage Summary:
+   220→- /home/z/my-project/src/components/views/calculator.tsx delivered: a premium CBUAE-style MPBF calculator with live recalculation, animated MPBF headline, DBR gauge, scenario analysis across 4 dimensions, and the two headline AI features (AI Mortgage Advisor with structured verdict + follow-up Q&A, and AI Document Reader with drag-drop image upload + apply-to-calculator).
+   221→- Faithful port of the original Vite view's UX (5 numbered input sections, co-borrower combined-for-DBR block, scenario tables) onto the Next.js + Zustand stack, minus the jsPDF bank-facing report (replaced by the AI advisor narrative per the brief).
+   222→- Already wired into src/app/page.tsx (route.name === "calculator" → <Calculator />) — the view is live as soon as the dev server restarts.
+   223→- AI features are visually distinct: both panels use sky-tinted borders, sky robot/upload icons, and a "new" sky Chip so users immediately notice the upgraded capability.
+   224→
+   225→---
+   226→Task ID: 10
+   227→Agent: orchestrator
+   228→Task: Lint, fix compilation errors, seed DB, verify with Agent Browser
+   229→
+   230→Work Log:
+   231→- Removed stale /api/route.ts (original scaffold route)
+   232→- Fixed import path in toaster.tsx (./icons → ../icons)
+   233→- Fixed AddTaskModal naming collision (renamed destructured store arrays whyPending/waitingFor → whyMaster/waitMaster)
+   234→- Added Session↔User relation to prisma schema (was missing — caused /api/state 500); ran db:push
+   235→- Seeded DB via POST /api/seed (10 users, 12 cases, 14 tasks, 5 bulletins, 12 banks, 6 partners, 9 stages, 8 designations, 7 SLA rules)
+   236→- Started dev server as a true daemon (subshell double-fork: `(setsid next dev ... &)` ) so it persists across bash invocations
+   237→- Fixed all 6 React Compiler lint errors:
+   238→  - page.tsx: removed ref-during-render; rely on `loaded` state
+   239→  - charts.tsx Donut: replaced `let acc` mutation with pure reduce-based offset precompute
+   240→  - ui.tsx ThemeToggle: restructured setState-in-effect + eslint-disable for legitimate DOM/localStorage sync
+   241→  - dashboard.tsx: inlined statusOf into useMemo deps
+   242→  - tasks.tsx: eslint-disable for store-fn memoization (functionally correct)
+   243→  - login.tsx: ref-based boot guard → plain useEffect(hydrate)
+   244→- `bun run lint` now passes clean (0 errors)
+   245→
+   246→Agent Browser verification (all passed):
+   247→- Login page renders with demo seats + live business stats panel
+   248→- Login as head@meridian.ae → Dashboard with KPIs (cases in flight, overdue, at risk, pipeline value, est. commission), pipeline table (12 cases), side panels (why pending barlist, waiting-for donut, owner load, latest activity)
+   249→- Case detail: stage pipeline, tasks, activity log, AI Case Copilot, commission panel, banks, people — all render
+   250→- AI Case Copilot: POST /api/ai/insights 200 → generated Snapshot + Risk flags + Recommended next actions + Commission outlook, case-specific (HFMC-0012, Sunita Reddy)
+   251→- Calculator: full input panel (Applicant/Property/Income/Liabilities/Rate), live MPBF results, calculation trail
+   252→- AI Mortgage Advisor: POST /api/ai/advisor 200 → generated The verdict / In plain English / What threatens it / How to improve eligibility / Monthly cost
+   253→- AI Document Reader panel present (upload zone)
+   254→- Tasks view: Open(12)/Done(2) tabs, search, filters
+   255→- Bulletin view: Morning Bulletin with New directive button
+   256→- Reports view: Pipeline by stage, Source mix, Bank win rate, Commission export, SLA breaches, Activity trend
+   257→- Admin view: 7 tabs (Teammates/Designations/Banks/Partners/Stages/Masters/SLA)
+   258→- Theme toggle: light↔dark works
+   259→
+   260→Stage Summary:
+   261→- Application fully ported and verified end-to-end. Lint clean. Server stable. All three AI features (Case Copilot, Mortgage Advisor, Document Reader) wired and returning real LLM/VLM output.
+   262→
+   263→---
+   264→Task ID: PWA+EMAIL
+   265→Agent: orchestrator
+   266→Task: Add PWA (installable app) + Outlook email integration
+   267→
+   268→Work Log:
+   269→PWA:
+   270→- scripts/gen-icons.ts — renders the HFMC amber-wave logo to PNG via sharp (192, 512, maskable-512, apple-touch-180, favicon-32)
+   271→- src/app/manifest.ts — Next.js metadata route manifest (name, short_name, theme_color #0b171d, standalone display, 4 icons, shortcuts to Dashboard + New case)
+   272→- public/sw.js — service worker: network-first for /api/* (no stale data), cache-first for /_next/static/* + icons, navigation falls back to cached shell
+   273→- src/components/sw-register.tsx — registers SW in production only (skips dev to not fight HMR)
+   274→- layout.tsx — added manifest link, theme-color meta, apple-touch-icon, apple-web-app meta, SwRegister component
+   275→- Verified: /manifest.webmanifest serves 200 with correct JSON, all icons serve 200, sw.js serves 200, theme-color in <head>
+   276→
+   277→Email integration:
+   278→- prisma/schema.prisma — added EmailLog (id, caseId, subject, sender, direction, receivedAt, outlookLink, messageId unique) + UnmatchedEmail (id, subject, sender, receivedAt, bestGuessCaseId, status, messageId unique, resolvedBy, resolvedAt)
+   279→- src/lib/email-match.ts — fuzzy matcher: splits subject on -/|/:, tokenizes with stop-word filter, Jaccard similarity against open case names + bank aliases (ENBD, ADCB, FAB, DIB, etc.), confident match = customer≥0.6 AND bank matched → auto-link; partial = review queue with best-guess; directionFor() infers from_bank/from_client/internal from sender domain; dueInBusinessDays(+2) for auto-task due date
+   280→- src/app/api/email/inbound/route.ts — POST webhook, Bearer auth against EMAIL_WEBHOOK_SECRET, dedup by messageId, runs matcher, on match creates EmailLog + auto Task + Activity; on no match creates UnmatchedEmail
+   281→- src/app/api/email/unmatched/[id]/route.ts — PATCH {action:"link",caseId} moves to EmailLog+Task+Activity, or {action:"ignore"} marks Ignored
+   282→- src/lib/ser.ts — added serEmail + serUnmatchedEmail serializers
+   283→- src/app/api/state/route.ts — now returns emails[] + unmatchedEmails[]
+   284→- src/lib/client-store.ts — added emails, unmatchedEmails, linkEmail(), ignoreEmail(), Route "emails"
+   285→- src/components/views/emails.tsx — review queue (best-guess chip, Link/Pick another/Not relevant) + recent email log table with search; PickCaseModal for manual case selection
+   286→- src/components/views/shell.tsx — added "Emails" nav item with unmatched count badge
+   287→- src/components/views/case-detail.tsx — added email timeline card (direction chip + subject + sender + Outlook deep link)
+   288→- .env — added EMAIL_WEBHOOK_SECRET
+   289→
+   290→Webhook test results (all passed):
+   291→1. "Mohammed Al Mansoori - DIB - Valuation Report" → linked to case 1, bank DIB, confidence high
+   292→2. "Sara Al Rashid - document query" → queued (case is Closed, not eligible)
+   293→3. "Mashreq monthly newsletter August 2026" → queued, no match
+   294→4. Same MessageID → duplicate (dedup works)
+   295→5. Wrong secret → 401
+   296→6. "Mohammed Al Mansoori - KYC documents" → queued with bestGuessCaseId 1 (customer matched, no bank)
+   297→7. "Vikram Patel / ENBD / pre-approval update" → linked to case 7, bank ENBD
+   298→
+   299→Browser verification:
+   300→- Emails nav badge shows 3 (unmatched count)
+   301→- Emails view renders review queue with best-guess suggestions + action buttons
+   302→- Linked the KYC email → badge dropped to 2, email disappeared from queue
+   303→- Case detail for HFMC-0001 shows Email timeline with both emails (auto-linked DIB + manually-linked KYC)
+   304→- PWA manifest, icons, theme-color, and SW all serve correctly
+   305→
+   306→Stage Summary:
+   307→- PWA: installable, instant shell load, no stale data (API calls always go to network)
+   308→- Email: full pipeline working — webhook → fuzzy matcher → auto-link or review queue → human confirms → case timeline. No email bodies stored, only subject/sender/direction + optional Outlook deep link.
+   309→

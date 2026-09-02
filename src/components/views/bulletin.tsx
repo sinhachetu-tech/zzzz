@@ -268,7 +268,7 @@ function DirectiveCard({ b }: { b: BulletinItem }) {
         <div className="flex flex-col items-end gap-1.5 shrink-0">
           {canAct && (
             <button
-              className="btn btn-mint btn-sm"
+              className="btn btn-mint sm:btn-sm"
               onClick={async () => {
                 await completeBulletin(b.id);
                 toast("success", "Directive marked done.");
@@ -406,11 +406,11 @@ function NewDirectiveModal({ open, onClose }: { open: boolean; onClose: () => vo
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <SectionLabel>Pin to case (optional)</SectionLabel>
             <select
-              className="select"
+              className="select w-full"
               value={caseId ?? ""}
               onChange={(e) => setCaseId(e.target.value ? parseInt(e.target.value, 10) : null)}
             >
@@ -425,7 +425,7 @@ function NewDirectiveModal({ open, onClose }: { open: boolean; onClose: () => vo
           <div>
             <SectionLabel>Date</SectionLabel>
             <input
-              className="input mono"
+              className="input mono w-full"
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value || todayISO())}
@@ -580,7 +580,7 @@ export default function BulletinView() {
           </p>
         </div>
         {manager && (
-          <button className="btn btn-primary btn-sm" onClick={() => setShowNew(true)}>
+          <button className="btn btn-primary sm:btn-sm" onClick={() => setShowNew(true)}>
             <IPlus size={14} /> New directive
           </button>
         )}

@@ -167,11 +167,11 @@ export default function Admin() {
   return (
     <div className="space-y-4 anim-fade-up">
       <div className="card p-3 flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2 pl-1 pr-2">
+        <div className="flex items-center gap-2 pl-1 pr-2 shrink-0">
           <IShield size={16} className="text-[var(--amber)]" />
-          <span className="font-disp font-semibold text-[13px]">Master data</span>
+          <span className="font-disp font-semibold text-[13px] whitespace-nowrap">Master data</span>
         </div>
-        <div className="overflow-x-auto -my-1.5">
+        <div className="overflow-x-auto -my-1.5 flex-1 min-w-0 pb-1">
           <Seg<Tab>
             value={tab}
             onChange={setTab}
@@ -276,7 +276,7 @@ function UsersTab() {
         title={`Teammates · ${users.length}`}
         sub="Sign-in accounts. Inactive users keep their cases but cannot log in."
         action={
-          <button className="btn btn-primary btn-sm" onClick={() => { setEditing(blankUser()); setCreating(true); }}>
+          <button className="btn btn-primary sm:btn-sm" onClick={() => { setEditing(blankUser()); setCreating(true); }}>
             <IPlus size={14} /> Add teammate
           </button>
         }
@@ -483,7 +483,7 @@ function DesignationsTab() {
         title={`Designations · ${designations.length}`}
         sub="Scope decides what each holder sees: all cases, their team's, or only their own book."
         action={
-          <button className="btn btn-primary btn-sm" onClick={() => { setEditing(blankDesig()); setCreating(true); }}>
+          <button className="btn btn-primary sm:btn-sm" onClick={() => { setEditing(blankDesig()); setCreating(true); }}>
             <IPlus size={14} /> Add designation
           </button>
         }
@@ -691,7 +691,7 @@ function BanksTab() {
         title={`Banks & commission rates · ${banks.length}`}
         sub="Our commission as % of loan amount. Every change re-computes earnings reports instantly."
         action={
-          <button className="btn btn-primary btn-sm" onClick={() => { setEditing(blankBank()); setCreating(true); }}>
+          <button className="btn btn-primary sm:btn-sm" onClick={() => { setEditing(blankBank()); setCreating(true); }}>
             <IPlus size={14} /> Add bank
           </button>
         }
@@ -889,7 +889,7 @@ function PartnersTab() {
         title={`Partners · ${partners.length}`}
         sub="Agents, brokers & referrers. Their payout = share × our bank commission."
         action={
-          <button className="btn btn-primary btn-sm" onClick={() => { setEditing(blankPartner()); setCreating(true); }}>
+          <button className="btn btn-primary sm:btn-sm" onClick={() => { setEditing(blankPartner()); setCreating(true); }}>
             <IPlus size={14} /> Add partner
           </button>
         }
@@ -1106,7 +1106,7 @@ function StagesTab() {
         title={`Workflow stages · ${stages.length}`}
         sub="Ordered left-to-right on every Case 360. Deactivated stages disappear from pickers."
         action={
-          <button className="btn btn-primary btn-sm" onClick={() => { setEditing(blankStage(nextOrder)); setCreating(true); }}>
+          <button className="btn btn-primary sm:btn-sm" onClick={() => { setEditing(blankStage(nextOrder)); setCreating(true); }}>
             <IPlus size={14} /> Add stage
           </button>
         }
@@ -1290,7 +1290,7 @@ function MastersTab() {
         title={titleMap[kind]}
         sub={subMap[kind]}
         action={
-          <button className="btn btn-primary btn-sm" onClick={() => { setEditing(blankMaster()); setCreating(true); }}>
+          <button className="btn btn-primary sm:btn-sm" onClick={() => { setEditing(blankMaster()); setCreating(true); }}>
             <IPlus size={14} /> Add
           </button>
         }
@@ -1480,7 +1480,7 @@ function SlaTab() {
         sub="Max days a case may sit in a stage before it escalates. Bank-specific rules override the default."
         action={
           <button
-            className="btn btn-primary btn-sm"
+            className="btn btn-primary sm:btn-sm"
             onClick={() => { setEditing(blankSla(stageLabels[0] ?? "")); setCreating(true); }}
           >
             <IPlus size={14} /> Add rule

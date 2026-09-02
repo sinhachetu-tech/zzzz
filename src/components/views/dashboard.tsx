@@ -148,31 +148,31 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-4 items-start">
         <div className="card anim-fade-up">
           <div className="flex flex-wrap items-center gap-2 p-3 border-b" style={{ borderColor: "var(--line-soft)" }}>
-            <div className="flex rounded-lg overflow-hidden border" style={{ borderColor: "var(--line)" }}>
+            <div className="flex rounded-lg overflow-hidden border w-full sm:w-auto" style={{ borderColor: "var(--line)" }}>
               {STATE_TABS.map((t) => (
-                <button key={t} className="px-3 py-1.5 text-[12px] font-disp font-semibold transition-colors"
+                <button key={t} className="px-3 py-1.5 text-[12px] font-disp font-semibold transition-colors flex-1 sm:flex-initial whitespace-nowrap"
                   style={stateTab === t ? { background: "rgba(242,176,76,0.15)", color: "var(--amber)" } : { color: "var(--ink-faint)", background: "transparent" }}
                   onClick={() => setStateTab(t)}>
                   {t} <span className="mono font-normal opacity-70">{counts[t]}</span>
                 </button>
               ))}
             </div>
-            <input className="input" style={{ width: 190 }} placeholder="Search case / customer…" value={search} onChange={(e) => setSearch(e.target.value)} />
-            <select className="select" style={{ width: 150 }} value={stage} onChange={(e) => setStage(e.target.value)}>
+            <input className="input w-full sm:w-[190px]" placeholder="Search case / customer…" value={search} onChange={(e) => setSearch(e.target.value)} />
+            <select className="select w-full sm:w-[150px]" value={stage} onChange={(e) => setStage(e.target.value)}>
               <option value="All">All stages</option>
               {[...stages].sort((a, b) => a.sortOrder - b.sortOrder).map((s) => <option key={s.id} value={s.label}>{s.label}</option>)}
             </select>
             {stateTab === "Active" && (
-              <select className="select" style={{ width: 130 }} value={status} onChange={(e) => setStatus(e.target.value)}>
+              <select className="select w-full sm:w-[130px]" value={status} onChange={(e) => setStatus(e.target.value)}>
                 <option value="All">All status</option>
                 {["On Track", "At Risk", "Overdue", "No Action"].map((s) => <option key={s}>{s}</option>)}
               </select>
             )}
-            <select className="select" style={{ width: 140 }} value={owner} onChange={(e) => setOwner(e.target.value)}>
+            <select className="select w-full sm:w-[140px]" value={owner} onChange={(e) => setOwner(e.target.value)}>
               <option value="All">All owners</option>
               {users.filter((u) => u.role !== "Head of Company" && u.role !== "PA to HoC").map((u) => <option key={u.id} value={u.id}>{u.name.split(" ")[0]}</option>)}
             </select>
-            <select className="select ml-auto" style={{ width: 140 }} value={sort} onChange={(e) => setSort(e.target.value)}>
+            <select className="select w-full sm:w-[140px] sm:ml-auto" value={sort} onChange={(e) => setSort(e.target.value)}>
               <option value="urgency">Most urgent</option>
               <option value="newest">Newest</option>
               <option value="oldest">Oldest</option>
@@ -186,7 +186,7 @@ export default function Dashboard() {
                 <EmptyState icon={<IInbox size={26} />} title={`Nothing in “${stateTab}”`} body="Adjust the filters, or use the New case button in the top bar to get things moving." />
               </div>
             ) : (
-              <table className="tbl">
+              <table className="tbl min-w-[860px]">
                 <thead>
                   <tr>
                     <th>Case</th><th>Customer</th><th>Source</th><th>Banks</th><th>Stage</th><th>Amount</th><th>Owner</th><th>Age</th>

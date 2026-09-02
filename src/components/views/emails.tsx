@@ -93,11 +93,11 @@ export default function Emails() {
             Inbound bank/client emails, auto-matched to cases. {unmatchedEmails.length} need a glance.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {unmatchedEmails.length > 0 && (
             <Chip tone="amber" dot>{unmatchedEmails.length} to review</Chip>
           )}
-          <button className="btn btn-ghost btn-sm" onClick={pollNow} disabled={polling} title="Read unread emails from the Outlook shared mailbox now">
+          <button className="btn btn-ghost sm:btn-sm" onClick={pollNow} disabled={polling} title="Read unread emails from the Outlook shared mailbox now">
             {polling ? "Polling…" : "Poll Outlook now"}
           </button>
         </div>
@@ -139,22 +139,22 @@ export default function Emails() {
                           <span className="mono text-[11.5px]" style={{ color: "var(--amber)" }}>{guess.caseNumber}</span>
                           <span className="text-[12px] text-[var(--ink-dim)]">{guess.customer}</span>
                         </button>
-                        <button className="btn btn-mint btn-sm" onClick={() => confirmLink(u.id, guess.id)}>
+                        <button className="btn btn-mint sm:btn-sm" onClick={() => confirmLink(u.id, guess.id)}>
                           <ICheck size={13} /> Link to this case
                         </button>
-                        <button className="btn btn-ghost btn-sm" onClick={() => setPickTarget(u.id)}>
+                        <button className="btn btn-ghost sm:btn-sm" onClick={() => setPickTarget(u.id)}>
                           Pick another
                         </button>
                       </>
                     ) : (
                       <>
-                        <span className="text-[11.5px] text-[var(--ink-faint)]">No confident match.</span>
-                        <button className="btn btn-ghost btn-sm" onClick={() => setPickTarget(u.id)}>
+                        <span className="text-[11.5px] text-[var(--ink-faint)] w-full sm:w-auto">No confident match.</span>
+                        <button className="btn btn-ghost sm:btn-sm" onClick={() => setPickTarget(u.id)}>
                           Pick a case
                         </button>
                       </>
                     )}
-                    <button className="btn btn-ghost btn-sm ml-auto" onClick={() => confirmIgnore(u.id)}>
+                    <button className="btn btn-ghost sm:btn-sm sm:ml-auto" onClick={() => confirmIgnore(u.id)}>
                       Not relevant
                     </button>
                   </div>
@@ -170,10 +170,10 @@ export default function Emails() {
         <div className="flex flex-wrap items-center gap-2 p-3 border-b" style={{ borderColor: "var(--line-soft)" }}>
           <IBank size={14} className="text-[var(--ink-faint)]" />
           <h3 className="font-disp font-semibold text-[14px] m-0">Recent email log</h3>
-          <div className="ml-auto relative">
+          <div className="ml-auto relative w-full sm:w-auto">
             <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--ink-faint)]"><ISearch size={14} /></span>
             <input
-              className="input !pl-8 !py-[6.5px] w-[200px]"
+              className="input !pl-8 !py-[6.5px] w-full sm:w-[200px]"
               placeholder="Search subject / sender / case…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}

@@ -1,0 +1,584 @@
+     1→"use client";
+     2→
+     3→import { useMemo, useState } from "react";
+     4→import { useHfmcStore } from "@/lib/client-store";
+     5→import type { Reply, Task } from "@/lib/types";
+     6→import {
+     7→  ageDays, caseStatusOf, fmtDate, fmtDateTime, fmtMoney, inDaysISO, primaryBank, relTime, todayISO,
+     8→} from "@/lib/format";
+     9→import { Avatar, Chip, DueChip, Modal, SectionLabel, StatusChip } from "@/components/hfmc/ui";
+    10→import { BankChips, CaseStateChip, CommissionPanel, ConfirmModal, SourceChip, WaButtons } from "@/components/hfmc/bits";
+    11→import {
+    12→  IArrowR, IBank, ICalc, ICheck, IChevronL, IClock, IFlag, IHistory, IPlus, IRobot, ISparkles, ITrash, IZap,
+    13→} from "@/components/icons";
+    14→
+    15→function ReplyThread({ replies, onSend }: { replies: Reply[]; onSend: (text: string) => void }) {
+    16→  const { userById } = useHfmcStore();
+    17→  const [draft, setDraft] = useState("");
+    18→  const send = () => { if (!draft.trim()) return; onSend(draft); setDraft(""); };
+    19→  return (
+    20→    <div className="mt-3 space-y-2">
+    21→      {replies.map((r) => (
+    22→        <div key={r.id} className="flex items-start gap-2 anim-fade-in">
+    23→          <Avatar name={userById(r.userId)?.name ?? "?"} size={22} />
+    24→          <div className="min-w-0 flex-1 rounded-lg px-3 py-2" style={{ background: "var(--tint)", border: "1px solid var(--line-soft)" }}>
+    25→            <div className="flex items-baseline gap-2">
+    26→              <span className="text-[12px] font-semibold">{userById(r.userId)?.name ?? "—"}</span>
+    27→              <span className="mono text-[10px] text-[var(--ink-faint)]">{relTime(r.at)}</span>
+    28→            </div>
+    29→            <p className="text-[12.5px] text-[var(--ink-dim)] m-0 mt-0.5 leading-snug">{r.text}</p>
+    30→          </div>
+    31→        </div>
+    32→      ))}
+    33→      <div className="flex items-center gap-2">
+    34→        <input className="input !py-[6px]" placeholder="Reply…" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} />
+    35→        <button className="btn btn-ghost btn-sm" onClick={send}>Send</button>
+    36→      </div>
+    37→    </div>
+    38→  );
+    39→}
+    40→
+    41→function AddTaskModal({ open, onClose, caseId }: { open: boolean; onClose: () => void; caseId: number }) {
+    42→  const { tasks, users, whyPending: whyMaster, waitingFor: waitMaster, me, addTask, toast, canInstruct } = useHfmcStore();
+    43→  const caseTasks = tasks.filter((t) => t.caseId === caseId);
+    44→  const [description, setDescription] = useState("");
+    45→  const [ownerId, setOwnerId] = useState(me?.id ?? 0);
+    46→  const [waitingFor, setWaitingFor] = useState("Client");
+    47→  const [whyPending, setWhyPending] = useState("Documents awaited");
+    48→  const [dueDate, setDueDate] = useState(inDaysISO(3));
+    49→  const [err, setErr] = useState("");
+    50→
+    51→  if (!open) return null;
+    52→
+    53→  const submit = async () => {
+    54→    if (!description.trim()) return setErr("What needs doing?");
+    55→    try {
+    56→      await addTask(caseId, { description: description.trim(), ownerId, waitingFor, whyPending, dueDate });
+    57→      toast("success", "Task added.");
+    58→      setDescription(""); setErr(""); onClose();
+    59→    } catch (e) { setErr(e instanceof Error ? e.message : "Could not add task."); }
+    60→  };
+    61→
+    62→  return (
+    63→    <Modal title="Add a task" sub={`${caseTasks.length} task${caseTasks.length === 1 ? "" : "s"} on this case`} onClose={onClose} width={500}
+    64→      footer={<><button className="btn btn-ghost" onClick={onClose}>Cancel</button><button className="btn btn-primary" onClick={submit}>Add task</button></>}>
+    65→      <div className="space-y-3">
+    66→        <div>
+    67→          <label className="label">What needs doing?</label>
+    68→          <input className="input" autoFocus value={description} onChange={(e) => setDescription(e.target.value)} placeholder="e.g. Submit application to Mashreq" />
+    69→        </div>
+    70→        <div className="grid grid-cols-2 gap-3">
+    71→          <div>
+    72→            <label className="label">Owner</label>
+    73→            <select className="select" value={ownerId} onChange={(e) => setOwnerId(parseInt(e.target.value, 10))} disabled={!canInstruct()}>
+    74→              {users.filter((u) => u.active).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+    75→            </select>
+    76→          </div>
+    77→          <div>
+    78→            <label className="label">Due date</label>
+    79→            <input className="input mono" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+    80→          </div>
+    81→          <div>
+    82→            <label className="label">Waiting for</label>
+    83→            <select className="select" value={waitingFor} onChange={(e) => setWaitingFor(e.target.value)}>
+    84→              {waitMaster.map((w) => <option key={w.id}>{w.label}</option>)}
+    85→            </select>
+    86→          </div>
+    87→          <div>
+    88→            <label className="label">Why pending</label>
+    89→            <select className="select" value={whyPending} onChange={(e) => setWhyPending(e.target.value)}>
+    90→              {whyMaster.map((w) => <option key={w.id}>{w.label}</option>)}
+    91→            </select>
+    92→          </div>
+    93→        </div>
+    94→        {!canInstruct() && <p className="text-[11.5px] text-[var(--ink-faint)] m-0">You can only assign tasks to yourself — only managers can reassign.</p>}
+    95→      </div>
+    96→      {err && <p className="text-[12.5px] mt-2.5 mb-0" style={{ color: "var(--coral)" }}>{err}</p>}
+    97→    </Modal>
+    98→  );
+    99→}
+   100→
+   101→function StageUpdateModal({ open, onClose, caseId }: { open: boolean; onClose: () => void; caseId: number }) {
+   102→  const { cases, stages, updateCase, toast } = useHfmcStore();
+   103→  const c = cases.find((x) => x.id === caseId);
+   104→  const [stage, setStage] = useState(c?.stage ?? "");
+   105→  const activeStages = [...stages].filter((s) => s.active).sort((a, b) => a.sortOrder - b.sortOrder);
+   106→  if (!open || !c) return null;
+   107→  const submit = async () => {
+   108→    await updateCase(caseId, { stage });
+   109→    toast("success", `Stage moved to ${stage}.`);
+   110→    onClose();
+   111→  };
+   112→  return (
+   113→    <Modal title="Move stage" sub={c.caseNumber} onClose={onClose} width={420}
+   114→      footer={<><button className="btn btn-ghost" onClick={onClose}>Cancel</button><button className="btn btn-primary" onClick={submit}>Move</button></>}>
+   115→      <div className="space-y-2">
+   116→        {activeStages.map((s) => (
+   117→          <button key={s.id} className="w-full text-left rowlink rounded-lg px-3 py-2.5 flex items-center gap-3"
+   118→            style={{ border: "1px solid", borderColor: stage === s.label ? "var(--amber)" : "var(--line-soft)", background: stage === s.label ? "rgba(242,176,76,0.06)" : "transparent" }}
+   119→            onClick={() => setStage(s.label)}>
+   120→            <span className="font-disp font-semibold text-[13px]">{s.label}</span>
+   121→            {c.stage === s.label && <Chip tone="amber">current</Chip>}
+   122→            {stage === s.label && c.stage !== s.label && <span className="ml-auto mono text-[11px] text-[var(--amber)]">→ moving</span>}
+   123→          </button>
+   124→        ))}
+   125→      </div>
+   126→    </Modal>
+   127→  );
+   128→}
+   129→
+   130→function OutcomeModal({ open, onClose, caseId }: { open: boolean; onClose: () => void; caseId: number }) {
+   131→  const { cases, banks, updateCase, toast } = useHfmcStore();
+   132→  const c = cases.find((x) => x.id === caseId);
+   133→  const [status, setStatus] = useState<"Closed" | "Lost">(c?.caseStatus === "Lost" ? "Lost" : "Closed");
+   134→  const [wonBank, setWonBank] = useState(c?.wonBank ?? c?.banks[0] ?? "");
+   135→  if (!open || !c) return null;
+   136→  const submit = async () => {
+   137→    const patch: Record<string, unknown> = { caseStatus: status };
+   138→    if (status === "Closed") patch.wonBank = wonBank || null;
+   139→    await updateCase(caseId, patch);
+   140→    toast("success", status === "Closed" ? `Booked! Won by ${wonBank}.` : "Marked lost.");
+   141→    onClose();
+   142→  };
+   143→  return (
+   144→    <Modal title="Set outcome" sub={c.caseNumber} onClose={onClose} width={440}
+   145→      footer={<><button className="btn btn-ghost" onClick={onClose}>Cancel</button><button className="btn btn-primary" onClick={submit}>Confirm</button></>}>
+   146→      <div className="space-y-3">
+   147→        <div className="grid grid-cols-2 gap-2">
+   148→          <button className="rowlink rounded-lg px-3 py-3 text-center" style={{ border: "1px solid", borderColor: status === "Closed" ? "var(--mint)" : "var(--line-soft)", background: status === "Closed" ? "rgba(67,214,155,0.07)" : "transparent" }} onClick={() => setStatus("Closed")}>
+   149→            <div className="font-disp font-semibold text-[14px]" style={{ color: status === "Closed" ? "var(--mint)" : "var(--ink-dim)" }}>Booked</div>
+   150→            <div className="text-[11px] text-[var(--ink-faint)] mt-0.5">Won the deal</div>
+   151→          </button>
+   152→          <button className="rowlink rounded-lg px-3 py-3 text-center" style={{ border: "1px solid", borderColor: status === "Lost" ? "var(--coral)" : "var(--line-soft)", background: status === "Lost" ? "rgba(242,115,99,0.07)" : "transparent" }} onClick={() => setStatus("Lost")}>
+   153→            <div className="font-disp font-semibold text-[14px]" style={{ color: status === "Lost" ? "var(--coral)" : "var(--ink-dim)" }}>Lost</div>
+   154→            <div className="text-[11px] text-[var(--ink-faint)] mt-0.5">Didn't convert</div>
+   155→          </button>
+   156→        </div>
+   157→        {status === "Closed" && (
+   158→          <div>
+   159→            <label className="label">Winning bank</label>
+   160→            <select className="select" value={wonBank} onChange={(e) => setWonBank(e.target.value)}>
+   161→              <option value="">— select —</option>
+   162→              {banks.filter((b) => b.active).map((b) => <option key={b.id} value={b.name}>{b.name} ({b.ratePct}%)</option>)}
+   163→            </select>
+   164→          </div>
+   165→        )}
+   166→      </div>
+   167→    </Modal>
+   168→  );
+   169→}
+   170→
+   171→/* ---------------- AI Case Copilot ---------------- */
+   172→
+   173→function CaseCopilot({ caseId }: { caseId: number }) {
+   174→  const { cases, caseById } = useHfmcStore();
+   175→  const [open, setOpen] = useState(false);
+   176→  const [loading, setLoading] = useState(false);
+   177→  const [markdown, setMarkdown] = useState<string | null>(null);
+   178→  const [error, setError] = useState<string | null>(null);
+   179→  const c = caseById(caseId);
+   180→
+   181→  const generate = async () => {
+   182→    setOpen(true);
+   183→    if (markdown) return;
+   184→    setLoading(true); setError(null);
+   185→    try {
+   186→      const res = await fetch("/api/ai/insights", {
+   187→        method: "POST", headers: { "Content-Type": "application/json" },
+   188→        body: JSON.stringify({ caseId }),
+   189→      });
+   190→      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "AI unavailable");
+   191→      const data = await res.json();
+   192→      setMarkdown(data.markdown);
+   193→    } catch (e) {
+   194→      setError(e instanceof Error ? e.message : "AI unavailable");
+   195→    } finally {
+   196→      setLoading(false);
+   197→    }
+   198→  };
+   199→
+   200→  return (
+   201→    <>
+   202→      <div className="card p-4 anim-fade-up" style={{ borderLeft: "3px solid var(--sky)" }}>
+   203→        <div className="flex items-center gap-2 mb-1">
+   204→          <IRobot size={15} className="text-[var(--sky)]" />
+   205→          <h3 className="font-disp font-semibold text-[13.5px] m-0">AI Case Copilot</h3>
+   206→        </div>
+   207→        <p className="text-[12px] text-[var(--ink-faint)] m-0 mb-3">
+   208→          Reads the case, tasks, and activity log, then writes a snapshot, risk flags, and prioritised next actions.
+   209→        </p>
+   210→        <button className="btn btn-sm w-full justify-center" style={{ background: "var(--sky)", color: "#fff" }} onClick={generate}>
+   211→          <ISparkles size={14} /> {markdown ? "Re-read insights" : "Generate insights"}
+   212→        </button>
+   213→      </div>
+   214→
+   215→      {open && (
+   216→        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 anim-fade-in" style={{ background: "rgba(4,12,15,0.74)", backdropFilter: "blur(4px)" }} onMouseDown={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
+   217→          <div className="card anim-scale-in w-full max-w-[680px] max-h-[88vh] flex flex-col" style={{ background: "var(--raised)" }}>
+   218→            <div className="flex items-start justify-between px-5 pt-4 pb-3 border-b border-[var(--line-soft)]">
+   219→              <div className="flex items-center gap-2">
+   220→                <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: "rgba(87,194,234,0.14)", color: "var(--sky)" }}><IRobot size={16} /></div>
+   221→                <div>
+   222→                  <h3 className="font-disp text-[15px] font-semibold m-0">AI Case Copilot</h3>
+   223→                  <p className="text-[11.5px] text-[var(--ink-faint)] m-0">{c?.caseNumber} · {c?.customer}</p>
+   224→                </div>
+   225→              </div>
+   226→              <button className="btn btn-ghost btn-sm !px-2" onClick={() => setOpen(false)} aria-label="Close"><IChevronL size={15} className="rotate-180" /></button>
+   227→            </div>
+   228→            <div className="px-5 py-4 overflow-y-auto">
+   229→              {loading && (
+   230→                <div className="flex items-center gap-3 py-8 justify-center">
+   231→                  <div className="w-5 h-5 rounded-full border-2 border-[var(--sky)] border-t-transparent animate-spin" />
+   232→                  <span className="text-[13px] text-[var(--ink-faint)]">Reading the case file…</span>
+   233→                </div>
+   234→              )}
+   235→              {error && !loading && (
+   236→                <div className="rounded-lg p-3 text-[13px]" style={{ background: "rgba(242,115,99,0.08)", color: "var(--coral)", border: "1px solid rgba(242,115,99,0.3)" }}>
+   237→                  {error}
+   238→                </div>
+   239→              )}
+   240→              {markdown && !loading && (
+   241→                <div className="prose-ai" dangerouslySetInnerHTML={{ __html: renderMd(markdown) }} />
+   242→              )}
+   243→              {!markdown && !loading && !error && (
+   244→                <p className="text-[13px] text-[var(--ink-faint)] m-0">No insights yet.</p>
+   245→              )}
+   246→            </div>
+   247→          </div>
+   248→        </div>
+   249→      )}
+   250→    </>
+   251→  );
+   252→}
+   253→
+   254→/* tiny markdown renderer — headings, bold, lists */
+   255→function renderMd(md: string): string {
+   256→  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+   257→  const lines = md.split("\n");
+   258→  let html = "";
+   259→  let inUl = false, inOl = false;
+   260→  const closeLists = () => { if (inUl) { html += "</ul>"; inUl = false; } if (inOl) { html += "</ol>"; inOl = false; } };
+   261→  for (const raw of lines) {
+   262→    const line = raw.trimEnd();
+   263→    if (/^##\s+/.test(line)) { closeLists(); html += `<h2>${esc(line.replace(/^##\s+/, ""))}</h2>`; continue; }
+   264→    if (/^#\s+/.test(line)) { closeLists(); html += `<h2>${esc(line.replace(/^#\s+/, ""))}</h2>`; continue; }
+   265→    if (/^\s*[-*]\s+/.test(line)) { if (!inUl) { closeLists(); html += "<ul>"; inUl = true; } html += `<li>${inline(esc(line.replace(/^\s*[-*]\s+/, "")))}</li>`; continue; }
+   266→    if (/^\s*\d+\.\s+/.test(line)) { if (!inOl) { closeLists(); html += "<ol>"; inOl = true; } html += `<li>${inline(esc(line.replace(/^\s*\d+\.\s+/, "")))}</li>`; continue; }
+   267→    if (line.trim() === "") { closeLists(); continue; }
+   268→    closeLists();
+   269→    html += `<p>${inline(esc(line))}</p>`;
+   270→  }
+   271→  closeLists();
+   272→  return html;
+   273→}
+   274→function inline(s: string): string {
+   275→  return s
+   276→    .replace(/`([^`]+)`/g, '<code>$1</code>')
+   277→    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+   278→    .replace(/\*([^*]+)\*/g, '<em>$1</em>');
+   279→}
+   280→
+   281→/* ---------------- Case Detail ---------------- */
+   282→
+   283→export default function CaseDetail({ id }: { id: number }) {
+   284→  const { cases, tasks, activities, stages, banks, users, instructions, emails, me, nav, userById, caseById, updateCase, completeTask, deleteTask, toast, flags, canInstruct } = useHfmcStore();
+   285→  const c = caseById(id);
+   286→  const [showAddTask, setShowAddTask] = useState(false);
+   287→  const [showStage, setShowStage] = useState(false);
+   288→  const [showOutcome, setShowOutcome] = useState(false);
+   289→  const [doneTarget, setDoneTarget] = useState<Task | null>(null);
+   290→  const [delTarget, setDelTarget] = useState<Task | null>(null);
+   291→
+   292→  const caseTasks = useMemo(() => tasks.filter((t) => t.caseId === id), [tasks, id]);
+   293→  const caseActivities = useMemo(() => activities.filter((a) => a.caseId === id).sort((a, b) => b.at.localeCompare(a.at)), [activities, id]);
+   294→  const caseInstr = useMemo(() => instructions.filter((i) => i.caseId === id), [instructions, id]);
+   295→  const caseEmails = useMemo(() => emails.filter((e) => e.caseId === id).sort((a, b) => b.receivedAt.localeCompare(a.receivedAt)), [emails, id]);
+   296→  const stageList = useMemo(() => [...stages].sort((a, b) => a.sortOrder - b.sortOrder), [stages]);
+   297→
+   298→  if (!c) {
+   299→    return (
+   300→      <div className="card p-8 text-center">
+   301→        <p className="text-[13px] text-[var(--ink-faint)] m-0 mb-3">That case no longer exists.</p>
+   302→        <button className="btn btn-ghost" onClick={() => nav({ name: "dashboard" })}>Back to dashboard</button>
+   303→      </div>
+   304→    );
+   305→  }
+   306→
+   307→  const status = caseStatusOf(c, tasks);
+   308→  const openTasks = caseTasks.filter((t) => t.status === "Open");
+   309→  const doneTasks = caseTasks.filter((t) => t.status === "Done");
+   310→  const owner = userById(c.ownerId);
+   311→  const currentStageIdx = stageList.findIndex((s) => s.label === c.stage);
+   312→  const canEdit = flags?.super || flags?.admin || c.ownerId === me?.id;
+   313→
+   314→  return (
+   315→    <div className="space-y-4">
+   316→      <button className="btn btn-ghost btn-sm" onClick={() => nav({ name: "dashboard" })}>
+   317→        <IChevronL size={14} /> Pipeline
+   318→      </button>
+   319→
+   320→      {/* header */}
+   321→      <div className="card p-5 anim-fade-up">
+   322→        <div className="flex flex-wrap items-start justify-between gap-4">
+   323→          <div className="min-w-0">
+   324→            <div className="flex items-center gap-2.5 flex-wrap">
+   325→              <span className="mono text-[13px]" style={{ color: "var(--amber)" }}>{c.caseNumber}</span>
+   326→              <CaseStateChip state={c.caseStatus} />
+   327→              {c.caseStatus === "Active" && <StatusChip status={status} />}
+   328→              <SourceChip source={c.source} />
+   329→              {c.partner && <Chip tone="amber">{c.partner.kind} · {c.partner.name} @ {c.partner.sharePct}%</Chip>}
+   330→            </div>
+   331→            <h1 className="font-disp font-bold text-[26px] tracking-tight m-0 mt-2">{c.customer}</h1>
+   332→            <p className="text-[12.5px] text-[var(--ink-faint)] m-0 mt-1">
+   333→              opened {fmtDate(c.createdAt)} · {ageDays(c.createdAt)}d old · stage <strong className="text-[var(--ink-dim)]">{c.stage}</strong>
+   334→            </p>
+   335→          </div>
+   336→          <div className="flex flex-wrap items-center gap-2">
+   337→            <WaButtons c={c} agentName={me?.name ?? ""} />
+   338→            {c.caseStatus === "Active" && (
+   339→              <>
+   340→                <button className="btn btn-ghost btn-sm" onClick={() => setShowStage(true)}><IArrowR size={14} /> Move stage</button>
+   341→                <button className="btn btn-primary btn-sm" onClick={() => setShowOutcome(true)}>Set outcome</button>
+   342→              </>
+   343→            )}
+   344→          </div>
+   345→        </div>
+   346→
+   347→        {/* stage pipeline */}
+   348→        <div className="mt-5 flex items-center gap-1 overflow-x-auto pb-1">
+   349→          {stageList.filter((s) => s.active).map((s, i) => {
+   350→            const idx = stageList.filter((x) => x.active).findIndex((x) => x.label === c.stage);
+   351→            const done = i < idx;
+   352→            const current = i === idx;
+   353→            return (
+   354→              <div key={s.id} className="flex items-center gap-1 shrink-0">
+   355→                <button onClick={() => canEdit && setShowStage(true)} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg transition-all"
+   356→                  style={current ? { background: "rgba(242,176,76,0.12)", border: "1px solid var(--amber)" } : { border: "1px solid transparent" }}>
+   357→                  <span className="w-5 h-5 rounded-full flex items-center justify-center mono text-[10px] font-semibold"
+   358→                    style={{ background: done ? "var(--mint)" : current ? "var(--amber)" : "var(--track)", color: done || current ? "#fff" : "var(--ink-faint)" }}>
+   359→                    {done ? <ICheck size={11} /> : i + 1}
+   360→                  </span>
+   361→                  <span className="text-[11.5px] font-disp font-medium whitespace-nowrap" style={{ color: current ? "var(--ink)" : done ? "var(--ink-dim)" : "var(--ink-faint)" }}>{s.label}</span>
+   362→                </button>
+   363→                {i < stageList.filter((x) => x.active).length - 1 && <span className="w-3 h-px" style={{ background: "var(--line)" }} />}
+   364→              </div>
+   365→            );
+   366→          })}
+   367→        </div>
+   368→      </div>
+   369→
+   370→      <div className="grid grid-cols-1 xl:grid-cols-[1.4fr_1fr] gap-4 items-start">
+   371→        {/* left: tasks + instructions + activity */}
+   372→        <div className="space-y-4">
+   373→          {/* tasks */}
+   374→          <div className="card anim-fade-up">
+   375→            <div className="flex items-center justify-between p-4 border-b" style={{ borderColor: "var(--line-soft)" }}>
+   376→              <div className="flex items-center gap-2">
+   377→                <h3 className="font-disp font-semibold text-[14px] m-0">Tasks</h3>
+   378→                <Chip tone={openTasks.length ? "amber" : "mint"}>{openTasks.length} open</Chip>
+   379→                <span className="text-[11.5px] text-[var(--ink-faint)]">· {doneTasks.length} done</span>
+   380→              </div>
+   381→              <button className="btn btn-ghost btn-sm" onClick={() => setShowAddTask(true)}><IPlus size={13} /> Add task</button>
+   382→            </div>
+   383→            <div className="divide-y" style={{ borderColor: "var(--line-soft)" }}>
+   384→              {caseTasks.length === 0 && <p className="p-5 text-[13px] text-[var(--ink-faint)] m-0">No tasks yet — add the first action.</p>}
+   385→              {[...caseTasks].sort((a, b) => (a.status === b.status ? a.dueDate.localeCompare(b.dueDate) : a.status === "Open" ? -1 : 1)).map((t) => {
+   386→                const tOwner = userById(t.ownerId);
+   387→                const isOpen = t.status === "Open";
+   388→                const od = isOpen && t.dueDate < todayISO();
+   389→                const canTouch = flags?.super || flags?.admin || t.ownerId === me?.id || t.createdBy === me?.id;
+   390→                return (
+   391→                  <div key={t.id} className="p-4 flex items-start gap-3">
+   392→                    <div className="flex-1 min-w-0">
+   393→                      <p className="font-medium text-[13.5px] m-0" style={{ textDecoration: isOpen ? undefined : "line-through", textDecorationColor: "var(--ink-faint)" }}>{t.description}</p>
+   394→                      <div className="flex flex-wrap items-center gap-2 mt-1.5 text-[11.5px] text-[var(--ink-faint)]">
+   395→                        <Chip tone={t.waitingFor === "Client" ? "sky" : t.waitingFor === "Bank" ? "amber" : t.waitingFor === "Internal" ? "slate" : "coral"}>{t.waitingFor}</Chip>
+   396→                        <span>· {t.whyPending}</span>
+   397→                        <span>· opened by {userById(t.createdBy)?.name.split(" ")[0] ?? "—"}</span>
+   398→                      </div>
+   399→                      {!isOpen && t.remarks && <p className="text-[11.5px] text-[var(--ink-faint)] m-0 mt-1 truncate">“{t.remarks}”</p>}
+   400→                    </div>
+   401→                    <div className="flex flex-col items-end gap-2 shrink-0">
+   402→                      <div className="flex items-center gap-2">
+   403→                        <Avatar name={tOwner?.name ?? "?"} size={22} />
+   404→                        <span className="text-[11.5px] text-[var(--ink-dim)]">{tOwner?.name.split(" ")[0] ?? "—"}</span>
+   405→                      </div>
+   406→                      {isOpen ? <DueChip dueISO={t.dueDate} /> : <span className="mono text-[11px] text-[var(--ink-faint)]">{t.completedAt ? fmtDateTime(t.completedAt) : "—"}</span>}
+   407→                      <div className="flex gap-1">
+   408→                        {isOpen && canTouch && (
+   409→                          <button className="btn btn-mint btn-sm !px-2 !py-1" title="Mark done" onClick={() => setDoneTarget(t)}><ICheck size={12} /></button>
+   410→                        )}
+   411→                        {canTouch && (
+   412→                          <button className="btn btn-ghost btn-sm !px-2 !py-1" title="Delete task" onClick={() => setDelTarget(t)}><ITrash size={12} /></button>
+   413→                        )}
+   414→                      </div>
+   415→                    </div>
+   416→                  </div>
+   417→                );
+   418→              })}
+   419→            </div>
+   420→          </div>
+   421→
+   422→          {/* instructions */}
+   423→          {caseInstr.length > 0 && (
+   424→            <div className="card anim-fade-up">
+   425→              <div className="p-4 border-b flex items-center gap-2" style={{ borderColor: "var(--line-soft)" }}>
+   426→                <IFlag size={14} className="text-[var(--amber)]" />
+   427→                <h3 className="font-disp font-semibold text-[14px] m-0">Instructions</h3>
+   428→                <span className="text-[11.5px] text-[var(--ink-faint)] ml-auto">{caseInstr.filter((i) => i.status === "Open").length} open</span>
+   429→              </div>
+   430→              <div className="divide-y" style={{ borderColor: "var(--line-soft)" }}>
+   431→                {caseInstr.map((instr) => {
+   432→                  const assignee = userById(instr.assignedTo);
+   433→                  return (
+   434→                    <div key={instr.id} className="p-4">
+   435→                      <div className="flex items-start justify-between gap-3">
+   436→                        <p className="text-[13px] font-medium m-0">{instr.instruction}</p>
+   437→                        {instr.status === "Done" ? <Chip tone="mint">done</Chip> : <Chip tone="amber">open</Chip>}
+   438→                      </div>
+   439→                      <div className="flex items-center gap-2 mt-1.5 text-[11.5px] text-[var(--ink-faint)]">
+   440→                        <span>issued by {userById(instr.issuedBy)?.name.split(" ")[0]}</span>
+   441→                        <span>· assigned to <span className="text-[var(--ink-dim)]">{assignee?.name}</span></span>
+   442→                        <span>· due {fmtDate(instr.dueDate)}</span>
+   443→                      </div>
+   444→                      {instr.status === "Open" && (flags?.super || flags?.admin || instr.assignedTo === me?.id) && (
+   445→                        <button className="btn btn-ghost btn-sm mt-2" onClick={async () => { await completeInstruction(instr.id); toast("success", "Instruction marked done."); }}>
+   446→                          <ICheck size={13} /> Mark done
+   447→                        </button>
+   448→                      )}
+   449→                    </div>
+   450→                  );
+   451→                })}
+   452→              </div>
+   453→            </div>
+   454→          )}
+   455→
+   456→          {/* email timeline */}
+   457→          {caseEmails.length > 0 && (
+   458→            <div className="card anim-fade-up">
+   459→              <div className="p-4 border-b flex items-center gap-2" style={{ borderColor: "var(--line-soft)" }}>
+   460→                <IBank size={14} className="text-[var(--amber)]" />
+   461→                <h3 className="font-disp font-semibold text-[14px] m-0">Email timeline</h3>
+   462→                <span className="text-[11.5px] text-[var(--ink-faint)] ml-auto">{caseEmails.length} logged</span>
+   463→              </div>
+   464→              <div className="p-4 space-y-2.5">
+   465→                {caseEmails.map((e) => {
+   466→                  const tone = e.direction === "from_bank" ? "amber" : e.direction === "from_client" ? "sky" : "slate";
+   467→                  const dirLabel = e.direction === "from_bank" ? "Bank" : e.direction === "from_client" ? "Client" : "Internal";
+   468→                  return (
+   469→                    <div key={e.id} className="flex items-start gap-3 rounded-lg px-3 py-2.5" style={{ background: "var(--tint)", border: "1px solid var(--line-soft)" }}>
+   470→                      <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{ background: "rgba(242,176,76,0.1)", color: "var(--amber)" }}>
+   471→                        <IBank size={14} />
+   472→                      </div>
+   473→                      <div className="min-w-0 flex-1">
+   474→                        <div className="flex items-center gap-2 flex-wrap">
+   475→                          <Chip tone={tone as "amber" | "sky" | "slate"}>{dirLabel}</Chip>
+   476→                          <span className="text-[12.5px] font-medium truncate">{e.subject}</span>
+   477→                        </div>
+   478→                        <p className="text-[11px] text-[var(--ink-faint)] m-0 mt-1">
+   479→                          from <span className="mono text-[var(--ink-dim)]">{e.sender}</span> · {fmtDateTime(e.receivedAt)}
+   480→                          {e.outlookLink && <> · <a href={e.outlookLink} target="_blank" rel="noreferrer" className="text-[var(--sky)] hover:underline">open in Outlook ↗</a></>}
+   481→                        </p>
+   482→                      </div>
+   483→                    </div>
+   484→                  );
+   485→                })}
+   486→              </div>
+   487→            </div>
+   488→          )}
+   489→
+   490→          {/* activity */}
+   491→          <div className="card anim-fade-up">
+   492→            <div className="p-4 border-b flex items-center gap-2" style={{ borderColor: "var(--line-soft)" }}>
+   493→              <IHistory size={14} className="text-[var(--ink-faint)]" />
+   494→              <h3 className="font-disp font-semibold text-[14px] m-0">Activity log</h3>
+   495→            </div>
+   496→            <div className="p-4 space-y-3">
+   497→              {caseActivities.length === 0 && <p className="text-[12.5px] text-[var(--ink-faint)] m-0">No activity recorded yet.</p>}
+   498→              {caseActivities.map((a) => (
+   499→                <div key={a.id} className="flex items-start gap-3">
+   500→                  <Avatar name={userById(a.userId)?.name ?? "?"} size={26} />
+   501→                  <div className="min-w-0 flex-1">
+   502→                    <p className="text-[12.5px] m-0 leading-snug">
+   503→                      <strong className="font-medium">{userById(a.userId)?.name ?? "—"}</strong>{" "}
+   504→                      <span className="text-[var(--ink-dim)]">{a.action.toLowerCase()}</span>
+   505→                    </p>
+   506→                    <p className="mono text-[10.5px] text-[var(--ink-faint)] m-0 mt-0.5">{relTime(a.at)}</p>
+   507→                  </div>
+   508→                </div>
+   509→              ))}
+   510→            </div>
+   511→          </div>
+   512→        </div>
+   513→
+   514→        {/* right: commission + copilot + client */}
+   515→        <div className="space-y-4">
+   516→          <CaseCopilot caseId={c.id} />
+   517→          <CommissionPanel c={c} />
+   518→          <div className="card p-4">
+   519→            <h3 className="font-disp font-semibold text-[13.5px] m-0 mb-3">Banks in play</h3>
+   520→            <BankChips c={c} max={99} />
+   521→            {c.banks.length > 0 && (
+   522→              <div className="mt-3 pt-3 text-[11.5px] text-[var(--ink-faint)]" style={{ borderTop: "1px dashed var(--line)" }}>
+   523→                {c.wonBank ? `Booked with ${c.wonBank}.` : "Winning bank recorded when the case books."}
+   524→              </div>
+   525→            )}
+   526→          </div>
+   527→          <div className="card p-4">
+   528→            <h3 className="font-disp font-semibold text-[13.5px] m-0 mb-3">People</h3>
+   529→            <div className="space-y-2.5">
+   530→              <div className="flex items-center gap-2.5">
+   531→                <Avatar name={owner?.name ?? "?"} size={28} />
+   532→                <div>
+   533→                  <div className="text-[12.5px] font-medium">{owner?.name ?? "—"}</div>
+   534→                  <div className="text-[11px] text-[var(--ink-faint)]">{c.ownerId === me?.id ? "you" : "case owner"} · {owner?.role}</div>
+   535→                </div>
+   536→              </div>
+   537→              {c.partner && (
+   538→                <div className="flex items-center gap-2.5">
+   539→                  <Avatar name={c.partner.name} size={28} />
+   540→                  <div>
+   541→                    <div className="text-[12.5px] font-medium">{c.partner.name}</div>
+   542→                    <div className="text-[11px] text-[var(--ink-faint)]">{c.partner.kind} · {c.partner.sharePct}% of our commission</div>
+   543→                  </div>
+   544→                </div>
+   545→              )}
+   546→            </div>
+   547→          </div>
+   548→          <div className="card p-4">
+   549→            <h3 className="font-disp font-semibold text-[13.5px] m-0 mb-3">Quick calc</h3>
+   550→            <p className="text-[12px] text-[var(--ink-faint)] m-0 mb-2">Run an affordability check on this client and save it to the case.</p>
+   551→            <button className="btn btn-ghost btn-sm w-full justify-center" onClick={() => nav({ name: "calculator" })}>
+   552→              <ICalc size={14} /> Open calculator
+   553→            </button>
+   554→          </div>
+   555→        </div>
+   556→      </div>
+   557→
+   558→      {showAddTask && <AddTaskModal open={showAddTask} onClose={() => setShowAddTask(false)} caseId={c.id} />}
+   559→      {showStage && <StageUpdateModal open={showStage} onClose={() => setShowStage(false)} caseId={c.id} />}
+   560→      {showOutcome && <OutcomeModal open={showOutcome} onClose={() => setShowOutcome(false)} caseId={c.id} />}
+   561→      {doneTarget && (
+   562→        <DoneModal t={doneTarget} onClose={() => setDoneTarget(null)} onDone={async (remarks) => { await completeTask(doneTarget.id, remarks); toast("success", `“${doneTarget.description}” marked done.`); }} />
+   563→      )}
+   564→      {delTarget && (
+   565→        <ConfirmModal open={!!delTarget} onClose={() => setDelTarget(null)} title="Delete task?" body={<>Permanently delete <strong>{delTarget.description}</strong>?</>} confirmLabel="Delete"
+   566→          onConfirm={async () => { await deleteTask(delTarget.id); toast("success", "Task deleted."); }} />
+   567→      )}
+   568→    </div>
+   569→  );
+   570→
+   571→  function completeInstruction(id: number) { return useHfmcStore.getState().completeInstruction(id); }
+   572→}
+   573→
+   574→function DoneModal({ t, onClose, onDone }: { t: Task; onClose: () => void; onDone: (remarks: string) => void }) {
+   575→  const [remarks, setRemarks] = useState("");
+   576→  return (
+   577→    <Modal title="Complete task" sub={t.description} onClose={onClose} width={440}
+   578→      footer={<><button className="btn btn-ghost" onClick={onClose}>Not yet</button><button className="btn btn-mint" onClick={() => onDone(remarks)}><ICheck size={15} /> Mark done</button></>}>
+   579→      <label className="label">Remarks (optional)</label>
+   580→      <textarea className="textarea" rows={3} placeholder="What happened?" value={remarks} onChange={(e) => setRemarks(e.target.value)} autoFocus />
+   581→    </Modal>
+   582→  );
+   583→}
+   584→

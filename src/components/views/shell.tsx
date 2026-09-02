@@ -10,7 +10,7 @@ import { fmtMoney, inDaysISO, todayISO } from "@/lib/format";
 import { Avatar, Modal, ThemeToggle } from "@/components/hfmc/ui";
 import { Toaster } from "@/components/hfmc/toaster";
 import {
-  IBank, IBriefcase, ICalc, IChart, IFlag, IGrid, IInbox, ILogout, IPlus, IShield, ITasks, LogoMark,
+  IBank, IBriefcase, ICalc, IChart, IFlag, IGrid, IInbox, ILogout, IMenu, IPlus, IShield, ITasks, LogoMark,
 } from "@/components/icons";
 
 function Clock() {
@@ -205,7 +205,12 @@ function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void })
 export default function Shell({ children }: { children: ReactNode }) {
   const { me, route, nav, logout, escalations, instructions, bulletin, visibleCases, unmatchedEmails } = useHfmcStore();
   const [showNew, setShowNew] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const flags = useHfmcStore((s) => s.flags);
+
+  // Close the mobile drawer when route changes
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- drawer must close on every navigation
+  useEffect(() => { setDrawerOpen(false); }, [route]);
 
   const openInstr = instructions.filter((i) => i.status === "Open").length;
   const pipeline = visibleCases().filter((c) => c.caseStatus === "Active").reduce((s, c) => s + c.loanAmount, 0);
@@ -239,7 +244,115 @@ export default function Shell({ children }: { children: ReactNode }) {
     <div className="flex h-screen overflow-hidden">
       <div className="app-bg" />
 
-      <aside className="side-dark w-[228px] shrink-0 border-r flex flex-col" style={{ borderColor: "#18313b", background: "rgba(11,23,29,0.88)", backdropFilter: "blur(6px)" }}>
+      {/* Desktop sidebar — hidden on mobile */}
+      <aside className="side-dark w-[228px] shrink-0 border-r hidden md:flex flex-col" style={{ borderColor: "#18313b", background: "rgba(11,23,29,0.88)", backdropFilter: "blur(6px)" }}>
+        <SidebarContent
+          navItems={navItems} route={route} nav={nav}
+          escalations={escalations} pipeline={pipeline}
+          me={me} logout={logout}
+          openInstr={openInstr} canInstruct={canInstruct}
+        />
+      </aside>
+
+      {/* Mobile drawer */}
+      {drawerOpen && (
+        <div className="fixed inset-0 z-[90] md:hidden anim-fade-in" style={{ background: "rgba(4,12,15,0.7)", backdropFilter: "blur(3px)" }} onClick={() => setDrawerOpen(false)}>
+          <aside className="side-dark w-[260px] max-w-[80vw] h-full border-r flex flex-col anim-slide-right" style={{ borderColor: "#18313b", background: "rgba(11,23,29,0.96)" }} onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-4">
+              <div className="flex items-center gap-2.5">
+                <LogoMark size={30} />
+                <div>
+                  <div className="font-disp font-bold text-[15px] tracking-[0.04em] leading-none">HFMC</div>
+                  <div className="text-[9.5px] uppercase tracking-[0.18em] text-[var(--ink-faint)] mt-1">Mortgage · UAE</div>
+                </div>
+              </div>
+              <button className="btn btn-ghost btn-sm !px-2" onClick={() => setDrawerOpen(false)} aria-label="Close menu">✕</button>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              <SidebarContent
+                navItems={navItems} route={route} nav={nav}
+                escalations={escalations} pipeline={pipeline}
+                me={me} logout={logout}
+                openInstr={openInstr} canInstruct={canInstruct}
+                hideBranding
+              />
+            </div>
+          </aside>
+        </div>
+      )}
+
+      <div className="flex-1 flex flex-col min-w-0">
+        <header className="h-[54px] shrink-0 border-b flex items-center gap-3 px-4 md:px-5" style={{ borderColor: "var(--line-soft)", background: "color-mix(in srgb, var(--bg) 78%, transparent)", backdropFilter: "blur(6px)" }}>
+          <button className="btn btn-ghost btn-sm !px-2 md:!hidden" onClick={() => setDrawerOpen(true)} aria-label="Open menu">
+            <IMenu size={18} />
+          </button>
+          <h1 className="font-disp font-semibold text-[16px] m-0 truncate">{title}</h1>
+          {route.name === "case" && <span className="text-[12px] text-[var(--ink-faint)] hidden lg:inline">the full story of one file</span>}
+          <div className="ml-auto flex items-center gap-2 md:gap-3">
+            <Clock />
+            <ThemeToggle compact />
+            <button className="btn btn-primary btn-sm" onClick={() => setShowNew(true)}>
+              <IPlus size={14} /> <span className="hidden sm:inline">New case</span>
+            </button>
+          </div>
+        </header>
+
+        <main className="flex-1 overflow-y-auto pb-20 md:pb-0">
+          <div key={JSON.stringify(route)} className="max-w-[1240px] mx-auto px-4 md:px-5 py-4 md:py-5 anim-fade-in">
+            {children}
+          </div>
+        </main>
+      </div>
+
+      {/* Mobile bottom nav */}
+      <nav className="fixed bottom-0 left-0 right-0 z-50 md:hidden flex items-stretch border-t" style={{ borderColor: "var(--line)", background: "color-mix(in srgb, var(--raised) 92%, transparent)", backdropFilter: "blur(10px)" }}>
+        {navItems.slice(0, 5).map((n) => {
+          const active = route.name === n.route.name || (route.name === "case" && n.route.name === "dashboard");
+          return (
+            <button
+              key={n.label}
+              className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2.5 relative"
+              onClick={() => nav(n.route)}
+              style={{ color: active ? "var(--amber)" : "var(--ink-faint)" }}
+            >
+              <span className="relative">
+                <n.icon size={20} />
+                {!!n.badge && n.badge > 0 && (
+                  <span className="absolute -top-1.5 -right-2 mono text-[9px] px-1 py-px rounded-full" style={{ background: "var(--amber)", color: "#231a08", minWidth: 14, textAlign: "center" }}>
+                    {n.badge > 9 ? "9+" : n.badge}
+                  </span>
+                )}
+              </span>
+              <span className="text-[9.5px] font-disp font-medium">{n.label.split(" ")[0]}</span>
+              {active && <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-full" style={{ background: "var(--amber)" }} />}
+            </button>
+          );
+        })}
+      </nav>
+
+      <NewCaseModal open={showNew} onClose={() => setShowNew(false)} />
+      <Toaster />
+    </div>
+  );
+}
+
+function SidebarContent({
+  navItems, route, nav, escalations, pipeline, me, logout, openInstr, canInstruct, hideBranding,
+}: {
+  navItems: { label: string; route: Route; icon: (p: { size?: number; className?: string }) => ReactNode; badge?: number }[];
+  route: Route;
+  nav: (r: Route) => void;
+  escalations: number;
+  pipeline: number;
+  me: { name: string; role: string } | null;
+  logout: () => void;
+  openInstr: number;
+  canInstruct: boolean;
+  hideBranding?: boolean;
+}) {
+  return (
+    <>
+      {!hideBranding && (
         <div className="flex items-center gap-2.5 px-4 py-4">
           <LogoMark size={30} />
           <div>
@@ -247,75 +360,52 @@ export default function Shell({ children }: { children: ReactNode }) {
             <div className="text-[9.5px] uppercase tracking-[0.18em] text-[var(--ink-faint)] mt-1">Mortgage · UAE</div>
           </div>
         </div>
+      )}
 
-        <nav className="px-3 mt-2 space-y-1">
-          {navItems.map((n) => {
-            const active = route.name === n.route.name || (route.name === "case" && n.route.name === "dashboard");
-            return (
-              <button key={n.label} className={`nav-item w-full text-left ${active ? "active" : ""}`} onClick={() => nav(n.route)}>
-                <n.icon size={17} />
-                <span>{n.label}</span>
-                {!!n.badge && n.badge > 0 && (
-                  <span className="ml-auto mono text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: "rgba(242,176,76,0.18)", color: "var(--amber)", border: "1px solid rgba(242,176,76,0.4)" }}>
-                    {n.badge}
-                  </span>
-                )}
-                {n.label === "Task Queue" && openInstr > 0 && canInstruct && (
-                  <span className="ml-auto mono text-[10px] px-1.5 py-0.5 rounded" style={{ background: "rgba(87,194,234,0.15)", color: "var(--sky)" }}>{openInstr}</span>
-                )}
-              </button>
-            );
-          })}
-        </nav>
-
-        <div className="mt-auto p-3">
-          <div className="card p-3 mb-2">
-            <div className="text-[10.5px] uppercase tracking-[0.12em] text-[var(--ink-faint)] font-disp font-semibold mb-1.5">SLA breaches</div>
-            <div className="flex items-center gap-2">
-              {escalations > 0 ? <span className="dot-overdue" /> : <span className="dot-live" />}
-              <span className="font-disp font-bold text-[20px]" style={{ color: escalations > 0 ? "var(--coral)" : "var(--mint)" }}>{escalations}</span>
-              <span className="text-[11px] text-[var(--ink-faint)]">stage{escalations === 1 ? "" : "s"} past SLA</span>
-            </div>
-            <div className="mt-2 pt-2 text-[11px] text-[var(--ink-faint)]" style={{ borderTop: "1px dashed var(--line)" }}>
-              Active pipeline <span className="mono text-[var(--ink-dim)]">{fmtMoney(pipeline)}</span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2.5 px-2 py-2 rounded-lg" style={{ background: "var(--tint)" }}>
-            <Avatar name={me?.name ?? "?"} size={32} />
-            <div className="min-w-0 flex-1">
-              <div className="text-[12.5px] font-medium truncate">{me?.name}</div>
-              <div className="text-[10.5px] text-[var(--ink-faint)] truncate">{me?.role}</div>
-            </div>
-            <button className="text-[var(--ink-faint)] hover:text-[var(--coral)] transition-colors" onClick={logout} title="Sign out">
-              <ILogout size={16} />
+      <nav className="px-3 mt-2 space-y-1 flex-1">
+        {navItems.map((n) => {
+          const active = route.name === n.route.name || (route.name === "case" && n.route.name === "dashboard");
+          return (
+            <button key={n.label} className={`nav-item w-full text-left ${active ? "active" : ""}`} onClick={() => nav(n.route)}>
+              <n.icon size={17} />
+              <span>{n.label}</span>
+              {!!n.badge && n.badge > 0 && (
+                <span className="ml-auto mono text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: "rgba(242,176,76,0.18)", color: "var(--amber)", border: "1px solid rgba(242,176,76,0.4)" }}>
+                  {n.badge}
+                </span>
+              )}
+              {n.label === "Task Queue" && openInstr > 0 && canInstruct && (
+                <span className="ml-auto mono text-[10px] px-1.5 py-0.5 rounded" style={{ background: "rgba(87,194,234,0.15)", color: "var(--sky)" }}>{openInstr}</span>
+              )}
             </button>
+          );
+        })}
+      </nav>
+
+      <div className="mt-auto p-3">
+        <div className="card p-3 mb-2">
+          <div className="text-[10.5px] uppercase tracking-[0.12em] text-[var(--ink-faint)] font-disp font-semibold mb-1.5">SLA breaches</div>
+          <div className="flex items-center gap-2">
+            {escalations > 0 ? <span className="dot-overdue" /> : <span className="dot-live" />}
+            <span className="font-disp font-bold text-[20px]" style={{ color: escalations > 0 ? "var(--coral)" : "var(--mint)" }}>{escalations}</span>
+            <span className="text-[11px] text-[var(--ink-faint)]">stage{escalations === 1 ? "" : "s"} past SLA</span>
+          </div>
+          <div className="mt-2 pt-2 text-[11px] text-[var(--ink-faint)]" style={{ borderTop: "1px dashed var(--line)" }}>
+            Active pipeline <span className="mono text-[var(--ink-dim)]">{fmtMoney(pipeline)}</span>
           </div>
         </div>
-      </aside>
 
-      <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-[54px] shrink-0 border-b flex items-center gap-4 px-5" style={{ borderColor: "var(--line-soft)", background: "color-mix(in srgb, var(--bg) 78%, transparent)", backdropFilter: "blur(6px)" }}>
-          <h1 className="font-disp font-semibold text-[16px] m-0">{title}</h1>
-          {route.name === "case" && <span className="text-[12px] text-[var(--ink-faint)] hidden sm:inline">the full story of one file</span>}
-          <div className="ml-auto flex items-center gap-3">
-            <Clock />
-            <ThemeToggle compact />
-            <button className="btn btn-primary btn-sm" onClick={() => setShowNew(true)}>
-              <IPlus size={14} /> New case
-            </button>
+        <div className="flex items-center gap-2.5 px-2 py-2 rounded-lg" style={{ background: "var(--tint)" }}>
+          <Avatar name={me?.name ?? "?"} size={32} />
+          <div className="min-w-0 flex-1">
+            <div className="text-[12.5px] font-medium truncate">{me?.name}</div>
+            <div className="text-[10.5px] text-[var(--ink-faint)] truncate">{me?.role}</div>
           </div>
-        </header>
-
-        <main className="flex-1 overflow-y-auto">
-          <div key={JSON.stringify(route)} className="max-w-[1240px] mx-auto px-5 py-5 anim-fade-in">
-            {children}
-          </div>
-        </main>
+          <button className="text-[var(--ink-faint)] hover:text-[var(--coral)] transition-colors" onClick={logout} title="Sign out">
+            <ILogout size={16} />
+          </button>
+        </div>
       </div>
-
-      <NewCaseModal open={showNew} onClose={() => setShowNew(false)} />
-      <Toaster />
-    </div>
+    </>
   );
 }

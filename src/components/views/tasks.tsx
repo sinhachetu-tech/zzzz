@@ -164,20 +164,20 @@ export default function Tasks() {
               {overdue} overdue
             </Chip>
           )}
-          <div className="ml-auto flex flex-wrap items-center gap-2">
-            <div className="relative">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:ml-auto">
+            <div className="relative w-full sm:w-auto flex-1 sm:flex-initial">
               <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--ink-faint)]">
                 <ISearch size={14} />
               </span>
               <input
-                className="input !pl-8 !py-[6.5px] w-[180px]"
+                className="input !pl-8 !py-[6.5px] w-full sm:w-[180px]"
                 placeholder="Search tasks…"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
               />
             </div>
             <select
-              className="select !w-auto !py-[6.5px] text-[12.5px]"
+              className="select !w-full sm:!w-auto !py-[6.5px] text-[12.5px]"
               value={ownerF}
               onChange={(e) => setOwnerF(e.target.value)}
             >
@@ -189,7 +189,7 @@ export default function Tasks() {
               ))}
             </select>
             <select
-              className="select !w-auto !py-[6.5px] text-[12.5px]"
+              className="select !w-full sm:!w-auto !py-[6.5px] text-[12.5px]"
               value={waitingF}
               onChange={(e) => setWaitingF(e.target.value)}
             >
@@ -301,7 +301,7 @@ export default function Tasks() {
                       <td className="text-right" onClick={(e) => e.stopPropagation()}>
                         {isOpen && canEdit(t) ? (
                           <button
-                            className="btn btn-mint btn-sm"
+                            className="btn btn-mint sm:btn-sm"
                             onClick={() => setDoneTarget(t)}
                           >
                             <ICheck size={13} /> Done

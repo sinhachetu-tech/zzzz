@@ -333,12 +333,12 @@ export default function CaseDetail({ id }: { id: number }) {
               opened {fmtDate(c.createdAt)} · {ageDays(c.createdAt)}d old · stage <strong className="text-[var(--ink-dim)]">{c.stage}</strong>
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
             <WaButtons c={c} agentName={me?.name ?? ""} />
             {c.caseStatus === "Active" && (
               <>
-                <button className="btn btn-ghost btn-sm" onClick={() => setShowStage(true)}><IArrowR size={14} /> Move stage</button>
-                <button className="btn btn-primary btn-sm" onClick={() => setShowOutcome(true)}>Set outcome</button>
+                <button className="btn btn-ghost sm:btn-sm" onClick={() => setShowStage(true)}><IArrowR size={14} /> Move stage</button>
+                <button className="btn btn-primary sm:btn-sm" onClick={() => setShowOutcome(true)}>Set outcome</button>
               </>
             )}
           </div>
@@ -436,7 +436,7 @@ export default function CaseDetail({ id }: { id: number }) {
                         <p className="text-[13px] font-medium m-0">{instr.instruction}</p>
                         {instr.status === "Done" ? <Chip tone="mint">done</Chip> : <Chip tone="amber">open</Chip>}
                       </div>
-                      <div className="flex items-center gap-2 mt-1.5 text-[11.5px] text-[var(--ink-faint)]">
+                      <div className="flex flex-wrap items-center gap-2 mt-1.5 text-[11.5px] text-[var(--ink-faint)]">
                         <span>issued by {userById(instr.issuedBy)?.name.split(" ")[0]}</span>
                         <span>· assigned to <span className="text-[var(--ink-dim)]">{assignee?.name}</span></span>
                         <span>· due {fmtDate(instr.dueDate)}</span>
