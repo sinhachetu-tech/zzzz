@@ -1,0 +1,582 @@
+     1→import { useState } from "react";
+     2→import { useStore } from "../lib/store";
+     3→import type { Designation, PartnerKind, User } from "../lib/types";
+     4→import { fmtRate } from "../lib/format";
+     5→import { Avatar, Chip, Modal } from "../components/ui";
+     6→import { ConfirmModal } from "../components/bits";
+     7→import { IChevronL, IChevronR, IPencil, IPlus, ITrash, IX } from "../components/icons";
+     8→
+     9→const TABS: { key: string; label: string }[] = [
+    10→  { key: "users", label: "Teammates" },
+    11→  { key: "designations", label: "Designations" },
+    12→  { key: "banks", label: "Banks & rates" },
+    13→  { key: "partners", label: "Partners" },
+    14→  { key: "stages", label: "Stages" },
+    15→  { key: "whyPending", label: "Why pending" },
+    16→  { key: "waitingFor", label: "Waiting for" },
+    17→  { key: "sla", label: "SLA rules" },
+    18→];
+    19→
+    20→const TEAMS = ["Management", "Dubai", "Abu Dhabi"];
+    21→
+    22→export default function Admin() {
+    23→  const store = useStore();
+    24→  const { db, session } = store;
+    25→  const [tab, setTab] = useState("users");
+    26→
+    27→  if (!store.canAdmin()) {
+    28→    return (
+    29→      <div className="card p-10 text-center anim-fade-up">
+    30→        <h2 className="font-disp font-semibold text-[18px] mb-2">Admin is for designations with admin rights</h2>
+    31→        <p className="text-[13px] text-[var(--ink-dim)]">Your designation is {session?.role}. If you need a list changed, ask the Head of Company or Mortgage Head — every change lands in the activity trail.</p>
+    32→      </div>
+    33→    );
+    34→  }
+    35→
+    36→  return (
+    37→    <div className="space-y-4">
+    38→      <div className="flex flex-wrap gap-1.5">
+    39→        {TABS.map((t) => (
+    40→          <button
+    41→            key={t.key}
+    42→            className="chip transition-all"
+    43→            style={
+    44→              tab === t.key
+    45→                ? { background: "rgba(242,176,76,0.14)", borderColor: "var(--amber)", color: "var(--amber)" }
+    46→                : { background: "var(--bg2)", borderColor: "var(--line)", color: "var(--ink-faint)" }
+    47→            }
+    48→            onClick={() => setTab(t.key)}
+    49→          >
+    50→            {t.label}
+    51→          </button>
+    52→        ))}
+    53→      </div>
+    54→
+    55→      {tab === "users" && <UsersTab />}
+    56→      {tab === "designations" && <DesignationsTab />}
+    57→      {tab === "banks" && <BanksTab />}
+    58→      {tab === "partners" && <PartnersTab />}
+    59→      {tab === "sla" && <SlaTab />}
+    60→      {(tab === "stages" || tab === "whyPending" || tab === "waitingFor") && (
+    61→        <MasterTab kind={tab as "stages" | "whyPending" | "waitingFor"} />
+    62→      )}
+    63→    </div>
+    64→  );
+    65→}
+    66→
+    67→/* ---------------- users ---------------- */
+    68→
+    69→function UsersTab() {
+    70→  const { db, session, saveUser, deleteUser, toast } = useStore();
+    71→  const [editing, setEditing] = useState<User | null>(null);
+    72→  const [creating, setCreating] = useState(false);
+    73→  const [deleting, setDeleting] = useState<User | null>(null);
+    74→  const myDesig = db.designations.find((d) => d.name === session?.role);
+    75→  const isHoC = myDesig?.super === true || session?.role === "Head of Company";
+    76→
+    77→  const blank = (): User => ({
+    78→    id: 0, name: "", email: "", password: "demo123", role: "SPO", team: "Dubai", active: true, createdAt: "",
+    79→  });
+    80→
+    81→  return (
+    82→    <div className="card anim-fade-up">
+    83→      <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: "var(--line-soft)" }}>
+    84→        <h3 className="font-disp font-semibold text-[14px] m-0">Teammates · {db.users.length}</h3>
+    85→        <button className="btn btn-primary btn-sm" onClick={() => { setEditing(blank()); setCreating(true); }}>
+    86→          <IPlus size={14} /> Add teammate
+    87→        </button>
+    88→      </div>
+    89→      <div className="divide-y" style={{ borderColor: "var(--line-soft)" }}>
+    90→        {[...db.users].sort((a, b) => {
+    91→          const idx = (r: string) => { const i = db.designations.findIndex((d) => d.name === r); return i === -1 ? 99 : i; };
+    92→          return idx(a.role) - idx(b.role);
+    93→        }).map((u) => (
+    94→          <div key={u.id} className="px-4 py-3 flex flex-wrap items-center gap-3" style={{ borderColor: "var(--line-soft)", opacity: u.active ? 1 : 0.55 }}>
+    95→            <Avatar name={u.name} size={30} />
+    96→            <div className="min-w-[180px]">
+    97→              <div className="text-[13px] font-medium flex items-center gap-2">
+    98→                {u.name}
+    99→                {u.id === session?.id && <Chip tone="mint">you</Chip>}
+   100→                {!u.active && <Chip tone="coral">inactive</Chip>}
+   101→              </div>
+   102→              <div className="text-[11.5px] text-[var(--ink-faint)]">{u.email}</div>
+   103→            </div>
+   104→            <Chip tone={u.role === "Head of Company" ? "amber" : u.role === "PA to HoC" ? "sky" : u.role === "Mortgage Head" ? "amber" : u.role.startsWith("Team Leader") ? "sky" : "slate"}>{u.role}</Chip>
+   105→            <span className="text-[11.5px] text-[var(--ink-faint)]">team {u.team}</span>
+   106→            <div className="ml-auto flex gap-1.5">
+   107→              <button className="btn btn-ghost btn-sm" onClick={() => { setEditing({ ...u }); setCreating(false); }}><IPencil size={13} /> Edit</button>
+   108→              {isHoC && u.id !== session?.id && u.role !== "Head of Company" && (
+   109→                <button className="btn btn-danger btn-sm" onClick={() => setDeleting(u)}><ITrash size={13} /></button>
+   110→              )}
+   111→            </div>
+   112→          </div>
+   113→        ))}
+   114→      </div>
+   115→
+   116→      {editing && (
+   117→        <Modal title={creating ? "Add teammate" : `Edit · ${editing.name}`} onClose={() => setEditing(null)} width={460}>
+   118→          <div className="grid grid-cols-2 gap-3">
+   119→            <div className="col-span-2">
+   120→              <label className="label">Full name</label>
+   121→              <input className="input" value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
+   122→            </div>
+   123→            <div>
+   124→              <label className="label">Email</label>
+   125→              <input className="input" value={editing.email} onChange={(e) => setEditing({ ...editing, email: e.target.value })} />
+   126→            </div>
+   127→            <div>
+   128→              <label className="label">Password</label>
+   129→              <input className="input mono" value={editing.password} onChange={(e) => setEditing({ ...editing, password: e.target.value })} />
+   130→            </div>
+   131→            <div>
+   132→              <label className="label">Role</label>
+   133→              <select className="select" value={editing.role} onChange={(e) => setEditing({ ...editing, role: e.target.value })}>
+   134→                {db.designations.map((d) => <option key={d.id} value={d.name}>{d.name}</option>)}
+   135→              </select>
+   136→            </div>
+   137→            <div>
+   138→              <label className="label">Team</label>
+   139→              <select className="select" value={editing.team} onChange={(e) => setEditing({ ...editing, team: e.target.value })}>
+   140→                {TEAMS.map((t) => <option key={t}>{t}</option>)}
+   141→              </select>
+   142→            </div>
+   143→            <div className="col-span-2 flex items-center gap-2">
+   144→              <input type="checkbox" id="active" checked={editing.active} onChange={(e) => setEditing({ ...editing, active: e.target.checked })} />
+   145→              <label htmlFor="active" className="text-[12.5px] text-[var(--ink-dim)]">Active — can sign in and own cases</label>
+   146→            </div>
+   147→          </div>
+   148→          <div className="flex justify-end gap-2 mt-5">
+   149→            <button className="btn btn-ghost" onClick={() => setEditing(null)}>Cancel</button>
+   150→            <button
+   151→              className="btn btn-primary"
+   152→              onClick={() => {
+   153→                if (!editing.name.trim() || !editing.email.trim()) return toast("error", "Name and email are required.");
+   154→                if (db.users.some((x) => x.id !== editing.id && x.email.toLowerCase() === editing.email.toLowerCase()))
+   155→                  return toast("error", "That email is already taken.");
+   156→                saveUser(editing);
+   157→                toast("success", creating ? `${editing.name} added to the team.` : "Teammate updated.");
+   158→                setEditing(null);
+   159→              }}
+   160→            >
+   161→              Save
+   162→            </button>
+   163→          </div>
+   164→        </Modal>
+   165→      )}
+   166→
+   167→      <ConfirmModal
+   168→        open={!!deleting}
+   169→        onClose={() => setDeleting(null)}
+   170→        title={`Remove ${deleting?.name}?`}
+   171→        body="They'll be removed from the team. This is blocked if they still own cases or open tasks."
+   172→        confirmLabel="Remove"
+   173→        onConfirm={() => {
+   174→          if (!deleting) return;
+   175→          const err = deleteUser(deleting.id);
+   176→          if (err) toast("error", err);
+   177→          else toast("success", `${deleting.name} removed.`);
+   178→        }}
+   179→      />
+   180→    </div>
+   181→  );
+   182→}
+   183→
+   184→/* ---------------- banks & rates ---------------- */
+   185→
+   186→function BanksTab() {
+   187→  const { db, addBank, updateBankRate, toggleBank, deleteBank, toast } = useStore();
+   188→  const [name, setName] = useState("");
+   189→  const [rate, setRate] = useState("0.8");
+   190→
+   191→  return (
+   192→    <div className="card anim-fade-up">
+   193→      <div className="px-4 py-3 border-b" style={{ borderColor: "var(--line-soft)" }}>
+   194→        <h3 className="font-disp font-semibold text-[14px] m-0">Banks & commission rates</h3>
+   195→        <p className="text-[11.5px] text-[var(--ink-faint)] mt-0.5 mb-0">Our commission as % of loan amount. Every change re-computes earnings reports instantly.</p>
+   196→      </div>
+   197→
+   198→      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2.5 p-4">
+   199→        {[...db.banks].sort((a, b) => b.ratePct - a.ratePct).map((b) => (
+   200→          <div key={b.id} className="rounded-lg p-3 flex items-center gap-2.5" style={{ background: "var(--tint)", border: "1px solid var(--line-soft)", opacity: b.active ? 1 : 0.5 }}>
+   201→            <div className="min-w-0 flex-1">
+   202→              <div className="text-[13px] font-medium truncate">{b.name}</div>
+   203→              <div className="mono text-[11px]" style={{ color: b.ratePct >= 0.9 ? "var(--mint)" : "var(--ink-faint)" }}>{fmtRate(b.ratePct)} of loan amount</div>
+   204→            </div>
+   205→            <input
+   206→              className="input mono !w-[74px] !py-1 text-[12px] text-center"
+   207→              type="number"
+   208→              step={0.025}
+   209→              min={0}
+   210→              max={10}
+   211→              value={b.ratePct}
+   212→              onChange={(e) => updateBankRate(b.id, Number(e.target.value) || 0)}
+   213→            />
+   214→            <button className="btn btn-ghost btn-sm !px-2" title={b.active ? "Deactivate" : "Activate"} onClick={() => { toggleBank(b.id); toast("info", `${b.name} ${b.active ? "deactivated" : "activated"}.`); }}>
+   215→              <span className="w-2 h-2 rounded-full" style={{ background: b.active ? "var(--mint)" : "var(--ink-faint)" }} />
+   216→            </button>
+   217→            <button className="btn btn-ghost btn-sm !px-2 text-[var(--ink-faint)] hover:text-[var(--coral)]" onClick={() => {
+   218→              const err = deleteBank(b.id);
+   219→              if (err) toast("error", err);
+   220→              else toast("success", `${b.name} removed.`);
+   221→            }}>
+   222→              <ITrash size={13} />
+   223→            </button>
+   224→          </div>
+   225→        ))}
+   226→      </div>
+   227→
+   228→      <div className="flex flex-wrap items-end gap-2 px-4 py-3 border-t" style={{ borderColor: "var(--line-soft)" }}>
+   229→        <div>
+   230→          <label className="label">New bank</label>
+   231→          <input className="input" style={{ width: 170 }} placeholder="e.g. RAKBANK" value={name} onChange={(e) => setName(e.target.value)} />
+   232→        </div>
+   233→        <div>
+   234→          <label className="label">Rate %</label>
+   235→          <input className="input mono" style={{ width: 90 }} type="number" step={0.025} value={rate} onChange={(e) => setRate(e.target.value)} />
+   236→        </div>
+   237→        <button className="btn btn-primary btn-sm" onClick={() => {
+   238→          const err = addBank(name, Number(rate));
+   239→          if (err) toast("error", err);
+   240→          else { toast("success", `${name.trim()} added at ${rate}%.`); setName(""); }
+   241→        }}>
+   242→          <IPlus size={13} /> Add bank
+   243→        </button>
+   244→      </div>
+   245→    </div>
+   246→  );
+   247→}
+   248→
+   249→/* ---------------- partners ---------------- */
+   250→
+   251→function PartnersTab() {
+   252→  const { db, addPartner, updatePartnerShare, togglePartner, deletePartner, toast } = useStore();
+   253→  const [kind, setKind] = useState<PartnerKind>("Agent");
+   254→  const [name, setName] = useState("");
+   255→  const [share, setShare] = useState("20");
+   256→  const [filter, setFilter] = useState<"All" | PartnerKind>("All");
+   257→
+   258→  const list = db.partners.filter((p) => filter === "All" || p.kind === filter);
+   259→
+   260→  return (
+   261→    <div className="card anim-fade-up">
+   262→      <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b" style={{ borderColor: "var(--line-soft)" }}>
+   263→        <div>
+   264→          <h3 className="font-disp font-semibold text-[14px] m-0">Agents, brokers & referrers</h3>
+   265→          <p className="text-[11.5px] text-[var(--ink-faint)] mt-0.5 mb-0">Names offered when a case is sourced through them. Their payout = share × our bank commission.</p>
+   266→        </div>
+   267→        <div className="ml-auto flex gap-1.5">
+   268→          {(["All", "Agent", "Broker", "Referral"] as const).map((k) => (
+   269→            <button key={k} className="chip transition-all" onClick={() => setFilter(k)} style={filter === k ? { background: "rgba(242,176,76,0.14)", borderColor: "var(--amber)", color: "var(--amber)" } : { background: "var(--bg2)", borderColor: "var(--line)", color: "var(--ink-faint)" }}>
+   270→              {k}
+   271→            </button>
+   272→          ))}
+   273→        </div>
+   274→      </div>
+   275→
+   276→      <div className="divide-y" style={{ borderColor: "var(--line-soft)" }}>
+   277→        {list.map((p) => {
+   278→          const casesWith = db.cases.filter((c) => c.partner?.name === p.name).length;
+   279→          return (
+   280→            <div key={p.id} className="px-4 py-3 flex flex-wrap items-center gap-3" style={{ borderColor: "var(--line-soft)", opacity: p.active ? 1 : 0.5 }}>
+   281→              <Avatar name={p.name} size={28} />
+   282→              <div className="min-w-[170px]">
+   283→                <div className="text-[13px] font-medium">{p.name}</div>
+   284→                <div className="text-[11px] text-[var(--ink-faint)]">{casesWith} case{casesWith === 1 ? "" : "s"} sourced</div>
+   285→              </div>
+   286→              <Chip tone={p.kind === "Agent" ? "amber" : p.kind === "Broker" ? "sky" : "coral"}>{p.kind}</Chip>
+   287→              <span className="text-[11.5px] text-[var(--ink-faint)]">default share</span>
+   288→              <input
+   289→                className="input mono !w-[70px] !py-1 text-[12px] text-center"
+   290→                type="number"
+   291→                min={1}
+   292→                max={100}
+   293→                value={p.defaultSharePct}
+   294→                onChange={(e) => updatePartnerShare(p.id, Math.max(1, Math.min(100, Number(e.target.value) || 1)))}
+   295→              />
+   296→              <span className="mono text-[11.5px] text-[var(--ink-faint)]">%</span>
+   297→              <div className="ml-auto flex gap-1.5">
+   298→                <button className="btn btn-ghost btn-sm !px-2" title={p.active ? "Deactivate" : "Activate"} onClick={() => togglePartner(p.id)}>
+   299→                  <span className="w-2 h-2 rounded-full" style={{ background: p.active ? "var(--mint)" : "var(--ink-faint)" }} />
+   300→                </button>
+   301→                <button className="btn btn-ghost btn-sm !px-2 text-[var(--ink-faint)] hover:text-[var(--coral)]" onClick={() => {
+   302→                  const err = deletePartner(p.id);
+   303→                  if (err) toast("error", err);
+   304→                  else toast("success", `${p.name} removed.`);
+   305→                }}>
+   306→                  <ITrash size={13} />
+   307→                </button>
+   308→              </div>
+   309→            </div>
+   310→          );
+   311→        })}
+   312→        {list.length === 0 && <p className="text-[12.5px] text-[var(--ink-faint)] p-4 m-0">No {filter === "All" ? "partners" : filter.toLowerCase() + "s"} yet.</p>}
+   313→      </div>
+   314→
+   315→      <div className="flex flex-wrap items-end gap-2 px-4 py-3 border-t" style={{ borderColor: "var(--line-soft)" }}>
+   316→        <div>
+   317→          <label className="label">Kind</label>
+   318→          <select className="select" style={{ width: 110 }} value={kind} onChange={(e) => setKind(e.target.value as PartnerKind)}>
+   319→            <option>Agent</option>
+   320→            <option>Broker</option>
+   321→            <option>Referral</option>
+   322→          </select>
+   323→        </div>
+   324→        <div>
+   325→          <label className="label">Name</label>
+   326→          <input className="input" style={{ width: 190 }} placeholder={kind === "Referral" ? "e.g. Nasser Al Mansoori" : `e.g. ${kind} name`} value={name} onChange={(e) => setName(e.target.value)} />
+   327→        </div>
+   328→        <div>
+   329→          <label className="label">Default share %</label>
+   330→          <input className="input mono" style={{ width: 90 }} type="number" min={1} max={100} value={share} onChange={(e) => setShare(e.target.value)} />
+   331→        </div>
+   332→        <button className="btn btn-primary btn-sm" onClick={() => {
+   333→          const err = addPartner(kind, name, Number(share));
+   334→          if (err) toast("error", err);
+   335→          else { toast("success", `${name.trim()} added as ${kind.toLowerCase()} @ ${share}%.`); setName(""); }
+   336→        }}>
+   337→          <IPlus size={13} /> Add {kind.toLowerCase()}
+   338→        </button>
+   339→      </div>
+   340→    </div>
+   341→  );
+   342→}
+   343→
+   344→/* ---------------- generic master list ---------------- */
+   345→
+   346→function MasterTab({ kind }: { kind: "stages" | "whyPending" | "waitingFor" }) {
+   347→  const { db, addMaster, toggleMaster, deleteMaster, moveStage, toast } = useStore();
+   348→  const [label, setLabel] = useState("");
+   349→  const title = kind === "stages" ? "Workflow stages" : kind === "whyPending" ? "Why pending reasons" : "Waiting-for types";
+   350→  const items = kind === "stages" ? [...db.stages].sort((a, b) => a.sortOrder - b.sortOrder) : db[kind];
+   351→
+   352→  return (
+   353→    <div className="card anim-fade-up">
+   354→      <div className="px-4 py-3 border-b" style={{ borderColor: "var(--line-soft)" }}>
+   355→        <h3 className="font-disp font-semibold text-[14px] m-0">{title}</h3>
+   356→        <p className="text-[11.5px] text-[var(--ink-faint)] mt-0.5 mb-0">
+   357→          {kind === "stages" ? "Ordered left-to-right on every Case 360. Deactivated stages disappear from pickers." : "Used across the task engine and reports. Deactivated items stop appearing in dropdowns."}
+   358→        </p>
+   359→      </div>
+   360→      <div className="divide-y" style={{ borderColor: "var(--line-soft)" }}>
+   361→        {items.map((m) => (
+   362→          <div key={m.id} className="px-4 py-2.5 flex items-center gap-3" style={{ borderColor: "var(--line-soft)", opacity: m.active ? 1 : 0.5 }}>
+   363→            {kind === "stages" && (
+   364→              <>
+   365→                <span className="mono text-[11px] text-[var(--ink-faint)] w-6">{kind === "stages" ? (m as unknown as { sortOrder: number }).sortOrder : ""}</span>
+   366→                <button className="btn btn-ghost btn-sm !px-1.5 !py-1" onClick={() => moveStage(m.id, -1)}><IChevronL size={13} /></button>
+   367→                <button className="btn btn-ghost btn-sm !px-1.5 !py-1" onClick={() => moveStage(m.id, 1)}><IChevronR size={13} /></button>
+   368→              </>
+   369→            )}
+   370→            <span className="text-[13px] flex-1">{m.label}</span>
+   371→            <button className="btn btn-ghost btn-sm !px-2" title={m.active ? "Deactivate" : "Activate"} onClick={() => toggleMaster(kind, m.id)}>
+   372→              <span className="w-2 h-2 rounded-full" style={{ background: m.active ? "var(--mint)" : "var(--ink-faint)" }} />
+   373→            </button>
+   374→            <button className="btn btn-ghost btn-sm !px-2 text-[var(--ink-faint)] hover:text-[var(--coral)]" onClick={() => {
+   375→              const err = deleteMaster(kind, m.id);
+   376→              if (err) toast("error", err);
+   377→              else toast("success", `"${m.label}" deleted.`);
+   378→            }}>
+   379→              <IX size={13} />
+   380→            </button>
+   381→          </div>
+   382→        ))}
+   383→      </div>
+   384→      <div className="flex items-end gap-2 px-4 py-3 border-t" style={{ borderColor: "var(--line-soft)" }}>
+   385→        <div className="flex-1">
+   386→          <label className="label">New label</label>
+   387→          <input className="input" placeholder="e.g. Awaiting NOC from developer" value={label} onChange={(e) => setLabel(e.target.value)} onKeyDown={(e) => {
+   388→            if (e.key === "Enter") {
+   389→              const err = addMaster(kind, label);
+   390→              if (err) toast("error", err);
+   391→              else { toast("success", `"${label.trim()}" added.`); setLabel(""); }
+   392→            }
+   393→          }} />
+   394→        </div>
+   395→        <button className="btn btn-primary btn-sm" onClick={() => {
+   396→          const err = addMaster(kind, label);
+   397→          if (err) toast("error", err);
+   398→          else { toast("success", `"${label.trim()}" added.`); setLabel(""); }
+   399→        }}>
+   400→          <IPlus size={13} /> Add
+   401→        </button>
+   402→      </div>
+   403→    </div>
+   404→  );
+   405→}
+   406→
+   407→/* ---------------- SLA rules ---------------- */
+   408→
+   409→function SlaTab() {
+   410→  const { db, saveSla, toggleSla, deleteSla, toast } = useStore();
+   411→  const stages = [...db.stages].filter((s) => s.label !== "Closure" && s.label !== "Closed").sort((a, b) => a.sortOrder - b.sortOrder);
+   412→  const [stage, setStage] = useState(stages[0]?.label ?? "");
+   413→  const [bank, setBank] = useState("All");
+   414→  const [days, setDays] = useState("5");
+   415→
+   416→  return (
+   417→    <div className="card anim-fade-up">
+   418→      <div className="px-4 py-3 border-b" style={{ borderColor: "var(--line-soft)" }}>
+   419→        <h3 className="font-disp font-semibold text-[14px] m-0">SLA rules</h3>
+   420→        <p className="text-[11.5px] text-[var(--ink-faint)] mt-0.5 mb-0">Max days a case may sit in a stage before it escalates. Bank-specific rules override the default.</p>
+   421→      </div>
+   422→      <div className="divide-y" style={{ borderColor: "var(--line-soft)" }}>
+   423→        {[...db.slaRules].sort((a, b) => a.stage.localeCompare(b.stage)).map((r) => (
+   424→          <div key={r.id} className="px-4 py-2.5 flex items-center gap-3" style={{ borderColor: "var(--line-soft)", opacity: r.active ? 1 : 0.5 }}>
+   425→            <Chip tone="slate">{r.stage}</Chip>
+   426→            {r.bank ? <Chip tone="sky">{r.bank}</Chip> : <span className="text-[11.5px] text-[var(--ink-faint)]">all banks</span>}
+   427→            <span className="ml-auto text-[12.5px] text-[var(--ink-dim)]">max</span>
+   428→            <input
+   429→              className="input mono !w-[64px] !py-1 text-[12px] text-center"
+   430→              type="number"
+   431→              min={1}
+   432→              value={r.maxDays}
+   433→              onChange={(e) => saveSla({ ...r, maxDays: Math.max(1, Number(e.target.value) || 1) })}
+   434→            />
+   435→            <span className="text-[12px] text-[var(--ink-faint)]">days</span>
+   436→            <button className="btn btn-ghost btn-sm !px-2" title={r.active ? "Deactivate" : "Activate"} onClick={() => toggleSla(r.id)}>
+   437→              <span className="w-2 h-2 rounded-full" style={{ background: r.active ? "var(--mint)" : "var(--ink-faint)" }} />
+   438→            </button>
+   439→            <button className="btn btn-ghost btn-sm !px-2 text-[var(--ink-faint)] hover:text-[var(--coral)]" onClick={() => { deleteSla(r.id); toast("info", "SLA rule removed."); }}>
+   440→              <IX size={13} />
+   441→            </button>
+   442→          </div>
+   443→        ))}
+   444→        {db.slaRules.length === 0 && <p className="text-[12.5px] text-[var(--ink-faint)] p-4 m-0">No SLA rules — nothing will escalate.</p>}
+   445→      </div>
+   446→      <div className="flex flex-wrap items-end gap-2 px-4 py-3 border-t" style={{ borderColor: "var(--line-soft)" }}>
+   447→        <div>
+   448→          <label className="label">Stage</label>
+   449→          <select className="select" style={{ width: 170 }} value={stage} onChange={(e) => setStage(e.target.value)}>
+   450→            {stages.map((s) => <option key={s.id}>{s.label}</option>)}
+   451→          </select>
+   452→        </div>
+   453→        <div>
+   454→          <label className="label">Bank override</label>
+   455→          <select className="select" style={{ width: 140 }} value={bank} onChange={(e) => setBank(e.target.value)}>
+   456→            <option>All</option>
+   457→            {db.banks.map((b) => <option key={b.id}>{b.name}</option>)}
+   458→          </select>
+   459→        </div>
+   460→        <div>
+   461→          <label className="label">Max days</label>
+   462→          <input className="input mono" style={{ width: 80 }} type="number" min={1} value={days} onChange={(e) => setDays(e.target.value)} />
+   463→        </div>
+   464→        <button className="btn btn-primary btn-sm" onClick={() => {
+   465→          const d = Number(days);
+   466→          if (!d || d < 1) return toast("error", "Enter a valid number of days.");
+   467→          saveSla({ stage, bank: bank === "All" ? null : bank, maxDays: d, active: true });
+   468→          toast("success", `SLA saved: ${stage} · ${bank === "All" ? "all banks" : bank} · ${d}d.`);
+   469→        }}>
+   470→          <IPlus size={13} /> Add rule
+   471→        </button>
+   472→      </div>
+   473→    </div>
+   474→  );
+   475→}
+   476→
+   477→/* ---------------- designations ---------------- */
+   478→
+   479→function DesignationsTab() {
+   480→  const { db, addDesignation, updateDesignation, deleteDesignation, toast } = useStore();
+   481→  const [name, setName] = useState("");
+   482→  const [deleting, setDeleting] = useState<Designation | null>(null);
+   483→
+   484→  const FlagToggle = ({ on, label, onClick, locked }: { on: boolean; label: string; onClick: () => void; locked?: boolean }) => (
+   485→    <button
+   486→      type="button"
+   487→      className="chip transition-all"
+   488→      title={locked ? "Locked for this designation" : undefined}
+   489→      style={
+   490→        on
+   491→          ? { background: "rgba(67,214,155,0.12)", borderColor: "rgba(67,214,155,0.5)", color: "var(--mint)" }
+   492→          : { background: "var(--bg2)", borderColor: "var(--line)", color: "var(--ink-faint)" }
+   493→      }
+   494→      onClick={() => !locked && onClick()}
+   495→    >
+   496→      {label}
+   497→    </button>
+   498→  );
+   499→
+   500→  return (
+   501→    <div className="card anim-fade-up">
+   502→      <div className="px-4 py-3 border-b" style={{ borderColor: "var(--line-soft)" }}>
+   503→        <h3 className="font-disp font-semibold text-[14px] m-0">Designations & permissions</h3>
+   504→        <p className="text-[11.5px] text-[var(--ink-faint)] mt-0.5 mb-0">
+   505→          Create your own designations beyond SPO / VRM. Scope decides what each holder sees: all cases, their team's, or only their own book.
+   506→        </p>
+   507→      </div>
+   508→      <div className="divide-y" style={{ borderColor: "var(--line-soft)" }}>
+   509→        {db.designations.map((d) => {
+   510→          const holders = db.users.filter((u) => u.role === d.name).length;
+   511→          return (
+   512→            <div key={d.id} className="px-4 py-3 flex flex-wrap items-center gap-2.5" style={{ borderColor: "var(--line-soft)" }}>
+   513→              {d.builtIn ? (
+   514→                <span className="text-[13px] font-medium min-w-[150px]">{d.name}</span>
+   515→              ) : (
+   516→                <input
+   517→                  className="input"
+   518→                  style={{ width: 170, padding: "5px 9px" }}
+   519→                  value={d.name}
+   520→                  onChange={(e) => updateDesignation(d.id, { name: e.target.value })}
+   521→                />
+   522→              )}
+   523→              {d.super && <Chip tone="amber">supreme</Chip>}
+   524→              {d.builtIn && <Chip tone="slate">built-in</Chip>}
+   525→              <select
+   526→                className="select"
+   527→                style={{ width: 130 }}
+   528→                value={d.scope}
+   529→                disabled={d.super}
+   530→                onChange={(e) => updateDesignation(d.id, { scope: e.target.value as Designation["scope"] })}
+   531→              >
+   532→                <option value="all">sees all</option>
+   533→                <option value="team">sees team</option>
+   534→                <option value="own">own book</option>
+   535→              </select>
+   536→              <FlagToggle on={d.issueTasks} label="can issue tasks" locked={d.super} onClick={() => updateDesignation(d.id, { issueTasks: !d.issueTasks })} />
+   537→              <FlagToggle on={d.admin} label="admin console" locked={d.super} onClick={() => updateDesignation(d.id, { admin: !d.admin })} />
+   538→              <span className="text-[11.5px] text-[var(--ink-faint)]">{holders} holder{holders === 1 ? "" : "s"}</span>
+   539→              {!d.builtIn && (
+   540→                <button className="btn btn-danger btn-sm ml-auto" onClick={() => setDeleting(d)}>
+   541→                  <ITrash size={13} />
+   542→                </button>
+   543→              )}
+   544→            </div>
+   545→          );
+   546→        })}
+   547→      </div>
+   548→      <div className="flex flex-wrap items-end gap-2 px-4 py-3 border-t" style={{ borderColor: "var(--line-soft)" }}>
+   549→        <div>
+   550→          <label className="label">New designation</label>
+   551→          <input className="input" style={{ width: 220 }} placeholder="e.g. Documents Officer" value={name} onChange={(e) => setName(e.target.value)} />
+   552→        </div>
+   553→        <button
+   554→          className="btn btn-primary btn-sm"
+   555→          onClick={() => {
+   556→            const err = addDesignation(name);
+   557→            if (err) return toast("error", err);
+   558→            toast("success", `Designation "${name.trim()}" created — set its scope and permissions above.`);
+   559→            setName("");
+   560→          }}
+   561→        >
+   562→          <IPlus size={13} /> Add designation
+   563→        </button>
+   564→      </div>
+   565→
+   566→      <ConfirmModal
+   567→        open={!!deleting}
+   568→        onClose={() => setDeleting(null)}
+   569→        title={`Delete "${deleting?.name}"?`}
+   570→        body="Only designations with no holders can be deleted."
+   571→        confirmLabel="Delete"
+   572→        onConfirm={() => {
+   573→          if (!deleting) return;
+   574→          const err = deleteDesignation(deleting.id);
+   575→          if (err) toast("error", err);
+   576→          else toast("info", `Designation "${deleting.name}" deleted.`);
+   577→        }}
+   578→      />
+   579→    </div>
+   580→  );
+   581→}
+   582→

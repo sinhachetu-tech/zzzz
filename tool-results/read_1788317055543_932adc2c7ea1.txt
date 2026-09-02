@@ -1,0 +1,613 @@
+     1→     1→import { useMemo, useState } from "react";
+     2→     2→import { bulletinCanAct, bulletinCanDelete, bulletinCanManage, bulletinVisible, flagsFor, useStore } from "../lib/store";
+     3→     3→import type { BulletinItem, Reply } from "../lib/types";
+     4→     4→import { daysBetween, downloadCSV, fmtDate, relTime, todayISO } from "../lib/format";
+     5→     5→import { Avatar, Chip, EmptyState } from "../components/ui";
+     6→     6→import { ConfirmModal } from "../components/bits";
+     7→     7→import { IArrowR, ICalendar, ICheck, IDownload, IFlag, IHistory, IInbox, IPlus, ITrash, IX } from "../components/icons";
+     8→     8→
+     9→     9→/* ---------------- shared bits ---------------- */
+    10→    10→
+    11→    11→function ReplyThread({ replies, onSend }: { replies: Reply[]; onSend: (text: string) => void }) {
+    12→    12→  const { userById } = useStore();
+    13→    13→  const [draft, setDraft] = useState("");
+    14→    14→  const send = () => {
+    15→    15→    if (!draft.trim()) return;
+    16→    16→    onSend(draft);
+    17→    17→    setDraft("");
+    18→    18→  };
+    19→    19→  return (
+    20→    20→    <div className="mt-3 space-y-2">
+    21→    21→      {replies.map((r) => (
+    22→    22→        <div key={r.id} className="flex items-start gap-2 anim-fade-in">
+    23→    23→          <Avatar name={userById(r.userId)?.name ?? "?"} size={22} />
+    24→    24→          <div className="min-w-0 flex-1 rounded-lg px-3 py-2" style={{ background: "var(--tint)", border: "1px solid var(--line-soft)" }}>
+    25→    25→            <div className="flex items-baseline gap-2">
+    26→    26→              <span className="text-[12px] font-semibold">{userById(r.userId)?.name ?? "—"}</span>
+    27→    27→              <span className="mono text-[10px] text-[var(--ink-faint)]">{relTime(r.at)}</span>
+    28→    28→            </div>
+    29→    29→            <p className="text-[12.5px] text-[var(--ink-dim)] m-0 mt-0.5 leading-snug">{r.text}</p>
+    30→    30→          </div>
+    31→    31→        </div>
+    32→    32→      ))}
+    33→    33→      <div className="flex items-center gap-2">
+    34→    34→        <input
+    35→    35→          className="input"
+    36→    36→          style={{ flex: 1 }}
+    37→    37→          placeholder="Reply… (press Enter)"
+    38→    38→          value={draft}
+    39→    39→          onChange={(e) => setDraft(e.target.value)}
+    40→    40→          onKeyDown={(e) => e.key === "Enter" && send()}
+    41→    41→        />
+    42→    42→        <button className="btn btn-ghost btn-sm shrink-0" onClick={send} disabled={!draft.trim()}>
+    43→    43→          Send
+    44→    44→        </button>
+    45→    45→      </div>
+    46→    46→    </div>
+    47→    47→  );
+    48→    48→}
+    49→    49→
+    50→    50→function StatusPill({ b }: { b: BulletinItem }) {
+    51→    51→  const today = todayISO();
+    52→    52→  if (b.dropped) return <Chip tone="slate">dropped</Chip>;
+    53→    53→  if (b.status === "Done") return <Chip tone="mint">done</Chip>;
+    54→    54→  if (b.date < today) return <Chip tone="coral">missed</Chip>;
+    55→    55→  return <Chip tone="amber">open</Chip>;
+    56→    56→}
+    57→    57→
+    58→    58→function DirectiveCard({ b, dense = false }: { b: BulletinItem; dense?: boolean }) {
+    59→    59→  const { db, session, nav, userById, completeBulletin, replyToBulletin, carryBulletin, dropBulletin, toast } = useStore();
+    60→    60→  const [showThread, setShowThread] = useState(b.replies.length > 0);
+    61→    61→  const [confirmDrop, setConfirmDrop] = useState(false);
+    62→    62→  const me = session;
+    63→    63→  if (!me) return null;
+    64→    64→
+    65→    65→  const today = todayISO();
+    66→    66→  const canAct = bulletinCanAct(b, me, db) && b.status === "Open" && !b.dropped;
+    67→    67→  const canManage = bulletinCanManage(b, me, db);
+    68→    68→  const linkedCase = b.caseId ? db.cases.find((c) => c.id === b.caseId) : null;
+    69→    69→  const openCaseTask = linkedCase && linkedCase.caseStatus === "Active" ? db.tasks.find((t) => t.caseId === linkedCase.id && t.status === "Open") : null;
+    70→    70→  const issuer = userById(b.issuedBy);
+    71→    71→  const doneBy = b.completedBy != null ? userById(b.completedBy) : null;
+    72→    72→  const missed = b.date < today && b.status === "Open" && !b.dropped;
+    73→    73→
+    74→    74→  const edge = b.dropped ? "var(--line)" : missed ? "var(--coral)" : b.status === "Done" ? "var(--mint)" : "var(--amber)";
+    75→    75→
+    76→    76→  return (
+    77→    77→    <div className="card card-hover p-4 anim-fade-up" style={{ borderLeft: `3px solid ${edge}`, opacity: b.status === "Done" || b.dropped ? 0.7 : 1 }}>
+    78→    78→      <div className="flex items-start gap-3">
+    79→    79→        <Avatar name={issuer?.name ?? "?"} size={32} />
+    80→    80→        <div className="min-w-0 flex-1">
+    81→    81→          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+    82→    82→            <span className="font-disp font-semibold text-[13.5px]">{issuer?.name ?? "—"}</span>
+    83→    83→            <span className="text-[11px] text-[var(--ink-faint)]">{issuer?.role}</span>
+    84→    84→            <span className="mono text-[10.5px] text-[var(--ink-faint)]">· {fmtDate(b.date)} · {relTime(b.createdAt)}</span>
+    85→    85→          </div>
+    86→    86→          <p className={`text-[14px] leading-relaxed mt-1 mb-1.5 ${b.status === "Done" || b.dropped ? "line-through text-[var(--ink-faint)]" : ""}`}>{b.task}</p>
+    87→    87→
+    88→    88→          <div className="flex flex-wrap items-center gap-1.5">
+    89→    89→            <StatusPill b={b} />
+    90→    90→            {b.carriedFrom && <Chip tone="sky">carried from {fmtDate(b.carriedFrom)}</Chip>}
+    91→    91→            {b.templateId && !b.isTemplate && <Chip tone="slate">routine</Chip>}
+    92→    92→            {linkedCase && (
+    93→    93→              <button className="chip transition-colors hover:opacity-80" style={{ background: "var(--tint)", borderColor: "var(--line)", color: "var(--ink-dim)", cursor: "pointer" }} onClick={() => nav({ name: "case", id: linkedCase.id })}>
+    94→    94→                <span className="mono" style={{ color: "var(--amber)" }}>{linkedCase.caseNumber}</span> {linkedCase.customer}
+    95→    95→              </button>
+    96→    96→            )}
+    97→    97→            {linkedCase && linkedCase.caseStatus !== "Active" && <Chip tone="slate">case {linkedCase.caseStatus === "Closed" ? "booked" : "lost"}</Chip>}
+    98→    98→            <span className="text-[10.5px] uppercase tracking-[0.08em] text-[var(--ink-faint)] font-disp font-semibold ml-1">to</span>
+    99→    99→            {b.targets.map((t) => (
+   100→   100→              <span key={t} className="text-[11.5px] text-[var(--ink-dim)]">{userById(t)?.name.split(" ")[0] ?? "?"}</span>
+   101→   101→            ))}
+   102→   102→          </div>
+   103→   103→
+   104→   104→          {b.status === "Done" && b.completedAt && (
+   105→   105→            <p className="text-[11px] mt-1.5 mb-0" style={{ color: "var(--mint)" }}>
+   106→   106→              ✓ {doneBy ? `done by ${doneBy.name}` : "resolved automatically"} · {relTime(b.completedAt)}
+   107→   107→            </p>
+   108→   108→          )}
+   109→   109→        </div>
+   110→   110→
+   111→   111→        {/* actions */}
+   112→   112→        {!dense && (
+   113→   113→          <div className="flex flex-col items-end gap-1.5 shrink-0">
+   114→   114→            {canAct && (
+   115→   115→              <>
+   116→   116→                <button
+   117→   117→                  className="btn btn-mint btn-sm"
+   118→   118→                  onClick={() => {
+   119→   119→                    completeBulletin(b.id);
+   120→   120→                    toast("success", "Directive marked done.");
+   121→   121→                  }}
+   122→   122→                >
+   123→   123→                  <ICheck size={13} /> Done
+   124→   124→                </button>
+   125→   125→                {openCaseTask && (
+   126→   126→                  <button
+   127→   127→                    className="btn btn-ghost btn-sm"
+   128→   128→                    title={`Also closes the case task: ${openCaseTask.description}`}
+   129→   129→                    onClick={() => {
+   130→   130→                      completeBulletin(b.id, { alsoTaskDone: true });
+   131→   131→                      toast("success", `Done — case task closed too (“${openCaseTask.description}”).`);
+   132→   132→                    }}
+   133→   133→                  >
+   134→   134→                    <ICheck size={13} /> Done + close case task
+   135→   135→                  </button>
+   136→   136→                )}
+   137→   137→              </>
+   138→   138→            )}
+   139→   139→            <button className="btn btn-ghost btn-sm" onClick={() => setShowThread((s) => !s)}>
+   140→   140→              Reply {b.replies.length > 0 && <span className="mono">({b.replies.length})</span>}
+   141→   141→            </button>
+   142→   142→            {canManage && missed && (
+   143→   143→              <>
+   144→   144→                <button
+   145→   145→                  className="btn btn-primary btn-sm"
+   146→   146→                  onClick={() => {
+   147→   147→                    carryBulletin(b.id);
+   148→   148→                    toast("info", "Carried to today's bulletin.");
+   149→   149→                  }}
+   150→   150→                >
+   151→   151→                  <IArrowR size={13} /> Carry to today
+   152→   152→                </button>
+   153→   153→                <button className="btn btn-ghost btn-sm" onClick={() => setConfirmDrop(true)}>
+   154→   154→                  <IX size={13} /> Drop
+   155→   155→                </button>
+   156→   156→              </>
+   157→   157→            )}
+   158→   158→          </div>
+   159→   159→        )}
+   160→   160→      </div>
+   161→   161→
+   162→   162→      {showThread && !dense && (
+   163→   163→        <div className="pl-[44px]">
+   164→   164→          <ReplyThread replies={b.replies} onSend={(t) => replyToBulletin(b.id, t)} />
+   165→   165→        </div>
+   166→   166→      )}
+   167→   167→
+   168→   168→      <ConfirmModal
+   169→   169→        open={confirmDrop}
+   170→   170→        onClose={() => setConfirmDrop(false)}
+   171→   171→        title="Drop this directive?"
+   172→   172→        body={<span>It will be closed as <strong>dropped</strong> — kept in the archive for the record, but it won't count as missed any more.</span>}
+   173→   173→        confirmLabel="Drop it"
+   174→   174→        onConfirm={() => {
+   175→   175→          dropBulletin(b.id);
+   176→   176→          toast("info", "Directive dropped.");
+   177→   177→        }}
+   178→   178→      />
+   179→   179→    </div>
+   180→   180→  );
+   181→   181→}
+   182→   182→
+   183→   183→/* ---------------- composer ---------------- */
+   184→   184→
+   185→   185→function Composer({ onIssued }: { onIssued: () => void }) {
+   186→   186→  const { db, session, issueBulletin, toast, visibleCases } = useStore();
+   187→   187→  const me = session!;
+   188→   188→  const f = flagsFor(db.designations, me.role);
+   189→   189→  const teamUsers = db.users.filter((u) => u.active && u.id !== me.id && (f.scope === "all" || u.team === me.team));
+   190→   190→  const [text, setText] = useState("");
+   191→   191→  const [targets, setTargets] = useState<number[]>(teamUsers.map((u) => u.id));
+   192→   192→  const [caseId, setCaseId] = useState<number | null>(null);
+   193→   193→  const [repeat, setRepeat] = useState<"none" | "daily" | "weekdays">("none");
+   194→   194→  const cases = visibleCases().filter((c) => c.caseStatus === "Active");
+   195→   195→
+   196→   196→  const toggle = (id: number) => setTargets((t) => (t.includes(id) ? t.filter((x) => x !== id) : [...t, id]));
+   197→   197→
+   198→   198→  const issue = () => {
+   199→   199→    if (!text.trim()) return toast("error", "Write the directive first.");
+   200→   200→    if (targets.length === 0) return toast("error", "Pick at least one teammate.");
+   201→   201→    issueBulletin({ date: todayISO(), task: text, caseId, targets, repeat, asTemplate: repeat !== "none" });
+   202→   202→    toast("success", repeat === "none" ? "Directive issued for today." : `Routine saved — issued today and every ${repeat === "daily" ? "day" : "working day (Mon–Fri)"}.`);
+   203→   203→    setText("");
+   204→   204→    setCaseId(null);
+   205→   205→    setRepeat("none");
+   206→   206→    onIssued();
+   207→   207→  };
+   208→   208→
+   209→   209→  return (
+   210→   210→    <div className="card p-4 anim-fade-up" style={{ borderColor: "var(--amber-line)" }}>
+   211→   211→      <div className="flex items-center gap-2 mb-3">
+   212→   212→        <IFlag size={15} className="text-[var(--amber)]" />
+   213→   213→        <h2 className="font-disp font-semibold text-[14px] m-0">Issue a directive</h2>
+   214→   214→        <span className="text-[11.5px] text-[var(--ink-faint)] ml-auto hidden sm:inline">lands on your team's morning bulletin</span>
+   215→   215→      </div>
+   216→   216→      <textarea
+   217→   217→        className="textarea"
+   218→   218→        rows={2}
+   219→   219→        autoFocus
+   220→   220→        placeholder="e.g. Every file stuck in Pre-Approval more than 5 days gets an RM call before noon — report back here."
+   221→   221→        value={text}
+   222→   222→        onChange={(e) => setText(e.target.value)}
+   223→   223→      />
+   224→   224→      <div className="flex flex-wrap items-center gap-2 mt-3">
+   225→   225→        <select className="select" style={{ width: 210 }} value={caseId ?? ""} onChange={(e) => setCaseId(e.target.value ? parseInt(e.target.value, 10) : null)}>
+   226→   226→          <option value="">General — no case link</option>
+   227→   227→          {cases.map((c) => (
+   228→   228→            <option key={c.id} value={c.id}>
+   229→   229→              {c.caseNumber} · {c.customer}
+   230→   230→            </option>
+   231→   231→          ))}
+   232→   232→        </select>
+   233→   233→        <select className="select" style={{ width: 190 }} value={repeat} onChange={(e) => setRepeat(e.target.value as typeof repeat)}>
+   234→   234→          <option value="none">One-off (today only)</option>
+   235→   235→          <option value="daily">Repeat · every day</option>
+   236→   236→          <option value="weekdays">Repeat · Mon–Fri</option>
+   237→   237→        </select>
+   238→   238→        <div className="flex items-center gap-1.5 ml-auto">
+   239→   239→          <span className="text-[11px] uppercase tracking-[0.08em] text-[var(--ink-faint)] font-disp font-semibold">to</span>
+   240→   240→          {teamUsers.map((u) => (
+   241→   241→            <button
+   242→   242→              key={u.id}
+   243→   243→              className="chip transition-all"
+   244→   244→              style={
+   245→   245→                targets.includes(u.id)
+   246→   246→                  ? { background: "var(--amber-tint)", borderColor: "var(--amber)", color: "var(--amber)" }
+   247→   247→                  : { background: "var(--bg2)", borderColor: "var(--line)", color: "var(--ink-faint)" }
+   248→   248→              }
+   249→   249→              onClick={() => toggle(u.id)}
+   250→   250→            >
+   251→   251→              {u.name.split(" ")[0]}
+   252→   252→            </button>
+   253→   253→          ))}
+   254→   254→        </div>
+   255→   255→      </div>
+   256→   256→      <div className="flex items-center justify-between mt-3">
+   257→   257→        <p className="text-[11px] text-[var(--ink-faint)] m-0">
+   258→   258→          Case-linked directives auto-resolve when the case is booked or lost. Routines spawn a fresh item each morning.
+   259→   259→        </p>
+   260→   260→        <button className="btn btn-primary btn-sm shrink-0" onClick={issue}>
+   261→   261→          <IPlus size={13} /> Issue{repeat !== "none" ? " routine" : ""}
+   262→   262→        </button>
+   263→   263→      </div>
+   264→   264→    </div>
+   265→   265→  );
+   266→   266→}
+   267→   267→
+   268→   268→/* ---------------- scoreboard ---------------- */
+   269→   269→
+   270→   270→function Scoreboard({ items }: { items: BulletinItem[] }) {
+   271→   271→  const { db, userById } = useStore();
+   272→   272→  const rows = useMemo(() => {
+   273→   273→    const map = new Map<number, { done: number; total: number }>();
+   274→   274→    for (const b of items) {
+   275→   275→      if (b.isTemplate || b.dropped) continue;
+   276→   276→      for (const t of b.targets) {
+   277→   277→        const cur = map.get(t) ?? { done: 0, total: 0 };
+   278→   278→        cur.total += 1;
+   279→   279→        if (b.status === "Done") cur.done += 1;
+   280→   280→        map.set(t, cur);
+   281→   281→      }
+   282→   282→    }
+   283→   283→    return [...map.entries()]
+   284→   284→      .map(([id, v]) => ({ id, name: userById(id)?.name ?? "?", ...v }))
+   285→   285→      .sort((a, b) => b.total - a.total);
+   286→   286→  }, [items, userById]);
+   287→   287→
+   288→   288→  if (rows.length === 0) return null;
+   289→   289→  return (
+   290→   290→    <div className="card p-4 anim-fade-up">
+   291→   291→      <h3 className="font-disp font-semibold text-[13.5px] m-0 mb-1">Team pulse · today</h3>
+   292→   292→      <p className="text-[11px] text-[var(--ink-faint)] m-0 mb-3">directives cleared per teammate</p>
+   293→   293→      <div className="space-y-2.5">
+   294→   294→        {rows.map((r) => {
+   295→   295→          const pct = r.total ? (r.done / r.total) * 100 : 0;
+   296→   296→          const clean = r.done === r.total && r.total > 0;
+   297→   297→          return (
+   298→   298→            <div key={r.id} className="flex items-center gap-2.5">
+   299→   299→              <Avatar name={r.name} size={24} />
+   300→   300→              <div className="flex-1 min-w-0">
+   301→   301→                <div className="flex justify-between items-baseline mb-0.5">
+   302→   302→                  <span className="text-[12px] truncate">{r.name}</span>
+   303→   303→                  <span className="mono text-[11px]" style={{ color: clean ? "var(--mint)" : pct < 50 ? "var(--coral)" : "var(--ink-dim)" }}>
+   304→   304→                    {r.done}/{r.total}
+   305→   305→                  </span>
+   306→   306→                </div>
+   307→   307→                <div className="h-[5px] rounded-full overflow-hidden" style={{ background: "var(--track)" }}>
+   308→   308→                  <div className="h-full rounded-full" style={{ width: `${pct}%`, background: clean ? "var(--mint)" : pct < 50 ? "var(--coral)" : "var(--amber)", transition: "width 0.7s cubic-bezier(0.22,1,0.36,1)" }} />
+   309→   309→                </div>
+   310→   310→              </div>
+   311→   311→            </div>
+   312→   312→          );
+   313→   313→        })}
+   314→   314→      </div>
+   315→   315→    </div>
+   316→   316→  );
+   317→   317→}
+   318→   318→
+   319→   319→/* ---------------- main view ---------------- */
+   320→   320→
+   321→   321→type Tab = "today" | "missed" | "archive";
+   322→   322→
+   323→   323→export default function Bulletin() {
+   324→   324→  const { db, session, userById, deleteBulletin, canInstruct, toast } = useStore();
+   325→   325→  const me = session;
+   326→   326→  const [tab, setTab] = useState<Tab>("today");
+   327→   327→  const [deleting, setDeleting] = useState<BulletinItem | null>(null);
+   328→   328→  const [showComposer, setShowComposer] = useState(true);
+   329→   329→
+   330→   330→  const today = todayISO();
+   331→   331→  const manager = canInstruct();
+   332→   332→
+   333→   333→  const visible = useMemo(
+   334→   334→    () => (me ? db.bulletin.filter((b) => !b.isTemplate && bulletinVisible(b, me, db)) : []),
+   335→   335→    [db, me]
+   336→   336→  );
+   337→   337→  const todayItems = visible
+   338→   338→    .filter((b) => b.date === today)
+   339→   339→    .sort((a, b) => (a.status === b.status ? a.createdAt.localeCompare(b.createdAt) : a.status === "Open" ? -1 : 1));
+   340→   340→  const missedItems = visible
+   341→   341→    .filter((b) => b.date < today && b.status === "Open" && !b.dropped)
+   342→   342→    .sort((a, b) => b.date.localeCompare(a.date));
+   343→   343→  const archiveItems = visible
+   344→   344→    .filter((b) => b.date < today || b.dropped || (b.date === today && b.status === "Done"))
+   345→   345→    .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
+   346→   346→  const templates = useMemo(
+   347→   347→    () => (me ? db.bulletin.filter((b) => b.isTemplate && (bulletinCanManage(b, me, db) || bulletinVisible(b, me, db))) : []),
+   348→   348→    [db, me]
+   349→   349→  );
+   350→   350→
+   351→   351→  if (!me) return null;
+   352→   352→
+   353→   353→  const archiveGroups = new Map<string, BulletinItem[]>();
+   354→   354→  for (const b of archiveItems) {
+   355→   355→    const list = archiveGroups.get(b.date) ?? [];
+   356→   356→    list.push(b);
+   357→   357→    archiveGroups.set(b.date, list);
+   358→   358→  }
+   359→   359→  const groupDates = [...archiveGroups.keys()].sort((a, b) => b.localeCompare(a));
+   360→   360→
+   361→   361→  const exportArchive = () => {
+   362→   362→    downloadCSV(
+   363→   363→      "directive-archive.csv",
+   364→   364→      ["Date", "Task", "Issued by", "Role", "Targets", "Case", "Status", "Completed"],
+   365→   365→      archiveItems.map((b) => [
+   366→   366→        b.date,
+   367→   367→        b.task,
+   368→   368→        userById(b.issuedBy)?.name ?? "",
+   369→   369→        userById(b.issuedBy)?.role ?? "",
+   370→   370→        b.targets.map((t) => userById(t)?.name ?? "").join("; "),
+   371→   371→        b.caseId ? db.cases.find((c) => c.id === b.caseId)?.caseNumber ?? "" : "",
+   372→   372→        b.dropped ? "Dropped" : b.status,
+   373→   373→        b.completedAt ? relTime(b.completedAt) : "",
+   374→   374→      ])
+   375→   375→    );
+   376→   376→    toast("success", "Archive exported to CSV.");
+   377→   377→  };
+   378→   378→
+   379→   379→  const tabs: { key: Tab; label: string; count: number; alert?: boolean }[] = [
+   380→   380→    { key: "today", label: "Today", count: todayItems.filter((b) => b.status === "Open" && !b.dropped).length },
+   381→   381→    { key: "missed", label: "Missed", count: missedItems.length, alert: missedItems.length > 0 },
+   382→   382→    { key: "archive", label: "Archive", count: archiveItems.length },
+   383→   383→  ];
+   384→   384→
+   385→   385→  return (
+   386→   386→    <div className="space-y-4">
+   387→   387→      <div className="flex flex-wrap items-end justify-between gap-3">
+   388→   388→        <div>
+   389→   389→          <h1 className="font-disp font-bold text-[24px] tracking-tight m-0 flex items-center gap-2.5">
+   390→   390→            <IFlag size={22} className="text-[var(--amber)]" /> Morning Bulletin
+   391→   391→          </h1>
+   392→   392→          <p className="text-[13px] text-[var(--ink-dim)] mt-0.5 mb-0">
+   393→   393→            Directives for {new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })} · issue once, the team answers with Done or a reply
+   394→   394→          </p>
+   395→   395→        </div>
+   396→   396→        {manager && (
+   397→   397→          <button className="btn btn-ghost btn-sm" onClick={() => setShowComposer((s) => !s)}>
+   398→   398→            <IPlus size={14} /> {showComposer ? "Hide composer" : "Issue directive"}
+   399→   399→          </button>
+   400→   400→        )}
+   401→   401→      </div>
+   402→   402→
+   403→   403→      {manager && showComposer && <Composer onIssued={() => setTab("today")} />}
+   404→   404→
+   405→   405→      <div className="flex items-center gap-2">
+   406→   406→        {tabs.map((t) => (
+   407→   407→          <button
+   408→   408→            key={t.key}
+   409→   409→            className="chip transition-all"
+   410→   410→            style={
+   411→   411→              tab === t.key
+   412→   412→                ? t.alert
+   413→   413→                  ? { background: "color-mix(in srgb, var(--coral) 14%, transparent)", borderColor: "var(--coral)", color: "var(--coral)" }
+   414→   414→                  : { background: "var(--amber-tint)", borderColor: "var(--amber)", color: "var(--amber)" }
+   415→   415→                : { background: "var(--bg2)", borderColor: "var(--line)", color: "var(--ink-faint)" }
+   416→   416→            }
+   417→   417→            onClick={() => setTab(t.key)}
+   418→   418→          >
+   419→   419→            {t.label}
+   420→   420→            <span className="mono font-semibold">{t.count}</span>
+   421→   421→          </button>
+   422→   422→        ))}
+   423→   423→        {tab === "archive" && archiveItems.length > 0 && (
+   424→   424→          <button className="btn btn-ghost btn-sm ml-auto" onClick={exportArchive}>
+   425→   425→            <IDownload size={13} /> Export CSV
+   426→   426→          </button>
+   427→   427→        )}
+   428→   428→      </div>
+   429→   429→
+   430→   430→      {tab === "today" && (
+   431→   431→        <div className="grid grid-cols-1 xl:grid-cols-[1fr_300px] gap-4 items-start">
+   432→   432→          <div className="space-y-3">
+   433→   433→            {todayItems.length === 0 ? (
+   434→   434→              <div className="card p-8">
+   435→   435→                <EmptyState
+   436→   436→                  icon={<IInbox size={26} />}
+   437→   437→                  title="Nothing on today's bulletin"
+   438→   438→                  body={manager ? "Issue the first directive of the day above — it lands on your team's feed instantly." : "No directives addressed to you today. Enjoy the calm."}
+   439→   439→                />
+   440→   440→              </div>
+   441→   441→            ) : (
+   442→   442→              todayItems.map((b) => <DirectiveCard key={b.id} b={b} />)
+   443→   443→            )}
+   444→   444→          </div>
+   445→   445→          {manager && <Scoreboard items={todayItems} />}
+   446→   446→        </div>
+   447→   447→      )}
+   448→   448→
+   449→   449→      {tab === "missed" && (
+   450→   450→        <div className="space-y-3">
+   451→   451→          {missedItems.length === 0 ? (
+   452→   452→            <div className="card p-8">
+   453→   453→              <EmptyState
+   454→   454→                icon={<ICheck size={26} />}
+   455→   455→                title="Nothing slipped through"
+   456→   456→                body="Every past directive was either completed, carried forward, or dropped. That's the loop working."
+   457→   457→              />
+   458→   458→            </div>
+   459→   459→          ) : (
+   460→   460→            <>
+   461→   461→              <div className="card px-4 py-3 text-[13px] anim-fade-up" style={{ borderColor: "color-mix(in srgb, var(--coral) 40%, transparent)" }}>
+   462→   462→                <strong style={{ color: "var(--coral)" }}>{missedItems.length} directive{missedItems.length === 1 ? "" : "s"}</strong>{" "}
+   463→   463→                <span className="text-[var(--ink-dim)]">
+   464→   464→                  went past their day unfinished. Carry them forward to today's bulletin — or drop them and keep the record clean.
+   465→   465→                </span>
+   466→   466→              </div>
+   467→   467→              {missedItems.map((b) => (
+   468→   468→                <DirectiveCard key={b.id} b={b} />
+   469→   469→              ))}
+   470→   470→            </>
+   471→   471→          )}
+   472→   472→        </div>
+   473→   473→      )}
+   474→   474→
+   475→   475→      {tab === "archive" && (
+   476→   476→        <div className="space-y-4">
+   477→   477→          {templates.length > 0 && (
+   478→   478→            <div className="card anim-fade-up">
+   479→   479→              <div className="px-4 py-3 border-b flex items-center gap-2" style={{ borderColor: "var(--line-soft)" }}>
+   480→   480→                <ICalendar size={14} className="text-[var(--amber)]" />
+   481→   481→                <h3 className="font-disp font-semibold text-[13.5px] m-0">Recurring routines</h3>
+   482→   482→                <span className="text-[11px] text-[var(--ink-faint)] ml-auto">spawn a fresh item every working morning</span>
+   483→   483→              </div>
+   484→   484→              <div className="divide-y" style={{ borderColor: "var(--line-soft)" }}>
+   485→   485→                {templates.map((t) => (
+   486→   486→                  <div key={t.id} className="px-4 py-3 flex flex-wrap items-center gap-2.5" style={{ borderColor: "var(--line-soft)" }}>
+   487→   487→                    <Chip tone="amber">{t.repeat === "daily" ? "daily" : "Mon–Fri"}</Chip>
+   488→   488→                    <span className="text-[13px] flex-1 min-w-[220px] truncate">{t.task}</span>
+   489→   489→                    <span className="text-[11px] text-[var(--ink-faint)]">
+   490→   490→                      by {userById(t.issuedBy)?.name ?? "—"} · since {fmtDate(t.date)} · to {t.targets.map((x) => userById(x)?.name.split(" ")[0] ?? "?").join(", ")}
+   491→   491→                    </span>
+   492→   492→                    {bulletinCanDelete(t, me, db) && (
+   493→   493→                      <button className="btn btn-danger btn-sm" onClick={() => setDeleting(t)}>
+   494→   494→                        <ITrash size={13} /> Retire
+   495→   495→                      </button>
+   496→   496→                    )}
+   497→   497→                  </div>
+   498→   498→                ))}
+   499→   499→              </div>
+   500→   500→            </div>
+   501→   501→          )}
+   502→   502→
+   503→   503→          {groupDates.length === 0 ? (
+   504→   504→            <div className="card p-8">
+   505→   505→              <EmptyState icon={<IHistory size={26} />} title="Archive is empty" body="Completed, carried, dropped and auto-resolved directives collect here, date by date." />
+   506→   506→            </div>
+   507→   507→          ) : (
+   508→   508→            groupDates.map((date) => {
+   509→   509→              const items = archiveGroups.get(date)!;
+   510→   510→              const daysAgo = daysBetween(date, today);
+   511→   511→              return (
+   512→   512→                <div key={date}>
+   513→   513→                  <div className="flex items-baseline gap-2.5 px-1 mb-2">
+   514→   514→                    <span className="font-disp font-semibold text-[13px]">{daysAgo === 1 ? "Yesterday" : fmtDate(date)}</span>
+   515→   515→                    <span className="mono text-[10.5px] text-[var(--ink-faint)]">{daysAgo}d ago</span>
+   516→   516→                    <span className="text-[11px] text-[var(--ink-faint)]">
+   517→   517→                      {items.filter((i) => i.status === "Done" && !i.dropped).length} done · {items.filter((i) => i.dropped).length} dropped
+   518→   518→                    </span>
+   519→   519→                    <span className="flex-1 h-px" style={{ background: "var(--line-soft)" }} />
+   520→   520→                  </div>
+   521→   521→                  <div className="space-y-2.5">
+   522→   522→                    {items.map((b) => (
+   523→   523→                      <ArchiveRow key={b.id} b={b} onDelete={() => bulletinCanDelete(b, me, db) && setDeleting(b)} canDelete={bulletinCanDelete(b, me, db)} />
+   524→   524→                    ))}
+   525→   525→                  </div>
+   526→   526→                </div>
+   527→   527→              );
+   528→   528→            })
+   529→   529→          )}
+   530→   530→        </div>
+   531→   531→      )}
+   532→   532→
+   533→   533→      <ConfirmModal
+   534→   534→        open={!!deleting}
+   535→   535→        onClose={() => setDeleting(null)}
+   536→   536→        title={deleting?.isTemplate ? "Retire this routine?" : "Delete this archive entry?"}
+   537→   537→        body={
+   538→   538→          deleting?.isTemplate ? (
+   539→   539→            <span>The routine stops spawning future items. <strong>Past instances stay in the archive</strong> as the record.</span>
+   540→   540→          ) : (
+   541→   541→            <span>Removes the directive and its replies from the archive permanently.</span>
+   542→   542→          )
+   543→   543→        }
+   544→   544→        confirmLabel={deleting?.isTemplate ? "Retire routine" : "Delete"}
+   545→   545→        onConfirm={() => {
+   546→   546→          if (!deleting) return;
+   547→   547→          deleteBulletin(deleting.id);
+   548→   548→          toast("info", deleting.isTemplate ? "Routine retired — no more spawns." : "Archive entry deleted.");
+   549→   549→        }}
+   550→   550→      />
+   551→   551→    </div>
+   552→   552→  );
+   553→   553→}
+   554→   554→
+   555→   555→function ArchiveRow({ b, onDelete, canDelete }: { b: BulletinItem; onDelete: () => void; canDelete: boolean }) {
+   556→   556→  const { db, session, nav, userById } = useStore();
+   557→   557→  const me = session;
+   558→   558→  const [showThread, setShowThread] = useState(false);
+   559→   559→  if (!me) return null;
+   560→   560→  const issuer = userById(b.issuedBy);
+   561→   561→  const linkedCase = b.caseId ? db.cases.find((c) => c.id === b.caseId) : null;
+   562→   562→  return (
+   563→   563→    <div className="card p-3.5 anim-fade-up" style={{ opacity: 0.85, borderLeft: `3px solid ${b.dropped ? "var(--line)" : "var(--mint)"}` }}>
+   564→   564→      <div className="flex items-start gap-3">
+   565→   565→        <Avatar name={issuer?.name ?? "?"} size={26} />
+   566→   566→        <div className="min-w-0 flex-1">
+   567→   567→          <div className="flex flex-wrap items-baseline gap-x-2">
+   568→   568→            <span className="font-disp font-semibold text-[12.5px]">{issuer?.name ?? "—"}</span>
+   569→   569→            <span className="mono text-[10.5px] text-[var(--ink-faint)]">{relTime(b.createdAt)}</span>
+   570→   570→            <StatusPill b={b} />
+   571→   571→            {b.carriedFrom && <Chip tone="sky">carried from {fmtDate(b.carriedFrom)}</Chip>}
+   572→   572→            {linkedCase && (
+   573→   573→              <button className="chip transition-colors hover:opacity-80" style={{ background: "var(--tint)", borderColor: "var(--line)", color: "var(--ink-dim)", cursor: "pointer" }} onClick={() => nav({ name: "case", id: linkedCase.id })}>
+   574→   574→                <span className="mono" style={{ color: "var(--amber)" }}>{linkedCase.caseNumber}</span>
+   575→   575→              </button>
+   576→   576→            )}
+   577→   577→          </div>
+   578→   578→          <p className="text-[13px] text-[var(--ink-dim)] m-0 mt-1 leading-snug">{b.task}</p>
+   579→   579→          <p className="text-[11px] text-[var(--ink-faint)] m-0 mt-0.5">
+   580→   580→            to {b.targets.map((t) => userById(t)?.name.split(" ")[0] ?? "?").join(", ")}
+   581→   581→            {b.status === "Done" && b.completedAt && ` · done ${relTime(b.completedAt)}${b.completedBy ? ` by ${userById(b.completedBy)?.name ?? ""}` : " (auto)"}`}
+   582→   582→          </p>
+   583→   583→        </div>
+   584→   584→        <div className="flex items-center gap-1.5 shrink-0">
+   585→   585→          {b.replies.length > 0 && (
+   586→   586→            <button className="btn btn-ghost btn-sm" onClick={() => setShowThread((s) => !s)}>
+   587→   587→              Replies ({b.replies.length})
+   588→   588→            </button>
+   589→   589→          )}
+   590→   590→          {canDelete && (
+   591→   591→            <button className="btn btn-ghost btn-sm" onClick={onDelete} title="Delete from archive">
+   592→   592→              <ITrash size={13} />
+   593→   593→            </button>
+   594→   594→          )}
+   595→   595→        </div>
+   596→   596→      </div>
+   597→   597→      {showThread && (
+   598→   598→        <div className="pl-[38px] mt-2 space-y-2">
+   599→   599→          {b.replies.map((rp) => (
+   600→   600→            <div key={rp.id} className="rounded-lg px-3 py-2 anim-fade-in" style={{ background: "var(--tint)", border: "1px solid var(--line-soft)" }}>
+   601→   601→              <div className="flex items-baseline gap-2">
+   602→   602→                <span className="text-[12px] font-semibold">{userById(rp.userId)?.name ?? "—"}</span>
+   603→   603→                <span className="mono text-[10px] text-[var(--ink-faint)]">{relTime(rp.at)}</span>
+   604→   604→              </div>
+   605→   605→              <p className="text-[12.5px] text-[var(--ink-dim)] m-0 mt-0.5">{rp.text}</p>
+   606→   606→            </div>
+   607→   607→          ))}
+   608→   608→        </div>
+   609→   609→      )}
+   610→   610→    </div>
+   611→   611→  );
+   612→   612→}
+   613→   613→

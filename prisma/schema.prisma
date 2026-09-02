@@ -1,0 +1,252 @@
+// HFMC — Mortgage Case Tracker. Relational schema (an upgrade from the
+// original single-JSON-blob model acknowledged in the source as a future step).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  name      String
+  password  String
+  role      String // designation label, e.g. "Mortgage Head"
+  team      String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  ownedCases      LoanCase[]      @relation("CaseOwner")
+  createdTasks    Task[]          @relation("TaskCreator")
+  assignedTasks   Task[]          @relation("TaskAssignee")
+  activities      Activity[]
+  issuedInstructions Instruction[] @relation("InstrIssuer")
+  assignedInstructions Instruction[] @relation("InstrAssignee")
+  issuedBulletins  BulletinItem[]  @relation("BulletinIssuer")
+  bulletins        BulletinTarget[]
+  bulletinReplies  Reply[]         @relation("ReplyUser")
+  instructionReplies InstrReply[]  @relation("InstrReplyUser")
+  affordabilityChecks AffordabilityCheck[]
+  sessions         Session[]
+}
+
+model Designation {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  scope     String   // "all" | "team" | "own"
+  issueTasks Boolean @default(false)
+  admin     Boolean  @default(false)
+  super     Boolean  @default(false)
+  builtIn  Boolean  @default(false)
+}
+
+model LoanCase {
+  id          Int      @id @default(autoincrement())
+  caseNumber  String   @unique
+  customer    String
+  banks       String   @default("[]") // JSON array of bank names
+  wonBank     String?
+  loanAmount  Int
+  stage       String
+  caseStatus  String   @default("Active") // Active | Closed | Lost
+  closedDate  String?
+  ownerId     Int
+  source      String   @default("Direct") // Direct | Agent | Broker | Website | Referral
+  partnerKind String?  // Agent | Broker | Referral
+  partnerName String?
+  partnerSharePct Int?
+  whatsapp    String   @default("")
+  waGroup     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  owner      User      @relation("CaseOwner", fields: [ownerId], references: [id])
+  tasks      Task[]
+  activities Activity[]
+  instructions Instruction[]
+  bulletins  BulletinItem[]
+}
+
+model Task {
+  id          Int      @id @default(autoincrement())
+  caseId      Int
+  description String
+  ownerId     Int
+  createdBy   Int
+  waitingFor  String
+  whyPending  String
+  createdAt   DateTime @default(now())
+  dueDate     String
+  status      String   @default("Open") // Open | Done
+  completedAt DateTime?
+  remarks     String   @default("")
+
+  case     LoanCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  owner    User     @relation("TaskAssignee", fields: [ownerId], references: [id])
+  creator  User     @relation("TaskCreator", fields: [createdBy], references: [id])
+}
+
+model Activity {
+  id        Int      @id @default(autoincrement())
+  caseId    Int
+  userId    Int
+  at        DateTime @default(now())
+  action    String
+  oldValue  String?
+  newValue  String?
+
+  case LoanCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  user User     @relation(fields: [userId], references: [id])
+}
+
+model Instruction {
+  id          Int      @id @default(autoincrement())
+  caseId      Int
+  issuedBy    Int
+  instruction String
+  assignedTo  Int
+  dueDate     String
+  status      String   @default("Open")
+  createdAt   DateTime @default(now())
+  completedAt DateTime?
+
+  case     LoanCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  issuer   User     @relation("InstrIssuer", fields: [issuedBy], references: [id])
+  assignee User     @relation("InstrAssignee", fields: [assignedTo], references: [id])
+  replies  InstrReply[]
+}
+
+model InstrReply {
+  id            Int      @id @default(autoincrement())
+  instructionId Int
+  userId        Int
+  text          String
+  at            DateTime @default(now())
+
+  instruction Instruction @relation(fields: [instructionId], references: [id], onDelete: Cascade)
+  user        User         @relation("InstrReplyUser", fields: [userId], references: [id])
+}
+
+model BulletinItem {
+  id           Int      @id @default(autoincrement())
+  date         String   // ISO date this directive belongs to
+  issuedBy     Int
+  task         String
+  caseId       Int?
+  status       String   @default("Open")
+  completedAt  DateTime?
+  completedBy  Int?
+  createdAt    DateTime @default(now())
+  carriedFrom  String?
+  dropped      Boolean  @default(false)
+  templateId   Int?
+  isTemplate   Boolean  @default(false)
+  repeat       String?  // none | daily | weekdays
+
+  issuer    User             @relation("BulletinIssuer", fields: [issuedBy], references: [id])
+  targets   BulletinTarget[]
+  replies   Reply[]
+  case      LoanCase?        @relation(fields: [caseId], references: [id])
+}
+
+model BulletinTarget {
+  id          Int @id @default(autoincrement())
+  bulletinId  Int
+  userId      Int
+
+  bulletin BulletinItem @relation(fields: [bulletinId], references: [id], onDelete: Cascade)
+  user     User          @relation(fields: [userId], references: [id])
+}
+
+model Reply {
+  id          Int      @id @default(autoincrement())
+  bulletinId  Int
+  userId      Int
+  text        String
+  at          DateTime @default(now())
+
+  bulletin BulletinItem @relation(fields: [bulletinId], references: [id], onDelete: Cascade)
+  user     User          @relation("ReplyUser", fields: [userId], references: [id])
+}
+
+model StageItem {
+  id        Int      @id @default(autoincrement())
+  label     String   @unique
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+}
+
+model MasterItem {
+  id        Int      @id @default(autoincrement())
+  kind      String   // "whyPending" | "waitingFor"
+  label     String
+  active    Boolean  @default(true)
+
+  @@unique([kind, label])
+}
+
+model BankItem {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  ratePct   Float    @default(0)
+  active    Boolean  @default(true)
+}
+
+model PartnerItem {
+  id                Int      @id @default(autoincrement())
+  kind              String   // Agent | Broker | Referral
+  name              String
+  defaultSharePct   Int      @default(20)
+  active            Boolean  @default(true)
+
+  @@unique([kind, name])
+}
+
+model SlaRule {
+  id        Int      @id @default(autoincrement())
+  stage     String
+  bank      String? // null = all banks
+  maxDays   Int
+  active    Boolean  @default(true)
+}
+
+model AffordabilityCheck {
+  id               Int      @id @default(autoincrement())
+  caseId           Int?
+  customerName     String
+  monthlyIncome    Int
+  otherIncome      Int      @default(0)
+  existingEmis     Int      @default(0)
+  age              Int
+  employmentType   String   // Salaried | Self-Employed
+  propertyValue    Int
+  bank             String
+  interestRate     Float?
+  tenureYears     Int?
+  applicableLtv    Float
+  maxLoanByLtv     Int
+  maxDbrPct        Float
+  availableDbrEmi  Int
+  maxLoanByDbr     Int
+  maxTenureByAge   Int
+  finalEligibleLoan Int
+  estimatedEmi     Int
+  eligible         Boolean
+  createdBy        Int
+  createdAt        DateTime @default(now())
+  payload          String?  // JSON snapshot of full mortgage input
+
+  creator User @relation(fields: [createdBy], references: [id])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    Int
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  user      User     @relation(fields: [userId], references: [id])
+}

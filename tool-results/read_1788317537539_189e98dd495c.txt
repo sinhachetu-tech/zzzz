@@ -1,0 +1,502 @@
+     1→     1→import { useEffect, useMemo, useState } from "react";
+     2→     2→import type { ReactNode } from "react";
+     3→     3→import { useStore } from "../lib/store";
+     4→     4→import type { AffordabilityCheck } from "../lib/types";
+     5→     5→import {
+     6→     6→  CO_SOURCES, FREQUENCIES, LIAB_METHODS, LIAB_TYPES, LTV_CHOICES, SALARIED_SOURCES, SE_SOURCES,
+     7→     7→  cloneInput, computeMortgage, defaultInput, defaultLtvPct, emiFor, fmtAED, fmtPct, incomeMonthly, liabilityEmi,
+     8→     8→  newIncomeRow, newLiabRow, scenarioCardNewLimit, scenarioCardsPct, scenarioIncomePct,
+     9→     9→  scenarioIncomeRemove, scenarioRate, scenarioRemoveCards, scenarioRemoveLiab, scenarioTenor, tenorLabel,
+    10→    10→} from "../lib/mortgage";
+    11→    11→import type { CoBorrower, Frequency, IncomeRow, LiabRow, MortgageInput, MortgageResult } from "../lib/mortgage";
+    12→    12→import { generateMortgagePdf } from "../lib/pdf";
+    13→    13→import type { PdfScenarioTable } from "../lib/pdf";
+    14→    14→import { relTime } from "../lib/format";
+    15→    15→import { Avatar, Chip } from "../components/ui";
+    16→    16→import { ConfirmModal } from "../components/bits";
+    17→    17→import { useCountUp } from "../components/charts";
+    18→    18→import { IArrowR, ICalc, IDownload, IEye, IPlus, ITrash, IX } from "../components/icons";
+    19→    19→
+    20→    20→/* ---------- small building blocks ---------- */
+    21→    21→
+    22→    22→function Section({ num, title, hint, children }: { num: string; title: string; hint?: string; children: ReactNode }) {
+    23→    23→  return (
+    24→    24→    <section className="card p-4 sm:p-5 anim-fade-up">
+    25→    25→      <div className="flex items-baseline gap-3 mb-3.5">
+    26→    26→        <span className="mono text-[11px] font-semibold px-1.5 py-0.5 rounded" style={{ background: "var(--amber-tint)", color: "var(--amber)" }}>{num}</span>
+    27→    27→        <h2 className="font-disp font-semibold text-[15px] m-0">{title}</h2>
+    28→    28→        {hint && <span className="text-[11.5px] text-[var(--ink-faint)] ml-auto hidden sm:inline">{hint}</span>}
+    29→    29→      </div>
+    30→    30→      {children}
+    31→    31→    </section>
+    32→    32→  );
+    33→    33→}
+    34→    34→
+    35→    35→function ToggleChips({ options, value, onChange }: { options: string[]; value: string; onChange: (v: string) => void }) {
+    36→    36→  return (
+    37→    37→    <div className="flex rounded-lg overflow-hidden border" style={{ borderColor: "var(--line)" }}>
+    38→    38→      {options.map((o) => (
+    39→    39→        <button
+    40→    40→          key={o}
+    41→    41→          type="button"
+    42→    42→          className="flex-1 px-2 py-1.5 text-[12px] font-disp font-semibold transition-all"
+    43→    43→          style={value === o ? { background: "var(--amber-tint)", color: "var(--amber)" } : { color: "var(--ink-faint)", background: "transparent" }}
+    44→    44→          onClick={() => onChange(o)}
+    45→    45→        >
+    46→    46→          {o}
+    47→    47→        </button>
+    48→    48→      ))}
+    49→    49→    </div>
+    50→    50→  );
+    51→    51→}
+    52→    52→
+    53→    53→const NumIn = ({ value, onChange, min = 0, step = 1000, placeholder }: { value: number; onChange: (n: number) => void; min?: number; step?: number; placeholder?: string }) => (
+    54→    54→  <input className="input mono" type="number" min={min} step={step} value={Number.isFinite(value) ? value : ""} placeholder={placeholder}
+    55→    55→    onChange={(e) => onChange(e.target.value === "" ? 0 : Number(e.target.value))} />
+    56→    56→);
+    57→    57→
+    58→    58→function Stat({ label, value, tone }: { label: string; value: string; tone?: string }) {
+    59→    59→  return (
+    60→    60→    <div>
+    61→    61→      <div className="text-[10.5px] uppercase tracking-[0.1em] text-[var(--ink-faint)] font-disp font-semibold">{label}</div>
+    62→    62→      <div className="mono text-[13.5px] font-medium" style={tone ? { color: tone } : undefined}>{value}</div>
+    63→    63→    </div>
+    64→    64→  );
+    65→    65→}
+    66→    66→
+    67→    67→/* migrate saved payloads from older shapes so reloading a historic check never crashes */
+    68→    68→function normalizeInput(raw: Partial<MortgageInput>): MortgageInput {
+    69→    69→  const base = defaultInput();
+    70→    70→  const co = raw.coBorrower as
+    71→    71→    | (Partial<CoBorrower> & { existingEmis?: number })
+    72→    72→    | null
+    73→    73→    | undefined;
+    74→    74→  const coBorrower: CoBorrower | null = co
+    75→    75→    ? {
+    76→    76→        name: co.name ?? "",
+    77→    77→        dob: co.dob ?? "1992-01-15",
+    78→    78→        incomes: Array.isArray(co.incomes) ? co.incomes : [newIncomeRow()],
+    79→    79→        liabilities: Array.isArray(co.liabilities)
+    80→    80→          ? co.liabilities
+    81→    81→          : co.existingEmis
+    82→    82→          ? [{ ...newLiabRow("Other Loan"), name: "Carried-over EMIs", method: "Manual", monthlyEmi: co.existingEmis }]
+    83→    83→          : [],
+    84→    84→      }
+    85→    85→    : null;
+    86→    86→  return {
+    87→    87→    ...base,
+    88→    88→    ...raw,
+    89→    89→    customLtv: typeof raw.customLtv === "string" ? raw.customLtv : "",
+    90→    90→    coBorrower,
+    91→    91→    incomes: Array.isArray(raw.incomes) && raw.incomes.length ? raw.incomes : base.incomes,
+    92→    92→    liabilities: Array.isArray(raw.liabilities) ? raw.liabilities : [],
+    93→    93→  } as MortgageInput;
+    94→    94→}
+    95→    95→
+    96→    96→/* ---------- main view ---------- */
+    97→    97→
+    98→    98→type WhifTab = "liab" | "rate" | "tenor" | "income";
+    99→    99→
+   100→   100→export default function Calculator() {
+   101→   101→  const { db, session, nav, toast, userById, saveMortgageCheck, createCaseFromCheck, linkCheckToCase } = useStore();
+   102→   102→  const [input, setInput] = useState<MortgageInput>(defaultInput);
+   103→   103→  const [savedId, setSavedId] = useState<number | null>(null);
+   104→   104→  const [confirmCase, setConfirmCase] = useState(false);
+   105→   105→  const [preview, setPreview] = useState<{ input: MortgageInput; res: MortgageResult; tables: PdfScenarioTable[]; by: string; obs: string } | null>(null);
+   106→   106→  const [whif, setWhif] = useState<WhifTab>("liab");
+   107→   107→  const [cardId, setCardId] = useState("");
+   108→   108→  const [cardLimit, setCardLimit] = useState("");
+   109→   109→  const [manualRate, setManualRate] = useState("");
+   110→   110→  const [manualTenor, setManualTenor] = useState("");
+   111→   111→  const [extraIncome, setExtraIncome] = useState("");
+   112→   112→  const [clientMode, setClientMode] = useState<"trial" | "existing">("trial");
+   113→   113→  const [existingCaseId, setExistingCaseId] = useState<number | null>(null);
+   114→   114→
+   115→   115→  const up = (patch: Partial<MortgageInput>) => setInput((p) => ({ ...p, ...patch }));
+   116→   116→
+   117→   117→  const loadExistingCase = (id: number) => {
+   118→   118→    const c = db.cases.find((x) => x.id === id);
+   119→   119→    if (!c) return;
+   120→   120→    setInput((p) => ({
+   121→   121→      ...p,
+   122→   122→      name: c.customer,
+   123→   123→      whatsapp: c.whatsapp || p.whatsapp,
+   124→   124→      requested: c.loanAmount > 0 ? c.loanAmount : p.requested,
+   125→   125→    }));
+   126→   126→    toast("info", `Loaded ${c.customer} from ${c.caseNumber}. This stays a trial — nothing is written back to the case.`);
+   127→   127→  };
+   128→   128→  const r = useMemo(() => computeMortgage(input), [input]);
+   129→   129→  const mpbfDisplay = useCountUp(r.finalMpbf, 550);
+   130→   130→
+   131→   131→  const setEmployment = (emp: string) => {
+   132→   132→    const employment = emp === "Self-Employed" ? ("Self-Employed" as const) : ("Salaried" as const);
+   133→   133→    const pool = employment === "Self-Employed" ? SE_SOURCES : SALARIED_SOURCES;
+   134→   134→    setInput((p) => ({
+   135→   135→      ...p,
+   136→   136→      employment,
+   137→   137→      incomes: p.incomes.map((row) => (pool.includes(row.source) ? row : { ...row, source: pool[0], eligiblePct: employment === "Self-Employed" && pool[0] === "Business Income" ? 70 : 100 })),
+   138→   138→    }));
+   139→   139→  };
+   140→   140→
+   141→   141→  const patchIncome = (id: string, patch: Partial<IncomeRow>) =>
+   142→   142→    setInput((p) => ({ ...p, incomes: p.incomes.map((x) => (x.id === id ? { ...x, ...patch } : x)) }));
+   143→   143→  const patchLiab = (id: string, patch: Partial<LiabRow>) =>
+   144→   144→    setInput((p) => ({ ...p, liabilities: p.liabilities.map((x) => (x.id === id ? { ...x, ...patch } : x)) }));
+   145→   145→
+   146→   146→  /* ---- co-borrower (DBR only, never written to a case) ---- */
+   147→   147→  const patchCoIncome = (id: string, patch: Partial<IncomeRow>) =>
+   148→   148→    setInput((p) => ({
+   149→   149→      ...p,
+   150→   150→      coBorrower: p.coBorrower
+   151→   151→        ? { ...p.coBorrower, incomes: p.coBorrower.incomes.map((x) => (x.id === id ? { ...x, ...patch } : x)) }
+   152→   152→        : p.coBorrower,
+   153→   153→    }));
+   154→   154→  const patchCoLiab = (id: string, patch: Partial<LiabRow>) =>
+   155→   155→    setInput((p) => ({
+   156→   156→      ...p,
+   157→   157→      coBorrower: p.coBorrower
+   158→   158→        ? { ...p.coBorrower, liabilities: p.coBorrower.liabilities.map((x) => (x.id === id ? { ...x, ...patch } : x)) }
+   159→   159→        : p.coBorrower,
+   160→   160→    }));
+   161→   161→
+   162→   162→  const defaultLtv = defaultLtvPct(input.applicantType);
+   163→   163→  const isCustomLtv = input.customLtv.trim() !== "" && !Number.isNaN(parseFloat(input.customLtv));
+   164→   164→
+   165→   165→  /* ---------------- scenarios ---------------- */
+   166→   166→
+   167→   167→  const cards = input.liabilities.filter((l) => l.type === "Credit Card");
+   168→   168→
+   169→   169→  const liabScenarios = useMemo(() => {
+   170→   170→    const rows: { label: string; input: MortgageInput }[] = [];
+   171→   171→    if (cards.length) {
+   172→   172→      rows.push({ label: "Credit cards −25%", input: scenarioCardsPct(input, 0.75) });
+   173→   173→      rows.push({ label: "Credit cards −50%", input: scenarioCardsPct(input, 0.5) });
+   174→   174→      rows.push({ label: "Credit cards removed", input: scenarioRemoveCards(input) });
+   175→   175→      const lim = Number(cardLimit);
+   176→   176→      if (lim > 0) rows.push({ label: `Card limit → ${fmtAED(lim)}`, input: scenarioCardNewLimit(input, cardId || cards[0].id, lim) });
+   177→   177→    }
+   178→   178→    for (const l of input.liabilities.filter((x) => x.type !== "Credit Card"))
+   179→   179→      rows.push({ label: `Remove ${l.name || l.type}`, input: scenarioRemoveLiab(input, l.id) });
+   180→   180→    return rows;
+   181→   181→  }, [input, cardId, cardLimit]); // eslint-disable-line react-hooks/exhaustive-deps
+   182→   182→
+   183→   183→  const rateScenarios = useMemo(() => {
+   184→   184→    const base = input.actualRate + input.loadFactor;
+   185→   185→    const rows = [1, 2, 3].map((n) => ({ label: `Stress +${n}%`, input: scenarioRate(input, base + n) }));
+   186→   186→    const m = Number(manualRate);
+   187→   187→    if (m > 0) rows.push({ label: `Manual ${m.toFixed(2)}%`, input: scenarioRate(input, m) });
+   188→   188→    return rows;
+   189→   189→  }, [input, manualRate]);
+   190→   190→
+   191→   191→  const tenorScenarios = useMemo(() => {
+   192→   192→    const rows = [15, 20, 25].map((y) => ({ label: `${y} years`, input: scenarioTenor(input, y * 12) }));
+   193→   193→    const m = Number(manualTenor);
+   194→   194→    if (m > 0) rows.push({ label: `Manual ${m} months`, input: scenarioTenor(input, m) });
+   195→   195→    return rows;
+   196→   196→  }, [input, manualTenor]);
+   197→   197→
+   198→   198→  const incomeScenarios = useMemo(() => {
+   199→   199→    const rows: { label: string; input: MortgageInput }[] = [];
+   200→   200→    for (const row of input.incomes) {
+   201→   201→      rows.push({ label: `Remove ${row.source}`, input: scenarioIncomeRemove(input, row.id) });
+   202→   202→      rows.push({ label: `${row.source} −25%`, input: scenarioIncomePct(input, row.id, 0.75) });
+   203→   203→    }
+   204→   204→    const extra = Number(extraIncome);
+   205→   205→    if (extra > 0) {
+   206→   206→      const c = cloneInput(input);
+   207→   207→      c.incomes = [...c.incomes, { ...newIncomeRow("Other Income"), amount: extra }];
+   208→   208→      rows.push({ label: `Add allowance ${fmtAED(extra)}/mo`, input: c });
+   209→   209→    }
+   210→   210→    return rows;
+   211→   211→  }, [input, extraIncome]);
+   212→   212→
+   213→   213→  const runScenarios = (list: { label: string; input: MortgageInput }[]) =>
+   214→   214→    list.map((s) => {
+   215→   215→      const sr = computeMortgage(s.input);
+   216→   216→      return { label: s.label, dbr: sr.currentDbr, residual: sr.residualDbr, mpbf: sr.finalMpbf, extra: sr.eligibleIncome, rate: sr.assessmentRate, tenor: sr.maxTenorMonths };
+   217→   217→    });
+   218→   218→
+   219→   219→  const delta = (v: number) => {
+   220→   220→    const d = v - r.finalMpbf;
+   221→   221→    if (Math.abs(d) < 1) return <span className="text-[var(--ink-faint)]">—</span>;
+   222→   222→    return <span style={{ color: d > 0 ? "var(--mint)" : "var(--coral)" }}>{d > 0 ? "+" : ""}{fmtAED(d)}</span>;
+   223→   223→  };
+   224→   224→
+   225→   225→  /* ---------------- actions ---------------- */
+   226→   226→
+   227→   227→  const summaryFor = () => ({
+   228→   228→    income: r.eligibleIncome, emi: r.existingEmis, final: r.finalMpbf,
+   229→   229→    rate: r.assessmentRate, tenorMonths: r.maxTenorMonths, ltv: r.actualLtv, eligible: r.finalMpbf > 0,
+   230→   230→  });
+   231→   231→
+   232→   232→  const saveCheck = (): number => {
+   233→   233→    const id = saveMortgageCheck(
+   234→   234→      input.name || "Unnamed applicant",
+   235→   235→      input.whatsapp,
+   236→   236→      JSON.stringify({ v: 1, input }),
+   237→   237→      summaryFor()
+   238→   238→    );
+   239→   239→    setSavedId(id);
+   240→   240→    return id;
+   241→   241→  };
+   242→   242→
+   243→   243→  const onSave = () => {
+   244→   244→    saveCheck();
+   245→   245→    toast("success", "Check saved to the audit trail — no case was created.");
+   246→   246→  };
+   247→   247→
+   248→   248→  const doCreateCase = () => {
+   249→   249→    const payload = JSON.stringify({ v: 1, input });
+   250→   250→    const id = saveMortgageCheck(input.name || "Unnamed applicant", input.whatsapp, payload, summaryFor());
+   251→   251→    const check: AffordabilityCheck = {
+   252→   252→      id, caseId: null, customerName: input.name || "Unnamed applicant",
+   253→   253→      monthlyIncome: r.eligibleIncome, otherIncome: 0, existingEmis: r.existingEmis,
+   254→   254→      age: r.ageNowYears, employmentType: input.employment, propertyValue: r.calcBasis,
+   255→   255→      bank: "", interestRate: r.assessmentRate, tenureYears: Math.round(r.maxTenorMonths / 12),
+   256→   256→      applicableLtv: r.actualLtv, maxLoanByLtv: r.ltvMpbf, maxDbrPct: 50,
+   257→   257→      availableDbrEmi: r.availableEmi, maxLoanByDbr: r.dbrMpbf,
+   258→   258→      maxTenureByAge: Math.round(r.maxTenorMonths / 12), finalEligibleLoan: r.finalMpbf,
+   259→   259→      estimatedEmi: r.newEmi, eligible: r.finalMpbf > 0,
+   260→   260→      createdBy: session?.id ?? 0, createdAt: new Date().toISOString(), payload,
+   261→   261→    };
+   262→   262→    const c = createCaseFromCheck(id, false, check);
+   263→   263→    setSavedId(id);
+   264→   264→    if (c) {
+   265→   265→      toast("success", `${c.caseNumber} opened for ${c.customer} at ${fmtAED(c.loanAmount)}.`);
+   266→   266→      nav({ name: "case", id: c.id });
+   267→   267→    }
+   268→   268→  };
+   269→   269→
+   270→   270→  const onOpenCase = () => setConfirmCase(true);
+   271→   271→
+   272→   272→  /* scenario builders that work for any saved input (audit-trail reports) */
+   273→   273→  const liabScenariosOf = (src: MortgageInput) => {
+   274→   274→    const rows: { label: string; input: MortgageInput }[] = [];
+   275→   275→    const cards = src.liabilities.filter((x) => x.type === "Credit Card");
+   276→   276→    if (cards.length) {
+   277→   277→      rows.push({ label: "Credit cards −25%", input: scenarioCardsPct(src, 0.75) });
+   278→   278→      rows.push({ label: "Credit cards −50%", input: scenarioCardsPct(src, 0.5) });
+   279→   279→      rows.push({ label: "Credit cards removed", input: scenarioRemoveCards(src) });
+   280→   280→    }
+   281→   281→    for (const l of src.liabilities.filter((x) => x.type !== "Credit Card"))
+   282→   282→      rows.push({ label: `Remove ${l.name || l.type}`, input: scenarioRemoveLiab(src, l.id) });
+   283→   283→    return rows;
+   284→   284→  };
+   285→   285→  const incomeScenariosOf = (src: MortgageInput) =>
+   286→   286→    src.incomes.map((row) => ({ label: `Remove ${row.source}`, input: scenarioIncomeRemove(src, row.id) }));
+   287→   287→
+   288→   288→  const buildScenarioTablesFor = (src: MortgageInput, base: MortgageResult): PdfScenarioTable[] => {
+   289→   289→    const run = (list: { label: string; input: MortgageInput }[]) =>
+   290→   290→      list.map((s) => {
+   291→   291→        const sr = computeMortgage(s.input);
+   292→   292→        return { label: s.label, dbr: sr.currentDbr, residual: sr.residualDbr, mpbf: sr.finalMpbf, extra: sr.eligibleIncome, rate: sr.assessmentRate, tenor: sr.maxTenorMonths };
+   293→   293→      });
+   294→   294→    const liabRows = run(liabScenariosOf(src));
+   295→   295→    const rateRows = run([1, 2, 3].map((n) => ({ label: `Stress +${n}%`, input: scenarioRate(src, src.actualRate + src.loadFactor + n) })));
+   296→   296→    const tenorRows = run([15, 20, 25].map((yy) => ({ label: `${yy} years`, input: scenarioTenor(src, yy * 12) })));
+   297→   297→    const incomeRows = run(incomeScenariosOf(src));
+   298→   298→    const dlt = (v: number) => (v >= 0 ? "+" : "−") + fmtAED(Math.abs(v));
+   299→   299→    const mk = (title: string, head: string[], rows: { label: string }[], cells: (row: (typeof liabRows)[number], i: number) => (string | number)[]) => ({
+   300→   300→      title, head,
+   301→   301→      body: rows.map((row, i) => [row.label, ...cells(row as (typeof liabRows)[number], i)]),
+   302→   302→    });
+   303→   303→    return [
+   304→   304→      mk("Liability scenarios", ["Scenario", "Current DBR", "Residual DBR", "MPBF", "Change"], [{ label: "Current (baseline)" }, ...liabRows], (row, i) =>
+   305→   305→        i === 0
+   306→   306→          ? [fmtPct(base.currentDbr), fmtPct(base.residualDbr), fmtAED(base.finalMpbf), "—"]
+   307→   307→          : [fmtPct(row.dbr), fmtPct(row.residual), fmtAED(row.mpbf), dlt(row.mpbf - base.finalMpbf)]),
+   308→   308→      mk("Rate scenarios", ["Scenario", "Assessment rate", "MPBF", "Change"], [{ label: `Current (${base.assessmentRate.toFixed(2)}%)` }, ...rateRows], (row, i) =>
+   309→   309→        i === 0 ? [fmtPct(base.assessmentRate), fmtAED(base.finalMpbf), "—"] : [fmtPct(row.rate), fmtAED(row.mpbf), dlt(row.mpbf - base.finalMpbf)]),
+   310→   310→      mk("Tenor scenarios", ["Scenario", "Tenor", "MPBF", "Change"], [{ label: `Current max (${tenorLabel(base.maxTenorMonths)})` }, ...tenorRows], (row, i) =>
+   311→   311→        i === 0 ? [tenorLabel(base.maxTenorMonths), fmtAED(base.finalMpbf), "—"] : [tenorLabel(row.tenor), fmtAED(row.mpbf), dlt(row.mpbf - base.finalMpbf)]),
+   312→   312→      mk("Income scenarios", ["Scenario", "Eligible income", "MPBF", "Change"], [{ label: "Current (baseline)" }, ...incomeRows], (row, i) =>
+   313→   313→        i === 0 ? [fmtAED(base.eligibleIncome), fmtAED(base.finalMpbf), "—"] : [fmtAED(row.extra), fmtAED(row.mpbf), dlt(row.mpbf - base.finalMpbf)]),
+   314→   314→    ];
+   315→   315→  };
+   316→   316→
+   317→   317→  const buildScenarioTables = (): PdfScenarioTable[] => {
+   318→   318→    const liabRows = runScenarios(liabScenarios);
+   319→   319→    const rateRows = runScenarios(rateScenarios);
+   320→   320→    const tenorRows = runScenarios(tenorScenarios);
+   321→   321→    const incomeRows = runScenarios(incomeScenarios);
+   322→   322→    const delta = (v: number) => (v >= 0 ? "+" : "−") + fmtAED(Math.abs(v));
+   323→   323→    const mk = (title: string, head: string[], rows: { label: string }[], cells: (row: (typeof liabRows)[number], i: number) => (string | number)[]) => ({
+   324→   324→      title, head,
+   325→   325→      body: rows.map((row, i) => [row.label, ...cells(row as (typeof liabRows)[number], i)]),
+   326→   326→    });
+   327→   327→    return [
+   328→   328→      mk("Liability scenarios", ["Scenario", "Current DBR", "Residual DBR", "MPBF", "Change"], [{ label: "Current (baseline)" }, ...liabRows], (row, i) =>
+   329→   329→        i === 0
+   330→   330→          ? [fmtPct(r.currentDbr), fmtPct(r.residualDbr), fmtAED(r.finalMpbf), "—"]
+   331→   331→          : [fmtPct(row.dbr), fmtPct(row.residual), fmtAED(row.mpbf), delta(row.mpbf - r.finalMpbf)]),
+   332→   332→      mk("Rate scenarios", ["Scenario", "Assessment rate", "MPBF", "Change"], [{ label: `Current (${r.assessmentRate.toFixed(2)}%)` }, ...rateRows], (row, i) =>
+   333→   333→        i === 0 ? [fmtPct(r.assessmentRate), fmtAED(r.finalMpbf), "—"] : [fmtPct(row.rate), fmtAED(row.mpbf), delta(row.mpbf - r.finalMpbf)]),
+   334→   334→      mk("Tenor scenarios", ["Scenario", "Tenor", "MPBF", "Change"], [{ label: `Current max (${tenorLabel(r.maxTenorMonths)})` }, ...tenorRows], (row, i) =>
+   335→   335→        i === 0 ? [tenorLabel(r.maxTenorMonths), fmtAED(r.finalMpbf), "—"] : [tenorLabel(row.tenor), fmtAED(row.mpbf), delta(row.mpbf - r.finalMpbf)]),
+   336→   336→      mk("Income scenarios", ["Scenario", "Eligible income", "MPBF", "Change"], [{ label: "Current (baseline)" }, ...incomeRows], (row, i) =>
+   337→   337→        i === 0 ? [fmtAED(r.eligibleIncome), fmtAED(r.finalMpbf), "—"] : [fmtAED(row.extra), fmtAED(row.mpbf), delta(row.mpbf - r.finalMpbf)]),
+   338→   338→    ];
+   339→   339→  };
+   340→   340→
+   341→   341→  const buildReport = () => {
+   342→   342→    const tables = buildScenarioTables();
+   343→   343→    const liab = runScenarios(liabScenarios);
+   344→   344→    const income = runScenarios(incomeScenarios);
+   345→   345→    const candidates = [
+   346→   346→      ...liab.map((s) => ({ label: s.label, d: s.mpbf - r.finalMpbf, dbr: s.dbr })),
+   347→   347→      ...income.map((s) => ({ label: s.label, d: s.mpbf - r.finalMpbf, dbr: s.dbr })),
+   348→   348→    ]
+   349→   349→      .filter((c) => c.d > 5000)
+   350→   350→      .sort((a, b) => b.d - a.d);
+   351→   351→    const obs =
+   352→   352→      candidates.length === 0
+   353→   353→        ? `No liability or income scenario meaningfully improves the baseline ${fmtAED(r.finalMpbf)} — the binding constraint is ${r.limitedBy.toLowerCase()}. Movement must come from income, liabilities or the property itself.`
+   354→   354→        : `Strongest lever: ${candidates[0].label} — DBR moves ${fmtPct(r.currentDbr)} → ${fmtPct(candidates[0].dbr)}, unlocking ${fmtAED(candidates[0].d)} of additional MPBF (${fmtAED(r.finalMpbf)} → ${fmtAED(r.finalMpbf + candidates[0].d)}).`;
+   355→   355→    return { tables, obs };
+   356→   356→  };
+   357→   357→
+   358→   358→  const onPdf = () => {
+   359→   359→    const { tables, obs } = buildReport();
+   360→   360→    generateMortgagePdf(input, r, tables, session?.name ?? "HFMC", obs);
+   361→   361→    toast("success", "Bank-facing PDF downloaded.");
+   362→   362→  };
+   363→   363→
+   364→   364→  const onView = () => {
+   365→   365→    const { tables, obs } = buildReport();
+   366→   366→    setPreview({ input, res: r, tables, by: session?.name ?? "HFMC", obs });
+   367→   367→  };
+   368→   368→
+   369→   369→  /* ---------------- render ---------------- */
+   370→   370→
+   371→   371→  const caps = [
+   372→   372→    { label: "DBR / Residual DBR MPBF", v: r.dbrMpbf },
+   373→   373→    { label: "LTV MPBF", v: r.ltvMpbf },
+   374→   374→    ...(r.multiplierCap != null ? [{ label: `Income multiplier (${input.multiplierX}×)`, v: r.multiplierCap }] : []),
+   375→   375→    ...(r.requested > 0 ? [{ label: "Requested finance", v: r.requested }] : []),
+   376→   376→  ];
+   377→   377→  const capMax = Math.max(...caps.map((c) => c.v), 1);
+   378→   378→
+   379→   379→  const checks = [...db.affordabilityChecks].sort((a, b) => b.id - a.id);
+   380→   380→  const sourcePool = input.employment === "Self-Employed" ? SE_SOURCES : SALARIED_SOURCES;
+   381→   381→
+   382→   382→  return (
+   383→   383→    <div className="space-y-4">
+   384→   384→      <div className="flex flex-wrap items-end justify-between gap-3">
+   385→   385→        <div>
+   386→   386→          <h1 className="font-disp font-bold text-[24px] tracking-tight m-0 flex items-center gap-2.5">
+   387→   387→            <ICalc size={22} className="text-[var(--amber)]" /> Mortgage Eligibility Calculator
+   388→   388→          </h1>
+   389→   389→          <p className="text-[13px] text-[var(--ink-dim)] mt-0.5 mb-0">
+   390→   390→            Preliminary MPBF assessment · CBUAE-style DBR {fmtPct(50)} cap · <em>not</em> a bank approval
+   391→   391→          </p>
+   392→   392→        </div>
+   393→   393→        <button className="btn btn-ghost btn-sm" onClick={() => { setInput(defaultInput()); setSavedId(null); setClientMode("trial"); setExistingCaseId(null); toast("info", "Calculator reset."); }}>
+   394→   394→          Reset
+   395→   395→        </button>
+   396→   396→      </div>
+   397→   397→
+   398→   398→      {/* client mode — trial vs existing */}
+   399→   399→      <div className="card px-4 py-3 anim-fade-up">
+   400→   400→        <div className="flex flex-wrap items-center gap-3">
+   401→   401→          <span className="text-[10.5px] uppercase tracking-[0.12em] font-disp font-semibold text-[var(--ink-faint)]">Running for</span>
+   402→   402→          <div className="flex rounded-lg overflow-hidden border" style={{ borderColor: "var(--line)" }}>
+   403→   403→            <button type="button"
+   404→   404→              className="px-3.5 py-1.5 text-[12.5px] font-disp font-semibold transition-colors"
+   405→   405→              style={clientMode === "trial" ? { background: "var(--amber-tint)", color: "var(--amber)" } : { color: "var(--ink-faint)" }}
+   406→   406→              onClick={() => setClientMode("trial")}>
+   407→   407→              New client · trial
+   408→   408→            </button>
+   409→   409→            <button type="button"
+   410→   410→              className="px-3.5 py-1.5 text-[12.5px] font-disp font-semibold transition-colors"
+   411→   411→              style={clientMode === "existing" ? { background: "var(--amber-tint)", color: "var(--amber)" } : { color: "var(--ink-faint)" }}
+   412→   412→              onClick={() => setClientMode("existing")}>
+   413→   413→              Existing client
+   414→   414→            </button>
+   415→   415→          </div>
+   416→   416→
+   417→   417→          {clientMode === "trial" ? (
+   418→   418→            <span className="text-[11.5px] text-[var(--ink-faint)] flex items-center gap-1.5">
+   419→   419→              <span className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--mint)" }} />
+   420→   420→              Pure what-if — saving stores an audit check only, never creates a case.
+   421→   421→            </span>
+   422→   422→          ) : (
+   423→   423→            <select className="select" style={{ width: 280 }} value={existingCaseId ?? ""}
+   424→   424→              onChange={(e) => { const v = e.target.value ? Number(e.target.value) : null; setExistingCaseId(v); if (v) loadExistingCase(v); }}>
+   425→   425→              <option value="">Select a case file…</option>
+   426→   426→              {[...db.cases].sort((a, b) => b.id - a.id).map((c) => (
+   427→   427→                <option key={c.id} value={c.id}>{c.caseNumber} · {c.customer}</option>
+   428→   428→              ))}
+   429→   429→            </select>
+   430→   430→          )}
+   431→   431→        </div>
+   432→   432→      </div>
+   433→   433→
+   434→   434→      <div className="grid grid-cols-1 xl:grid-cols-[1fr_400px] gap-4 items-start">
+   435→   435→        {/* ================= input column ================= */}
+   436→   436→        <div className="space-y-4">
+   437→   437→          <Section num="01" title="Applicant" hint="age sets the usable tenor">
+   438→   438→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+   439→   439→              <div>
+   440→   440→                <label className="label">Applicant name</label>
+   441→   441→                <input className="input" value={input.name} onChange={(e) => up({ name: e.target.value })} placeholder="e.g. Mohammed Al Mansoori" />
+   442→   442→              </div>
+   443→   443→              <div>
+   444→   444→                <label className="label">WhatsApp</label>
+   445→   445→                <input className="input mono" value={input.whatsapp} onChange={(e) => up({ whatsapp: e.target.value })} placeholder="+971 50 …" />
+   446→   446→              </div>
+   447→   447→              <div>
+   448→   448→                <label className="label">Applicant type</label>
+   449→   449→                <ToggleChips options={["Expatriate", "UAE National"]} value={input.applicantType} onChange={(v) => up({ applicantType: v as MortgageInput["applicantType"] })} />
+   450→   450→              </div>
+   451→   451→              <div>
+   452→   452→                <label className="label">Employment</label>
+   453→   453→                <ToggleChips options={["Salaried", "Self-Employed"]} value={input.employment} onChange={setEmployment} />
+   454→   454→              </div>
+   455→   455→              <div>
+   456→   456→                <label className="label">Date of birth</label>
+   457→   457→                <input className="input mono" type="date" value={input.dob} onChange={(e) => e.target.value && up({ dob: e.target.value })} />
+   458→   458→              </div>
+   459→   459→              <div className="grid grid-cols-2 gap-3">
+   460→   460→                <div>
+   461→   461→                  <label className="label">Final age</label>
+   462→   462→                  <NumIn value={input.finalAge} onChange={(n) => up({ finalAge: n })} step={1} min={40} />
+   463→   463→                </div>
+   464→   464→                <div>
+   465→   465→                  <label className="label">Margin (mo)</label>
+   466→   466→                  <NumIn value={input.marginMonths} onChange={(n) => up({ marginMonths: n })} step={1} min={0} />
+   467→   467→                </div>
+   468→   468→              </div>
+   469→   469→            </div>
+   470→   470→            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3.5 pt-3.5" style={{ borderTop: "1px dashed var(--line)" }}>
+   471→   471→              <Stat label="Current age" value={`${r.ageNowYears}y`} />
+   472→   472→              <Stat label="After margin" value={`${Math.floor(r.ageAfterMarginMonths / 12)}y ${r.ageAfterMarginMonths % 12}m`} />
+   473→   473→              <Stat label="Remaining period" value={tenorLabel(r.remainingMonths)} />
+   474→   474→              <Stat label="Max usable tenor" value={tenorLabel(r.maxTenorMonths)} tone="var(--amber)" />
+   475→   475→            </div>
+   476→   476→          </Section>
+   477→   477→
+   478→   478→          <Section num="02" title="Property" hint="only what the calculation needs">
+   479→   479→            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+   480→   480→              <div>
+   481→   481→                <label className="label">Property value (AED)</label>
+   482→   482→                <NumIn value={input.propertyValue} onChange={(n) => up({ propertyValue: n })} step={50000} />
+   483→   483→              </div>
+   484→   484→              <div>
+   485→   485→                <label className="label">Bank valuation — optional</label>
+   486→   486→                <input className="input mono" type="number" min={0} step={50000} value={input.valuation ?? ""} placeholder="blank if not available"
+   487→   487→                  onChange={(e) => up({ valuation: e.target.value === "" ? null : Number(e.target.value) || 0 })} />
+   488→   488→              </div>
+   489→   489→              <div>
+   490→   490→                <label className="label">Requested finance (AED)</label>
+   491→   491→                <NumIn value={input.requested} onChange={(n) => up({ requested: n })} step={50000} />
+   492→   492→              </div>
+   493→   493→            </div>
+   494→   494→
+   495→   495→            <div className="mt-3">
+   496→   496→              <label className="label">
+   497→   497→                LTV applied — default {defaultLtv}% for {input.applicantType}
+   498→   498→                {isCustomLtv && <span style={{ color: "var(--amber)" }}> · using custom {parseFloat(input.customLtv)}%</span>}
+   499→   499→              </label>
+   500→   500→              <div className="flex flex-wrap items-center gap-1.5">
+
+[showing lines 1-500 of 1649; use offset=501 with limit to continue reading]

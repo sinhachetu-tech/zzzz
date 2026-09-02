@@ -1,0 +1,708 @@
+     1→import { useMemo, useState } from "react";
+     2→import { bulletinCanAct, flagsFor, slaFor, stageEnteredAt, useStore } from "../lib/store";
+     3→import type { BulletinItem, Instruction, LoanCase, Reply, Task } from "../lib/types";
+     4→import {
+     5→  ageDays, caseStatusOf, fmtDate, fmtDateTime, fmtMoney, inDaysISO, primaryBank, relTime, todayISO,
+     6→} from "../lib/format";
+     7→import { Avatar, Chip, DueChip, Modal, StatusChip } from "../components/ui";
+     8→import { BankChips, CaseStateChip, CommissionPanel, ConfirmModal, SourceChip, WaButtons } from "../components/bits";
+     9→import {
+    10→  IArrowR, IBank, ICalc, ICheck, IChevronL, IClock, IFlag, IHistory, IPlus, ITrash, IZap,
+    11→} from "../components/icons";
+    12→
+    13→/* a lightweight reply thread shared by directives */
+    14→function DirectiveReply({ replies, onSend }: { replies: Reply[]; onSend: (t: string) => void }) {
+    15→  const { userById } = useStore();
+    16→  const [draft, setDraft] = useState("");
+    17→  const send = () => {
+    18→    if (!draft.trim()) return;
+    19→    onSend(draft);
+    20→    setDraft("");
+    21→  };
+    22→  return (
+    23→    <div className="mt-2.5 space-y-2">
+    24→      {replies.map((r) => (
+    25→        <div key={r.id} className="flex items-start gap-2 anim-fade-in">
+    26→          <Avatar name={userById(r.userId)?.name ?? "?"} size={20} />
+    27→          <div className="min-w-0 flex-1 rounded-lg px-2.5 py-1.5" style={{ background: "var(--tint)", border: "1px solid var(--line-soft)" }}>
+    28→            <span className="text-[11.5px] font-semibold">{userById(r.userId)?.name ?? "—"}</span>
+    29→            <span className="mono text-[9.5px] text-[var(--ink-faint)] ml-1.5">{relTime(r.at)}</span>
+    30→            <p className="text-[12px] text-[var(--ink-dim)] m-0 leading-snug">{r.text}</p>
+    31→          </div>
+    32→        </div>
+    33→      ))}
+    34→      <div className="flex items-center gap-2">
+    35→        <input className="input" style={{ flex: 1, padding: "6px 10px", fontSize: 12.5 }} placeholder="Reply… (Enter)" value={draft}
+    36→          onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} />
+    37→        <button className="btn btn-ghost btn-sm shrink-0" onClick={send} disabled={!draft.trim()}>Send</button>
+    38→      </div>
+    39→    </div>
+    40→  );
+    41→}
+    42→
+    43→/* prominent banner: every directive on this case (instructions + morning-bulletin items) */
+    44→function DirectivesBanner({ c }: { c: LoanCase }) {
+    45→  const { db, session, userById, canInstruct, addInstruction, completeInstruction, replyToInstruction, completeBulletin, replyToBulletin, toast } = useStore();
+    46→  const me = session;
+    47→  const [openThread, setOpenThread] = useState<Record<string, boolean>>({});
+    48→  const [showComposer, setShowComposer] = useState(false);
+    49→  const [text, setText] = useState("");
+    50→  const [assignee, setAssignee] = useState(c.ownerId);
+    51→  const [due, setDue] = useState(inDaysISO(2));
+    52→  const manager = canInstruct();
+    53→  if (!me) return null;
+    54→
+    55→  type Dir =
+    56→    | { kind: "instruction"; key: string; i: Instruction }
+    57→    | { kind: "bulletin"; key: string; b: BulletinItem };
+    58→
+    59→  const instrs: Dir[] = db.instructions.filter((i) => i.caseId === c.id).map((i) => ({ kind: "instruction", key: `i${i.id}`, i }));
+    60→  const bulls: Dir[] = db.bulletin
+    61→    .filter((b) => b.caseId === c.id && !b.isTemplate && !b.dropped)
+    62→    .map((b) => ({ kind: "bulletin", key: `b${b.id}`, b }));
+    63→  const all = [...instrs, ...bulls].sort((a, z) => {
+    64→    const ao = a.kind === "instruction" ? a.i.status : a.b.status;
+    65→    const zo = z.kind === "instruction" ? z.i.status : z.b.status;
+    66→    if (ao !== zo) return ao === "Open" ? -1 : 1;
+    67→    const at = a.kind === "instruction" ? a.i.createdAt : a.b.createdAt;
+    68→    const zt = z.kind === "instruction" ? z.i.createdAt : z.b.createdAt;
+    69→    return zt.localeCompare(at);
+    70→  });
+    71→  const isActive = c.caseStatus === "Active";
+    72→  if (all.length === 0 && !manager) return null;
+    73→
+    74→  const openCount = all.filter((d) => (d.kind === "instruction" ? d.i.status : d.b.status) === "Open").length;
+    75→  const f = flagsFor(db.designations, me.role);
+    76→
+    77→  const canActInstr = (i: Instruction) => f.scope === "all" || i.issuedBy === me.id || i.assignedTo === me.id;
+    78→  const canActBull = (b: BulletinItem) => bulletinCanAct(b, me, db);
+    79→
+    80→  return (
+    81→    <div className="card anim-fade-up overflow-hidden" style={{ border: "1px solid var(--amber-line)", background: "linear-gradient(180deg, color-mix(in srgb, var(--amber) 8%, var(--surface)), var(--surface))" }}>
+    82→      <div className="flex items-center gap-2.5 px-4 py-2.5" style={{ borderBottom: "1px solid color-mix(in srgb, var(--amber) 20%, transparent)" }}>
+    83→        <IFlag size={16} className="text-[var(--amber)]" />
+    84→        <span className="font-disp font-semibold text-[13.5px]" style={{ color: "var(--amber)" }}>Directives on this case</span>
+    85→        <span className="mono text-[11px] px-1.5 py-0.5 rounded-full" style={{ background: "var(--amber-tint)", color: "var(--amber)" }}>
+    86→          {openCount} open
+    87→        </span>
+    88→      </div>
+    89→      <div className="divide-y" style={{ borderColor: "color-mix(in srgb, var(--amber) 14%, transparent)" }}>
+    90→        {all.map((d) => {
+    91→          const isInstr = d.kind === "instruction";
+    92→          const status = isInstr ? d.i.status : d.b.status;
+    93→          const createdAt = isInstr ? d.i.createdAt : d.b.createdAt;
+    94→          const issuerId = isInstr ? d.i.issuedBy : d.b.issuedBy;
+    95→          const text = isInstr ? d.i.instruction : d.b.task;
+    96→          const replies = isInstr ? d.i.replies : d.b.replies;
+    97→          const canAct = status === "Open" && (isInstr ? canActInstr(d.i) : canActBull(d.b));
+    98→          const issuer = userById(issuerId);
+    99→          const showThread = !!openThread[d.key];
+   100→          const done = status === "Done";
+   101→          return (
+   102→            <div key={d.key} className="px-4 py-3" style={{ opacity: done ? 0.65 : 1 }}>
+   103→              <div className="flex items-start gap-3">
+   104→                <Avatar name={issuer?.name ?? "?"} size={30} />
+   105→                <div className="min-w-0 flex-1">
+   106→                  <div className="flex flex-wrap items-baseline gap-x-2">
+   107→                    <span className="font-disp font-semibold text-[13px]">{issuer?.name ?? "—"}</span>
+   108→                    <Chip tone={isInstr ? "sky" : "amber"}>{isInstr ? "instruction" : "bulletin"}</Chip>
+   109→                    {!isInstr && d.b.carriedFrom && <Chip tone="sky">carried from {fmtDate(d.b.carriedFrom)}</Chip>}
+   110→                    {!isInstr && d.b.templateId && <Chip tone="slate">routine</Chip>}
+   111→                    <span className="mono text-[10.5px] text-[var(--ink-faint)]">{relTime(createdAt)}</span>
+   112→                    {isInstr && <DueChip dueISO={d.i.dueDate} />}
+   113→                  </div>
+   114→                  <p className={`text-[13.5px] leading-relaxed mt-1 mb-0 ${done ? "line-through text-[var(--ink-faint)]" : ""}`}>{text}</p>
+   115→                  {isInstr && (
+   116→                    <p className="text-[11px] text-[var(--ink-faint)] mt-0.5 mb-0">assigned to <span className="text-[var(--ink-dim)]">{userById(d.i.assignedTo)?.name ?? "—"}</span></p>
+   117→                  )}
+   118→                  {done && (isInstr ? d.i.completedAt : d.b.completedAt) && (
+   119→                    <p className="text-[11px] mt-0.5 mb-0" style={{ color: "var(--mint)" }}>✓ done {relTime((isInstr ? d.i.completedAt : d.b.completedAt) as string)}</p>
+   120→                  )}
+   121→                </div>
+   122→                <div className="flex flex-col gap-1.5 shrink-0">
+   123→                  {canAct && (isInstr || !d.b.caseId) && (
+   124→                    <button className="btn btn-mint btn-sm" onClick={() => {
+   125→                      if (isInstr) { completeInstruction(d.i.id); } else { completeBulletin(d.b.id); }
+   126→                      toast("success", "Directive marked done.");
+   127→                    }}>
+   128→                      <ICheck size={13} /> Done
+   129→                    </button>
+   130→                  )}
+   131→                  {canAct && !isInstr && d.b.caseId === c.id && (
+   132→                    <>
+   133→                      <button className="btn btn-ghost btn-sm" onClick={() => {
+   134→                        completeBulletin(d.b.id);
+   135→                        toast("success", "Directive marked done.");
+   136→                      }}>
+   137→                        <ICheck size={13} /> Done
+   138→                      </button>
+   139→                      <button className="btn btn-mint btn-sm" title="Close this directive and the case's current task in one move" onClick={() => {
+   140→                        completeBulletin(d.b.id, { alsoTaskDone: true });
+   141→                        toast("success", "Directive done — case task closed with it.");
+   142→                      }}>
+   143→                        <ICheck size={13} /> Done + close task
+   144→                      </button>
+   145→                    </>
+   146→                  )}
+   147→                  <button className="btn btn-ghost btn-sm" onClick={() => setOpenThread((t) => ({ ...t, [d.key]: !t[d.key] }))}>
+   148→                    Reply {replies.length > 0 && <span className="mono">({replies.length})</span>}
+   149→                  </button>
+   150→                </div>
+   151→              </div>
+   152→              {showThread && (
+   153→                <div className="pl-[42px]">
+   154→                  <DirectiveReply replies={replies} onSend={(t) => (isInstr ? replyToInstruction(d.i.id, t) : replyToBulletin(d.b.id, t))} />
+   155→                </div>
+   156→              )}
+   157→            </div>
+   158→          );
+   159→        })}
+   160→        {all.length === 0 && (
+   161→          <p className="px-4 py-3 text-[12.5px] text-[var(--ink-faint)] m-0">No directives yet — issue the first one below.</p>
+   162→        )}
+   163→      </div>
+   164→
+   165→      {manager && isActive && (
+   166→        <div className="px-4 py-3" style={{ borderTop: "1px dashed color-mix(in srgb, var(--amber) 28%, transparent)" }}>
+   167→          {showComposer ? (
+   168→            <div className="space-y-2 anim-fade-in">
+   169→              <textarea className="textarea" rows={2} autoFocus placeholder="e.g. Call the client today and get the NOC — do not let this slip."
+   170→                value={text} onChange={(e) => setText(e.target.value)} />
+   171→              <div className="flex flex-wrap items-center gap-2">
+   172→                <select className="select" style={{ width: 170 }} value={assignee} onChange={(e) => setAssignee(parseInt(e.target.value, 10))}>
+   173→                  {db.users.filter((u) => u.active).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+   174→                </select>
+   175→                <input className="input mono" style={{ width: 150 }} type="date" value={due} onChange={(e) => e.target.value && setDue(e.target.value)} />
+   176→                <button className="btn btn-primary btn-sm" onClick={() => {
+   177→                  if (!text.trim()) return toast("error", "Write the instruction first.");
+   178→                  addInstruction(c.id, { instruction: text, assignedTo: assignee, dueDate: due });
+   179→                  setText(""); setShowComposer(false);
+   180→                  toast("success", "Instruction issued.");
+   181→                }}>
+   182→                  <IFlag size={13} /> Issue
+   183→                </button>
+   184→                <button className="btn btn-ghost btn-sm" onClick={() => setShowComposer(false)}>Cancel</button>
+   185→              </div>
+   186→            </div>
+   187→          ) : (
+   188→            <button className="btn btn-ghost btn-sm" onClick={() => setShowComposer(true)}>
+   189→              <IPlus size={13} /> Issue an instruction
+   190→            </button>
+   191→          )}
+   192→        </div>
+   193→      )}
+   194→    </div>
+   195→  );
+   196→}
+   197→
+   198→function EditableTask({ task }: { task: Task }) {
+   199→  const { db, canEditTask, updateTask, completeTask, toast, userById } = useStore();
+   200→  const editable = canEditTask(task);
+   201→  const [remarks, setRemarks] = useState("");
+   202→
+   203→  return (
+   204→    <div className="card p-4" style={{ borderColor: "color-mix(in srgb, var(--amber) 32%, transparent)" }}>
+   205→      <div className="flex items-start justify-between gap-3 mb-3">
+   206→        <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.12em] font-disp font-semibold" style={{ color: "var(--amber)" }}>
+   207→          <IZap size={14} /> Current task
+   208→        </div>
+   209→        <DueChip dueISO={task.dueDate} />
+   210→      </div>
+   211→      <p className="text-[15px] font-medium mt-0 mb-1">{task.description}</p>
+   212→      <p className="text-[11.5px] text-[var(--ink-faint)] mt-0 mb-3">
+   213→        opened by <span className="text-[var(--ink-dim)]">{userById(task.createdBy)?.name ?? "—"}</span> · {relTime(task.createdAt)} · assigned to {userById(task.ownerId)?.name ?? "—"}
+   214→      </p>
+   215→      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+   216→        <div>
+   217→          <label className="label">Owner</label>
+   218→          <select className="select" value={task.ownerId} disabled={!editable} onChange={(e) => updateTask(task.id, { ownerId: parseInt(e.target.value, 10) })}>
+   219→            {db.users.filter((u) => u.active).map((u) => (
+   220→              <option key={u.id} value={u.id}>{u.name}</option>
+   221→            ))}
+   222→          </select>
+   223→        </div>
+   224→        <div>
+   225→          <label className="label">Waiting for</label>
+   226→          <select className="select" value={task.waitingFor} disabled={!editable} onChange={(e) => updateTask(task.id, { waitingFor: e.target.value })}>
+   227→            {db.waitingFor.filter((w) => w.active).map((w) => (
+   228→              <option key={w.id}>{w.label}</option>
+   229→            ))}
+   230→          </select>
+   231→        </div>
+   232→        <div>
+   233→          <label className="label">Why pending</label>
+   234→          <select className="select" value={task.whyPending} disabled={!editable} onChange={(e) => updateTask(task.id, { whyPending: e.target.value })}>
+   235→            {db.whyPending.filter((w) => w.active).map((w) => (
+   236→              <option key={w.id}>{w.label}</option>
+   237→            ))}
+   238→          </select>
+   239→        </div>
+   240→        <div>
+   241→          <label className="label">Due date</label>
+   242→          <input className="input mono" type="date" value={task.dueDate} disabled={!editable} onChange={(e) => e.target.value && updateTask(task.id, { dueDate: e.target.value })} />
+   243→        </div>
+   244→      </div>
+   245→      {editable && (
+   246→        <div className="flex items-center gap-2 mt-4">
+   247→          <input className="input" style={{ flex: 1 }} placeholder="Remarks on completion (optional)" value={remarks} onChange={(e) => setRemarks(e.target.value)} />
+   248→          <button
+   249→            className="btn btn-mint"
+   250→            onClick={() => {
+   251→              completeTask(task.id, remarks);
+   252→              toast("success", "Task marked done.");
+   253→            }}
+   254→          >
+   255→            Mark done
+   256→          </button>
+   257→        </div>
+   258→      )}
+   259→    </div>
+   260→  );
+   261→}
+   262→
+   263→function NextTaskModal({ c, open, onClose }: { c: LoanCase; open: boolean; onClose: () => void }) {
+   264→  const { db, createTask, toast } = useStore();
+   265→  const [desc, setDesc] = useState("");
+   266→  const [ownerId, setOwnerId] = useState(c.ownerId);
+   267→  const [waiting, setWaiting] = useState(db.waitingFor[0]?.label ?? "Client");
+   268→  const [why, setWhy] = useState(db.whyPending[0]?.label ?? "");
+   269→  const [due, setDue] = useState(inDaysISO(3));
+   270→  const [err, setErr] = useState("");
+   271→
+   272→  if (!open) return null;
+   273→
+   274→  const submit = () => {
+   275→    if (!desc.trim()) return setErr("Describe the next action.");
+   276→    createTask(c.id, { description: desc, ownerId, waitingFor: waiting, whyPending: why, dueDate: due });
+   277→    toast("success", "Next task opened — previous task archived.");
+   278→    setDesc("");
+   279→    setErr("");
+   280→    onClose();
+   281→  };
+   282→
+   283→  return (
+   284→    <Modal onClose={onClose} title={`Next task · ${c.caseNumber}`} width={520}>
+   285→      <p className="text-[12px] text-[var(--ink-faint)] mt-0 mb-3">
+   286→        You are recorded as the <strong className="text-[var(--ink-dim)]">opener</strong>; the owner below is who executes it. Opening a task supersedes the current one, so every case always has exactly one next action.
+   287→      </p>
+   288→      <div className="space-y-3">
+   289→        <div>
+   290→          <label className="label">What needs to happen next?</label>
+   291→          <input className="input" autoFocus value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="e.g. Chase bank RM for sanction memo" />
+   292→        </div>
+   293→        <div className="grid grid-cols-2 gap-3">
+   294→          <div>
+   295→            <label className="label">Owner</label>
+   296→            <select className="select" value={ownerId} onChange={(e) => setOwnerId(parseInt(e.target.value, 10))}>
+   297→              {db.users.filter((u) => u.active).map((u) => (
+   298→                <option key={u.id} value={u.id}>{u.name}</option>
+   299→              ))}
+   300→            </select>
+   301→          </div>
+   302→          <div>
+   303→            <label className="label">Due date</label>
+   304→            <input className="input mono" type="date" value={due} onChange={(e) => setDue(e.target.value)} />
+   305→          </div>
+   306→          <div>
+   307→            <label className="label">Waiting for</label>
+   308→            <select className="select" value={waiting} onChange={(e) => setWaiting(e.target.value)}>
+   309→              {db.waitingFor.filter((w) => w.active).map((w) => (
+   310→                <option key={w.id}>{w.label}</option>
+   311→              ))}
+   312→            </select>
+   313→          </div>
+   314→          <div>
+   315→            <label className="label">Why pending</label>
+   316→            <select className="select" value={why} onChange={(e) => setWhy(e.target.value)}>
+   317→              {db.whyPending.filter((w) => w.active).map((w) => (
+   318→                <option key={w.id}>{w.label}</option>
+   319→              ))}
+   320→            </select>
+   321→          </div>
+   322→        </div>
+   323→      </div>
+   324→      {err && <p className="text-[12.5px] mt-2 mb-0" style={{ color: "var(--coral)" }}>{err}</p>}
+   325→      <div className="flex justify-end gap-2 mt-5">
+   326→        <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+   327→        <button className="btn btn-primary" onClick={submit}>Open task</button>
+   328→      </div>
+   329→    </Modal>
+   330→  );
+   331→}
+   332→
+   333→export default function CaseDetail({ id }: { id: number }) {
+   334→  const { db, nav, canEditCase, canEditTask, updateCase, setCaseState, deleteCase, userById, toast, session } = useStore();
+   335→  const c = db.cases.find((x) => x.id === id);
+   336→  const [showNext, setShowNext] = useState(false);
+   337→  const [confirm, setConfirm] = useState<"book" | "lost" | "reopen" | "delete" | null>(null);
+   338→  const [bookBank, setBookBank] = useState<string>("");
+   339→
+   340→  const caseTasks = useMemo(() => db.tasks.filter((t) => t.caseId === id), [db.tasks, id]);
+   341→  const openTask = caseTasks.find((t) => t.status === "Open");
+   342→  const doneTasks = caseTasks.filter((t) => t.status === "Done").sort((a, b) => (b.completedAt ?? "").localeCompare(a.completedAt ?? ""));
+   343→  const trail = useMemo(() => db.activities.filter((a) => a.caseId === id).sort((a, b) => b.at.localeCompare(a.at)), [db.activities, id]);
+   344→  const checks = db.affordabilityChecks.filter((k) => k.caseId === id);
+   345→
+   346→  if (!c) {
+   347→    return (
+   348→      <div className="card p-10 text-center anim-fade-up">
+   349→        <h2 className="font-disp font-semibold text-[18px] mb-2">Case not found</h2>
+   350→        <p className="text-[13px] text-[var(--ink-dim)]">It may have been deleted, or it's outside your scope.</p>
+   351→        <button className="btn btn-ghost mt-3 mx-auto" onClick={() => nav({ name: "dashboard" })}>
+   352→          <IChevronL size={15} /> Back to dashboard
+   353→        </button>
+   354→      </div>
+   355→    );
+   356→  }
+   357→
+   358→  const status = caseStatusOf(c, db.tasks);
+   359→  const stages = [...db.stages].filter((s) => s.active).sort((a, b) => a.sortOrder - b.sortOrder);
+   360→  const stageIdx = stages.findIndex((s) => s.label === c.stage);
+   361→  const editable = canEditCase(c);
+   362→  const isActive = c.caseStatus === "Active";
+   363→  const rule = slaFor(db.slaRules, c.stage, primaryBank(c));
+   364→  const daysInStage = isActive ? Math.max(0, Math.floor((Date.now() - new Date(stageEnteredAt(c, db.activities)).getTime()) / 86400000)) : null;
+   365→
+   366→  const moveStage = (label: string) => {
+   367→    if (!editable || label === c.stage) return;
+   368→    if (!isActive) return toast("error", "Reopen the case to move stages.");
+   369→    updateCase(c.id, { stage: label });
+   370→    toast("info", `Stage → ${label}`);
+   371→  };
+   372→
+   373→  return (
+   374→    <div className="space-y-4">
+   375→      <button className="flex items-center gap-1 text-[12.5px] text-[var(--ink-dim)] hover:text-[var(--ink)] transition-colors" onClick={() => nav({ name: "dashboard" })}>
+   376→        <IChevronL size={15} /> All cases
+   377→      </button>
+   378→
+   379→      {/* WhatsApp chase bar — first thing on the case */}
+   380→      {(c.whatsapp || c.waGroup) && (
+   381→        <div className="card px-4 py-2.5 flex flex-wrap items-center gap-3 anim-fade-up" style={{ borderColor: "color-mix(in srgb, var(--mint) 32%, transparent)" }}>
+   382→          <span className="text-[11px] uppercase tracking-[0.12em] font-disp font-semibold" style={{ color: "var(--mint)" }}>
+   383→            Client chase
+   384→          </span>
+   385→          <span className="mono text-[12px] text-[var(--ink-dim)]">{c.whatsapp}</span>
+   386→          <div className="ml-auto">
+   387→            <WaButtons c={c} agentName={session?.name.split(" ")[0] ?? "HFMC"} />
+   388→          </div>
+   389→        </div>
+   390→      )}
+   391→
+   392→      {/* directives — management's word on this file, front and centre */}
+   393→      <DirectivesBanner c={c} />
+   394→
+   395→      {/* header */}
+   396→      <div className="card p-5 anim-fade-up">
+   397→        <div className="flex flex-wrap items-start gap-4">
+   398→          <div className="min-w-0">
+   399→            <div className="flex flex-wrap items-center gap-2.5">
+   400→              <span className="mono text-[13px] font-semibold" style={{ color: "var(--amber)" }}>{c.caseNumber}</span>
+   401→              <StatusChip status={status} />
+   402→              <CaseStateChip state={c.caseStatus} />
+   403→              {c.closedDate && <span className="text-[11.5px] text-[var(--ink-faint)]">{c.caseStatus === "Lost" ? "lost" : "booked"} {fmtDate(c.closedDate)}</span>}
+   404→            </div>
+   405→            <h1 className="font-disp font-bold text-[24px] tracking-tight mt-1 mb-1">{c.customer}</h1>
+   406→            <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[12.5px] text-[var(--ink-dim)]">
+   407→              <span className="inline-flex items-center gap-1.5"><IBank size={14} className="text-[var(--ink-faint)]" /> <BankChips c={c} max={3} /></span>
+   408→              <span className="inline-flex items-center gap-1.5"><SourceChip source={c.source} />{c.partner && <span className="text-[var(--ink-faint)]">{c.partner.name} @ {c.partner.sharePct}%</span>}</span>
+   409→              <span className="mono">{fmtMoney(c.loanAmount)}</span>
+   410→              <span className="inline-flex items-center gap-1.5"><IClock size={14} className="text-[var(--ink-faint)]" /> {ageDays(c.createdAt)}d old</span>
+   411→              {daysInStage != null && rule && (
+   412→                <span className="inline-flex items-center gap-1.5" style={{ color: daysInStage > rule.maxDays ? "var(--coral)" : undefined }}>
+   413→                  <IFlag size={13} /> {daysInStage}d in stage · SLA {rule.maxDays}d{rule.bank ? ` (${rule.bank})` : ""}
+   414→                </span>
+   415→              )}
+   416→            </div>
+   417→          </div>
+   418→
+   419→          <div className="ml-auto flex flex-wrap items-center gap-2">
+   420→            {isActive ? (
+   421→              <>
+   422→                <button
+   423→                  className="btn btn-ghost btn-sm"
+   424→                  onClick={() => {
+   425→                    setBookBank(c.wonBank ?? c.banks[0] ?? db.banks[0]?.name ?? "");
+   426→                    setConfirm("book");
+   427→                  }}
+   428→                >
+   429→                  Mark booked
+   430→                </button>
+   431→                <button className="btn btn-danger btn-sm" onClick={() => setConfirm("lost")}>
+   432→                  Mark lost
+   433→                </button>
+   434→              </>
+   435→            ) : (
+   436→              <button className="btn btn-ghost btn-sm" onClick={() => setConfirm("reopen")}>
+   437→                Reopen case
+   438→              </button>
+   439→            )}
+   440→            {session?.role === "Head of Company" && (
+   441→              <button className="btn btn-danger btn-sm" onClick={() => setConfirm("delete")} title="Delete case (Head of Company only)">
+   442→                <ITrash size={14} />
+   443→              </button>
+   444→            )}
+   445→          </div>
+   446→        </div>
+   447→
+   448→        {/* stage stepper */}
+   449→        <div className="mt-5 overflow-x-auto pb-1">
+   450→          <div className="flex items-center min-w-max">
+   451→            {stages.map((s, i) => {
+   452→              const reached = i < stageIdx || c.stage === "Closure" || c.stage === "Closed";
+   453→              const current = s.label === c.stage;
+   454→              const lost = c.caseStatus === "Lost";
+   455→              return (
+   456→                <div key={s.id} className="flex items-center">
+   457→                  <button
+   458→                    className="flex flex-col items-center gap-1.5 group"
+   459→                    onClick={() => moveStage(s.label)}
+   460→                    disabled={!editable}
+   461→                    title={editable ? `Move to ${s.label}` : s.label}
+   462→                  >
+   463→                    <span
+   464→                      className="w-[26px] h-[26px] rounded-full flex items-center justify-center mono text-[11px] font-semibold transition-all"
+   465→                      style={
+   466→                        current
+   467→                          ? { background: lost ? "var(--coral)" : "var(--amber)", color: "var(--amber-ink)", boxShadow: `0 0 0 4px ${lost ? "color-mix(in srgb, var(--coral) 20%, transparent)" : "color-mix(in srgb, var(--amber) 18%, transparent)"}` }
+   468→                          : reached
+   469→                          ? { background: "color-mix(in srgb, var(--mint) 15%, transparent)", color: "var(--mint)", border: "1px solid color-mix(in srgb, var(--mint) 42%, transparent)" }
+   470→                          : { background: "var(--bg2)", color: "var(--ink-faint)", border: "1px solid var(--line)" }
+   471→                      }
+   472→                    >
+   473→                      {i + 1}
+   474→                    </span>
+   475→                    <span className={`text-[10.5px] font-disp whitespace-nowrap transition-colors ${current ? "text-[var(--ink)] font-semibold" : "text-[var(--ink-faint)] group-hover:text-[var(--ink-dim)]"}`}>
+   476→                      {s.label}
+   477→                    </span>
+   478→                  </button>
+   479→                  {i < stages.length - 1 && (
+   480→                    <div className="w-7 h-px mx-1 mb-[22px]" style={{ background: i < stageIdx ? "color-mix(in srgb, var(--mint) 52%, transparent)" : "var(--line)" }} />
+   481→                  )}
+   482→                </div>
+   483→              );
+   484→            })}
+   485→          </div>
+   486→        </div>
+   487→      </div>
+   488→
+   489→      {!isActive && (
+   490→        <div className="card px-4 py-3 text-[13px] anim-fade-up" style={{ borderColor: c.caseStatus === "Lost" ? "color-mix(in srgb, var(--coral) 32%, transparent)" : "color-mix(in srgb, var(--sky) 32%, transparent)", color: "var(--ink-dim)" }}>
+   491→          This case is <strong style={{ color: c.caseStatus === "Lost" ? "var(--coral)" : "var(--sky)" }}>{c.caseStatus === "Lost" ? "lost" : "booked"}</strong> — the task engine is paused. Reopen it to resume work.
+   492→        </div>
+   493→      )}
+   494→
+   495→      {/* task + side panels */}
+   496→      <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-4 items-start">
+   497→        <div className="space-y-4">
+   498→          {isActive && openTask && <EditableTask task={openTask} />}
+   499→          {isActive && !openTask && (
+   500→            <div className="card p-6 text-center anim-fade-up" style={{ borderColor: "color-mix(in srgb, var(--coral) 38%, transparent)" }}>
+   501→              <p className="font-disp font-semibold text-[15px] m-0" style={{ color: "var(--coral)" }}>No next action on this case</p>
+   502→              <p className="text-[12.5px] text-[var(--ink-dim)] mt-1 mb-4">It's silently sitting in “{c.stage}”. Open the next step so someone owns it.</p>
+   503→              <button className="btn btn-primary mx-auto" onClick={() => setShowNext(true)}>
+   504→                <IPlus size={15} /> Open next task
+   505→              </button>
+   506→            </div>
+   507→          )}
+   508→          {isActive && (
+   509→            <div className="flex justify-end">
+   510→              {openTask && (
+   511→                <button className="btn btn-ghost" onClick={() => setShowNext(true)}>
+   512→                  <IArrowR size={15} /> Open next task
+   513→                </button>
+   514→              )}
+   515→            </div>
+   516→          )}
+   517→
+   518→          {/* completed tasks */}
+   519→          <div className="card anim-fade-up">
+   520→            <div className="px-4 py-3 border-b" style={{ borderColor: "var(--line-soft)" }}>
+   521→              <h3 className="font-disp font-semibold text-[13.5px] m-0">Task history</h3>
+   522→            </div>
+   523→            {doneTasks.length === 0 ? (
+   524→              <p className="text-[12.5px] text-[var(--ink-faint)] p-4 m-0">No completed tasks yet.</p>
+   525→            ) : (
+   526→              <div className="divide-y" style={{ borderColor: "var(--line-soft)" }}>
+   527→                {doneTasks.map((t) => (
+   528→                  <div key={t.id} className="px-4 py-3 flex items-start gap-3" style={{ borderColor: "var(--line-soft)" }}>
+   529→                    <span className="mt-0.5 w-[18px] h-[18px] rounded-full shrink-0 flex items-center justify-center" style={{ background: "rgba(67,214,155,0.14)", color: "var(--mint)", fontSize: 10 }}>✓</span>
+   530→                    <div className="min-w-0 flex-1">
+   531→                      <p className="text-[13px] m-0">{t.description}</p>
+   532→                      <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-[11px] text-[var(--ink-faint)]">
+   533→                        <span>by {userById(t.createdBy)?.name.split(" ")[0] ?? "—"}</span>
+   534→                        <span>→ {userById(t.ownerId)?.name.split(" ")[0] ?? "—"}</span>
+   535→                        {t.completedAt && <span>done {relTime(t.completedAt)}</span>}
+   536→                        {t.remarks && <span className="italic">“{t.remarks}”</span>}
+   537→                      </div>
+   538→                    </div>
+   539→                    <Chip tone="slate">{t.waitingFor}</Chip>
+   540→                  </div>
+   541→                ))}
+   542→              </div>
+   543→            )}
+   544→          </div>
+   545→
+   546→          {/* affordability checks */}
+   547→          {checks.length > 0 && (
+   548→            <div className="card anim-fade-up">
+   549→              <div className="px-4 py-3 border-b flex items-center gap-2" style={{ borderColor: "var(--line-soft)" }}>
+   550→                <ICalc size={15} className="text-[var(--amber)]" />
+   551→                <h3 className="font-disp font-semibold text-[13.5px] m-0">Affordability checks</h3>
+   552→              </div>
+   553→              <div className="divide-y" style={{ borderColor: "var(--line-soft)" }}>
+   554→                {checks.map((k) => (
+   555→                  <div key={k.id} className="px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-1" style={{ borderColor: "var(--line-soft)" }}>
+   556→                    {k.eligible ? <Chip tone="mint">Eligible</Chip> : <Chip tone="coral">Declined</Chip>}
+   557→                    <span className="mono font-semibold text-[13.5px]">{k.finalEligibleLoan > 0 ? fmtMoney(k.finalEligibleLoan) : "—"}</span>
+   558→                    <span className="text-[12px] text-[var(--ink-dim)]">
+   559→                      income {fmtMoney(k.monthlyIncome + k.otherIncome)} · EMIs {fmtMoney(k.existingEmis)} · {k.age}y {k.employmentType.toLowerCase()} · {k.bank} @{k.interestRate}%
+   560→                    </span>
+   561→                    <span className="text-[11px] text-[var(--ink-faint)] ml-auto">
+   562→                      by {userById(k.createdBy)?.name ?? "—"} · {relTime(k.createdAt)}
+   563→                    </span>
+   564→                  </div>
+   565→                ))}
+   566→              </div>
+   567→            </div>
+   568→          )}
+   569→        </div>
+   570→
+   571→        {/* right rail */}
+   572→        <div className="space-y-4">
+   573→          <CommissionPanel c={c} />
+   574→
+   575→          {isActive && editable && (
+   576→            <div className="card p-4 anim-fade-up">
+   577→              <h3 className="font-disp font-semibold text-[13.5px] m-0 mb-1">Submitted banks</h3>
+   578→              <p className="text-[11px] text-[var(--ink-faint)] mt-0 mb-2.5">Toggle where this file is in play. The first bank sets the SLA override &amp; commission estimate.</p>
+   579→              <div className="flex flex-wrap gap-1.5">
+   580→                {db.banks.filter((b) => b.active).map((b) => {
+   581→                  const on = c.banks.includes(b.name);
+   582→                  return (
+   583→                    <button
+   584→                      key={b.id}
+   585→                      className="chip transition-all"
+   586→                      onClick={() => updateCase(c.id, { banks: on ? c.banks.filter((x) => x !== b.name) : [...c.banks, b.name] })}
+   587→                      style={on ? { background: "rgba(87,194,234,0.12)", borderColor: "var(--sky)", color: "var(--sky)" } : { background: "var(--bg2)", borderColor: "var(--line)", color: "var(--ink-faint)" }}
+   588→                    >
+   589→                      {b.name}
+   590→                    </button>
+   591→                  );
+   592→                })}
+   593→              </div>
+   594→              {c.banks.length === 0 && <p className="text-[11.5px] mt-2 mb-0" style={{ color: "var(--amber)" }}>Bank not yet decided.</p>}
+   595→            </div>
+   596→          )}
+   597→
+   598→
+   599→
+   600→          <div className="card anim-fade-up">
+   601→            <div className="px-4 py-3 border-b flex items-center gap-2" style={{ borderColor: "var(--line-soft)" }}>
+   602→              <IHistory size={15} className="text-[var(--ink-faint)]" />
+   603→              <h3 className="font-disp font-semibold text-[13.5px] m-0">Activity trail</h3>
+   604→            </div>
+   605→            <div className="p-4 max-h-[420px] overflow-y-auto">
+   606→              {trail.length === 0 ? (
+   607→                <p className="text-[12.5px] text-[var(--ink-faint)] m-0">No activity yet.</p>
+   608→              ) : (
+   609→                <div className="space-y-0">
+   610→                  {trail.map((a, i) => (
+   611→                    <div key={a.id} className="flex gap-3">
+   612→                      <div className="flex flex-col items-center">
+   613→                        <span className="w-2 h-2 rounded-full mt-1.5 shrink-0" style={{ background: i === 0 ? "var(--amber)" : "var(--line)" }} />
+   614→                        {i < trail.length - 1 && <span className="w-px flex-1" style={{ background: "var(--line-soft)" }} />}
+   615→                      </div>
+   616→                      <div className="pb-4 min-w-0">
+   617→                        <p className="text-[12.5px] m-0 leading-snug">
+   618→                          <span className="text-[var(--ink-dim)]">{userById(a.userId)?.name ?? "System"}</span>{" "}
+   619→                          <span className="font-medium">{a.action.toLowerCase()}</span>
+   620→                        </p>
+   621→                        {(a.oldValue || a.newValue) && (
+   622→                          <p className="text-[11.5px] text-[var(--ink-faint)] m-0 truncate">
+   623→                            {a.oldValue ? `${a.oldValue} → ` : ""}{a.newValue ?? ""}
+   624→                          </p>
+   625→                        )}
+   626→                        <p className="mono text-[10.5px] text-[var(--ink-faint)] mt-0.5 mb-0">{fmtDateTime(a.at)}</p>
+   627→                      </div>
+   628→                    </div>
+   629→                  ))}
+   630→                </div>
+   631→              )}
+   632→            </div>
+   633→          </div>
+   634→        </div>
+   635→      </div>
+   636→
+   637→      <NextTaskModal c={c} open={showNext} onClose={() => setShowNext(false)} />
+   638→
+   639→      <ConfirmModal
+   640→        open={confirm === "book"}
+   641→        onClose={() => setConfirm(null)}
+   642→        tone="mint"
+   643→        title="Mark this case as booked?"
+   644→        body={
+   645→          <div>
+   646→            <p className="mt-0 mb-3">
+   647→              <strong>{c.caseNumber}</strong> · {c.customer} · {fmtMoney(c.loanAmount)} will be counted as closed business on {fmtDate(todayISO())}.
+   648→            </p>
+   649→            <label className="label">Which bank won the file?</label>
+   650→            <select className="select" value={bookBank} onChange={(e) => setBookBank(e.target.value)}>
+   651→              {c.banks.length > 0 && <optgroup label="Submitted to">{c.banks.map((b) => <option key={b}>{b}</option>)}</optgroup>}
+   652→              <optgroup label="Other banks">
+   653→                {db.banks.filter((b) => b.active && !c.banks.includes(b.name)).map((b) => (
+   654→                  <option key={b.id}>{b.name}</option>
+   655→                ))}
+   656→              </optgroup>
+   657→            </select>
+   658→            <p className="text-[11px] text-[var(--ink-faint)] mt-2 mb-0">Commission is booked at that bank's rate · admin-editable in Banks &amp; rates.</p>
+   659→          </div>
+   660→        }
+   661→        confirmLabel="Book case"
+   662→        onConfirm={() => {
+   663→          setCaseState(c.id, "Closed", bookBank);
+   664→          toast("success", `${c.caseNumber} booked with ${bookBank} — ${fmtMoney(c.loanAmount)} added to the book.`);
+   665→        }}
+   666→      />
+   667→      <ConfirmModal
+   668→        open={confirm === "lost"}
+   669→        onClose={() => setConfirm(null)}
+   670→        title="Mark this case as lost?"
+   671→        body={<span><strong>{c.caseNumber}</strong> · {c.customer} will move out of the live pipeline and into conversion reports as lost.</span>}
+   672→        confirmLabel="Mark lost"
+   673→        onConfirm={() => {
+   674→          setCaseState(c.id, "Lost");
+   675→          toast("info", `${c.caseNumber} marked lost.`);
+   676→        }}
+   677→      />
+   678→      <ConfirmModal
+   679→        open={confirm === "reopen"}
+   680→        onClose={() => setConfirm(null)}
+   681→        tone="primary"
+   682→        title="Reopen this case?"
+   683→        body={<span><strong>{c.caseNumber}</strong> returns to the active pipeline. The closed date is cleared and tasks can resume.</span>}
+   684→        confirmLabel="Reopen"
+   685→        onConfirm={() => {
+   686→          setCaseState(c.id, "Active");
+   687→          toast("success", `${c.caseNumber} reopened.`);
+   688→        }}
+   689→      />
+   690→      <ConfirmModal
+   691→        open={confirm === "delete"}
+   692→        onClose={() => setConfirm(null)}
+   693→        title="Delete this case permanently?"
+   694→        body={<span>This wipes <strong>{c.caseNumber}</strong>, its tasks, instructions and activity trail. This cannot be undone.</span>}
+   695→        confirmLabel="Delete case"
+   696→        onConfirm={() => {
+   697→          deleteCase(c.id);
+   698→          toast("info", `${c.caseNumber} deleted.`);
+   699→          nav({ name: "dashboard" });
+   700→        }}
+   701→      />
+   702→    </div>
+   703→  );
+   704→}
+   705→
+   706→/* keep canEditTask referenced for future inline edits */
+   707→export type { Task };
+   708→

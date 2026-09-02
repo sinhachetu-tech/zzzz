@@ -1,0 +1,1649 @@
+     1→     1→import { useEffect, useMemo, useState } from "react";
+     2→     2→import type { ReactNode } from "react";
+     3→     3→import { useStore } from "../lib/store";
+     4→     4→import type { AffordabilityCheck } from "../lib/types";
+     5→     5→import {
+     6→     6→  CO_SOURCES, FREQUENCIES, LIAB_METHODS, LIAB_TYPES, LTV_CHOICES, SALARIED_SOURCES, SE_SOURCES,
+     7→     7→  cloneInput, computeMortgage, defaultInput, defaultLtvPct, emiFor, fmtAED, fmtPct, incomeMonthly, liabilityEmi,
+     8→     8→  newIncomeRow, newLiabRow, scenarioCardNewLimit, scenarioCardsPct, scenarioIncomePct,
+     9→     9→  scenarioIncomeRemove, scenarioRate, scenarioRemoveCards, scenarioRemoveLiab, scenarioTenor, tenorLabel,
+    10→    10→} from "../lib/mortgage";
+    11→    11→import type { CoBorrower, Frequency, IncomeRow, LiabRow, MortgageInput, MortgageResult } from "../lib/mortgage";
+    12→    12→import { generateMortgagePdf } from "../lib/pdf";
+    13→    13→import type { PdfScenarioTable } from "../lib/pdf";
+    14→    14→import { relTime } from "../lib/format";
+    15→    15→import { Avatar, Chip } from "../components/ui";
+    16→    16→import { ConfirmModal } from "../components/bits";
+    17→    17→import { useCountUp } from "../components/charts";
+    18→    18→import { IArrowR, ICalc, IDownload, IEye, IPlus, ITrash, IX } from "../components/icons";
+    19→    19→
+    20→    20→/* ---------- small building blocks ---------- */
+    21→    21→
+    22→    22→function Section({ num, title, hint, children }: { num: string; title: string; hint?: string; children: ReactNode }) {
+    23→    23→  return (
+    24→    24→    <section className="card p-4 sm:p-5 anim-fade-up">
+    25→    25→      <div className="flex items-baseline gap-3 mb-3.5">
+    26→    26→        <span className="mono text-[11px] font-semibold px-1.5 py-0.5 rounded" style={{ background: "var(--amber-tint)", color: "var(--amber)" }}>{num}</span>
+    27→    27→        <h2 className="font-disp font-semibold text-[15px] m-0">{title}</h2>
+    28→    28→        {hint && <span className="text-[11.5px] text-[var(--ink-faint)] ml-auto hidden sm:inline">{hint}</span>}
+    29→    29→      </div>
+    30→    30→      {children}
+    31→    31→    </section>
+    32→    32→  );
+    33→    33→}
+    34→    34→
+    35→    35→function ToggleChips({ options, value, onChange }: { options: string[]; value: string; onChange: (v: string) => void }) {
+    36→    36→  return (
+    37→    37→    <div className="flex rounded-lg overflow-hidden border" style={{ borderColor: "var(--line)" }}>
+    38→    38→      {options.map((o) => (
+    39→    39→        <button
+    40→    40→          key={o}
+    41→    41→          type="button"
+    42→    42→          className="flex-1 px-2 py-1.5 text-[12px] font-disp font-semibold transition-all"
+    43→    43→          style={value === o ? { background: "var(--amber-tint)", color: "var(--amber)" } : { color: "var(--ink-faint)", background: "transparent" }}
+    44→    44→          onClick={() => onChange(o)}
+    45→    45→        >
+    46→    46→          {o}
+    47→    47→        </button>
+    48→    48→      ))}
+    49→    49→    </div>
+    50→    50→  );
+    51→    51→}
+    52→    52→
+    53→    53→const NumIn = ({ value, onChange, min = 0, step = 1000, placeholder }: { value: number; onChange: (n: number) => void; min?: number; step?: number; placeholder?: string }) => (
+    54→    54→  <input className="input mono" type="number" min={min} step={step} value={Number.isFinite(value) ? value : ""} placeholder={placeholder}
+    55→    55→    onChange={(e) => onChange(e.target.value === "" ? 0 : Number(e.target.value))} />
+    56→    56→);
+    57→    57→
+    58→    58→function Stat({ label, value, tone }: { label: string; value: string; tone?: string }) {
+    59→    59→  return (
+    60→    60→    <div>
+    61→    61→      <div className="text-[10.5px] uppercase tracking-[0.1em] text-[var(--ink-faint)] font-disp font-semibold">{label}</div>
+    62→    62→      <div className="mono text-[13.5px] font-medium" style={tone ? { color: tone } : undefined}>{value}</div>
+    63→    63→    </div>
+    64→    64→  );
+    65→    65→}
+    66→    66→
+    67→    67→/* migrate saved payloads from older shapes so reloading a historic check never crashes */
+    68→    68→function normalizeInput(raw: Partial<MortgageInput>): MortgageInput {
+    69→    69→  const base = defaultInput();
+    70→    70→  const co = raw.coBorrower as
+    71→    71→    | (Partial<CoBorrower> & { existingEmis?: number })
+    72→    72→    | null
+    73→    73→    | undefined;
+    74→    74→  const coBorrower: CoBorrower | null = co
+    75→    75→    ? {
+    76→    76→        name: co.name ?? "",
+    77→    77→        dob: co.dob ?? "1992-01-15",
+    78→    78→        incomes: Array.isArray(co.incomes) ? co.incomes : [newIncomeRow()],
+    79→    79→        liabilities: Array.isArray(co.liabilities)
+    80→    80→          ? co.liabilities
+    81→    81→          : co.existingEmis
+    82→    82→          ? [{ ...newLiabRow("Other Loan"), name: "Carried-over EMIs", method: "Manual", monthlyEmi: co.existingEmis }]
+    83→    83→          : [],
+    84→    84→      }
+    85→    85→    : null;
+    86→    86→  return {
+    87→    87→    ...base,
+    88→    88→    ...raw,
+    89→    89→    customLtv: typeof raw.customLtv === "string" ? raw.customLtv : "",
+    90→    90→    coBorrower,
+    91→    91→    incomes: Array.isArray(raw.incomes) && raw.incomes.length ? raw.incomes : base.incomes,
+    92→    92→    liabilities: Array.isArray(raw.liabilities) ? raw.liabilities : [],
+    93→    93→  } as MortgageInput;
+    94→    94→}
+    95→    95→
+    96→    96→/* ---------- main view ---------- */
+    97→    97→
+    98→    98→type WhifTab = "liab" | "rate" | "tenor" | "income";
+    99→    99→
+   100→   100→export default function Calculator() {
+   101→   101→  const { db, session, nav, toast, userById, saveMortgageCheck, createCaseFromCheck, linkCheckToCase } = useStore();
+   102→   102→  const [input, setInput] = useState<MortgageInput>(defaultInput);
+   103→   103→  const [savedId, setSavedId] = useState<number | null>(null);
+   104→   104→  const [confirmCase, setConfirmCase] = useState(false);
+   105→   105→  const [preview, setPreview] = useState<{ input: MortgageInput; res: MortgageResult; tables: PdfScenarioTable[]; by: string; obs: string } | null>(null);
+   106→   106→  const [whif, setWhif] = useState<WhifTab>("liab");
+   107→   107→  const [cardId, setCardId] = useState("");
+   108→   108→  const [cardLimit, setCardLimit] = useState("");
+   109→   109→  const [manualRate, setManualRate] = useState("");
+   110→   110→  const [manualTenor, setManualTenor] = useState("");
+   111→   111→  const [extraIncome, setExtraIncome] = useState("");
+   112→   112→  const [clientMode, setClientMode] = useState<"trial" | "existing">("trial");
+   113→   113→  const [existingCaseId, setExistingCaseId] = useState<number | null>(null);
+   114→   114→
+   115→   115→  const up = (patch: Partial<MortgageInput>) => setInput((p) => ({ ...p, ...patch }));
+   116→   116→
+   117→   117→  const loadExistingCase = (id: number) => {
+   118→   118→    const c = db.cases.find((x) => x.id === id);
+   119→   119→    if (!c) return;
+   120→   120→    setInput((p) => ({
+   121→   121→      ...p,
+   122→   122→      name: c.customer,
+   123→   123→      whatsapp: c.whatsapp || p.whatsapp,
+   124→   124→      requested: c.loanAmount > 0 ? c.loanAmount : p.requested,
+   125→   125→    }));
+   126→   126→    toast("info", `Loaded ${c.customer} from ${c.caseNumber}. This stays a trial — nothing is written back to the case.`);
+   127→   127→  };
+   128→   128→  const r = useMemo(() => computeMortgage(input), [input]);
+   129→   129→  const mpbfDisplay = useCountUp(r.finalMpbf, 550);
+   130→   130→
+   131→   131→  const setEmployment = (emp: string) => {
+   132→   132→    const employment = emp === "Self-Employed" ? ("Self-Employed" as const) : ("Salaried" as const);
+   133→   133→    const pool = employment === "Self-Employed" ? SE_SOURCES : SALARIED_SOURCES;
+   134→   134→    setInput((p) => ({
+   135→   135→      ...p,
+   136→   136→      employment,
+   137→   137→      incomes: p.incomes.map((row) => (pool.includes(row.source) ? row : { ...row, source: pool[0], eligiblePct: employment === "Self-Employed" && pool[0] === "Business Income" ? 70 : 100 })),
+   138→   138→    }));
+   139→   139→  };
+   140→   140→
+   141→   141→  const patchIncome = (id: string, patch: Partial<IncomeRow>) =>
+   142→   142→    setInput((p) => ({ ...p, incomes: p.incomes.map((x) => (x.id === id ? { ...x, ...patch } : x)) }));
+   143→   143→  const patchLiab = (id: string, patch: Partial<LiabRow>) =>
+   144→   144→    setInput((p) => ({ ...p, liabilities: p.liabilities.map((x) => (x.id === id ? { ...x, ...patch } : x)) }));
+   145→   145→
+   146→   146→  /* ---- co-borrower (DBR only, never written to a case) ---- */
+   147→   147→  const patchCoIncome = (id: string, patch: Partial<IncomeRow>) =>
+   148→   148→    setInput((p) => ({
+   149→   149→      ...p,
+   150→   150→      coBorrower: p.coBorrower
+   151→   151→        ? { ...p.coBorrower, incomes: p.coBorrower.incomes.map((x) => (x.id === id ? { ...x, ...patch } : x)) }
+   152→   152→        : p.coBorrower,
+   153→   153→    }));
+   154→   154→  const patchCoLiab = (id: string, patch: Partial<LiabRow>) =>
+   155→   155→    setInput((p) => ({
+   156→   156→      ...p,
+   157→   157→      coBorrower: p.coBorrower
+   158→   158→        ? { ...p.coBorrower, liabilities: p.coBorrower.liabilities.map((x) => (x.id === id ? { ...x, ...patch } : x)) }
+   159→   159→        : p.coBorrower,
+   160→   160→    }));
+   161→   161→
+   162→   162→  const defaultLtv = defaultLtvPct(input.applicantType);
+   163→   163→  const isCustomLtv = input.customLtv.trim() !== "" && !Number.isNaN(parseFloat(input.customLtv));
+   164→   164→
+   165→   165→  /* ---------------- scenarios ---------------- */
+   166→   166→
+   167→   167→  const cards = input.liabilities.filter((l) => l.type === "Credit Card");
+   168→   168→
+   169→   169→  const liabScenarios = useMemo(() => {
+   170→   170→    const rows: { label: string; input: MortgageInput }[] = [];
+   171→   171→    if (cards.length) {
+   172→   172→      rows.push({ label: "Credit cards −25%", input: scenarioCardsPct(input, 0.75) });
+   173→   173→      rows.push({ label: "Credit cards −50%", input: scenarioCardsPct(input, 0.5) });
+   174→   174→      rows.push({ label: "Credit cards removed", input: scenarioRemoveCards(input) });
+   175→   175→      const lim = Number(cardLimit);
+   176→   176→      if (lim > 0) rows.push({ label: `Card limit → ${fmtAED(lim)}`, input: scenarioCardNewLimit(input, cardId || cards[0].id, lim) });
+   177→   177→    }
+   178→   178→    for (const l of input.liabilities.filter((x) => x.type !== "Credit Card"))
+   179→   179→      rows.push({ label: `Remove ${l.name || l.type}`, input: scenarioRemoveLiab(input, l.id) });
+   180→   180→    return rows;
+   181→   181→  }, [input, cardId, cardLimit]); // eslint-disable-line react-hooks/exhaustive-deps
+   182→   182→
+   183→   183→  const rateScenarios = useMemo(() => {
+   184→   184→    const base = input.actualRate + input.loadFactor;
+   185→   185→    const rows = [1, 2, 3].map((n) => ({ label: `Stress +${n}%`, input: scenarioRate(input, base + n) }));
+   186→   186→    const m = Number(manualRate);
+   187→   187→    if (m > 0) rows.push({ label: `Manual ${m.toFixed(2)}%`, input: scenarioRate(input, m) });
+   188→   188→    return rows;
+   189→   189→  }, [input, manualRate]);
+   190→   190→
+   191→   191→  const tenorScenarios = useMemo(() => {
+   192→   192→    const rows = [15, 20, 25].map((y) => ({ label: `${y} years`, input: scenarioTenor(input, y * 12) }));
+   193→   193→    const m = Number(manualTenor);
+   194→   194→    if (m > 0) rows.push({ label: `Manual ${m} months`, input: scenarioTenor(input, m) });
+   195→   195→    return rows;
+   196→   196→  }, [input, manualTenor]);
+   197→   197→
+   198→   198→  const incomeScenarios = useMemo(() => {
+   199→   199→    const rows: { label: string; input: MortgageInput }[] = [];
+   200→   200→    for (const row of input.incomes) {
+   201→   201→      rows.push({ label: `Remove ${row.source}`, input: scenarioIncomeRemove(input, row.id) });
+   202→   202→      rows.push({ label: `${row.source} −25%`, input: scenarioIncomePct(input, row.id, 0.75) });
+   203→   203→    }
+   204→   204→    const extra = Number(extraIncome);
+   205→   205→    if (extra > 0) {
+   206→   206→      const c = cloneInput(input);
+   207→   207→      c.incomes = [...c.incomes, { ...newIncomeRow("Other Income"), amount: extra }];
+   208→   208→      rows.push({ label: `Add allowance ${fmtAED(extra)}/mo`, input: c });
+   209→   209→    }
+   210→   210→    return rows;
+   211→   211→  }, [input, extraIncome]);
+   212→   212→
+   213→   213→  const runScenarios = (list: { label: string; input: MortgageInput }[]) =>
+   214→   214→    list.map((s) => {
+   215→   215→      const sr = computeMortgage(s.input);
+   216→   216→      return { label: s.label, dbr: sr.currentDbr, residual: sr.residualDbr, mpbf: sr.finalMpbf, extra: sr.eligibleIncome, rate: sr.assessmentRate, tenor: sr.maxTenorMonths };
+   217→   217→    });
+   218→   218→
+   219→   219→  const delta = (v: number) => {
+   220→   220→    const d = v - r.finalMpbf;
+   221→   221→    if (Math.abs(d) < 1) return <span className="text-[var(--ink-faint)]">—</span>;
+   222→   222→    return <span style={{ color: d > 0 ? "var(--mint)" : "var(--coral)" }}>{d > 0 ? "+" : ""}{fmtAED(d)}</span>;
+   223→   223→  };
+   224→   224→
+   225→   225→  /* ---------------- actions ---------------- */
+   226→   226→
+   227→   227→  const summaryFor = () => ({
+   228→   228→    income: r.eligibleIncome, emi: r.existingEmis, final: r.finalMpbf,
+   229→   229→    rate: r.assessmentRate, tenorMonths: r.maxTenorMonths, ltv: r.actualLtv, eligible: r.finalMpbf > 0,
+   230→   230→  });
+   231→   231→
+   232→   232→  const saveCheck = (): number => {
+   233→   233→    const id = saveMortgageCheck(
+   234→   234→      input.name || "Unnamed applicant",
+   235→   235→      input.whatsapp,
+   236→   236→      JSON.stringify({ v: 1, input }),
+   237→   237→      summaryFor()
+   238→   238→    );
+   239→   239→    setSavedId(id);
+   240→   240→    return id;
+   241→   241→  };
+   242→   242→
+   243→   243→  const onSave = () => {
+   244→   244→    saveCheck();
+   245→   245→    toast("success", "Check saved to the audit trail — no case was created.");
+   246→   246→  };
+   247→   247→
+   248→   248→  const doCreateCase = () => {
+   249→   249→    const payload = JSON.stringify({ v: 1, input });
+   250→   250→    const id = saveMortgageCheck(input.name || "Unnamed applicant", input.whatsapp, payload, summaryFor());
+   251→   251→    const check: AffordabilityCheck = {
+   252→   252→      id, caseId: null, customerName: input.name || "Unnamed applicant",
+   253→   253→      monthlyIncome: r.eligibleIncome, otherIncome: 0, existingEmis: r.existingEmis,
+   254→   254→      age: r.ageNowYears, employmentType: input.employment, propertyValue: r.calcBasis,
+   255→   255→      bank: "", interestRate: r.assessmentRate, tenureYears: Math.round(r.maxTenorMonths / 12),
+   256→   256→      applicableLtv: r.actualLtv, maxLoanByLtv: r.ltvMpbf, maxDbrPct: 50,
+   257→   257→      availableDbrEmi: r.availableEmi, maxLoanByDbr: r.dbrMpbf,
+   258→   258→      maxTenureByAge: Math.round(r.maxTenorMonths / 12), finalEligibleLoan: r.finalMpbf,
+   259→   259→      estimatedEmi: r.newEmi, eligible: r.finalMpbf > 0,
+   260→   260→      createdBy: session?.id ?? 0, createdAt: new Date().toISOString(), payload,
+   261→   261→    };
+   262→   262→    const c = createCaseFromCheck(id, false, check);
+   263→   263→    setSavedId(id);
+   264→   264→    if (c) {
+   265→   265→      toast("success", `${c.caseNumber} opened for ${c.customer} at ${fmtAED(c.loanAmount)}.`);
+   266→   266→      nav({ name: "case", id: c.id });
+   267→   267→    }
+   268→   268→  };
+   269→   269→
+   270→   270→  const onOpenCase = () => setConfirmCase(true);
+   271→   271→
+   272→   272→  /* scenario builders that work for any saved input (audit-trail reports) */
+   273→   273→  const liabScenariosOf = (src: MortgageInput) => {
+   274→   274→    const rows: { label: string; input: MortgageInput }[] = [];
+   275→   275→    const cards = src.liabilities.filter((x) => x.type === "Credit Card");
+   276→   276→    if (cards.length) {
+   277→   277→      rows.push({ label: "Credit cards −25%", input: scenarioCardsPct(src, 0.75) });
+   278→   278→      rows.push({ label: "Credit cards −50%", input: scenarioCardsPct(src, 0.5) });
+   279→   279→      rows.push({ label: "Credit cards removed", input: scenarioRemoveCards(src) });
+   280→   280→    }
+   281→   281→    for (const l of src.liabilities.filter((x) => x.type !== "Credit Card"))
+   282→   282→      rows.push({ label: `Remove ${l.name || l.type}`, input: scenarioRemoveLiab(src, l.id) });
+   283→   283→    return rows;
+   284→   284→  };
+   285→   285→  const incomeScenariosOf = (src: MortgageInput) =>
+   286→   286→    src.incomes.map((row) => ({ label: `Remove ${row.source}`, input: scenarioIncomeRemove(src, row.id) }));
+   287→   287→
+   288→   288→  const buildScenarioTablesFor = (src: MortgageInput, base: MortgageResult): PdfScenarioTable[] => {
+   289→   289→    const run = (list: { label: string; input: MortgageInput }[]) =>
+   290→   290→      list.map((s) => {
+   291→   291→        const sr = computeMortgage(s.input);
+   292→   292→        return { label: s.label, dbr: sr.currentDbr, residual: sr.residualDbr, mpbf: sr.finalMpbf, extra: sr.eligibleIncome, rate: sr.assessmentRate, tenor: sr.maxTenorMonths };
+   293→   293→      });
+   294→   294→    const liabRows = run(liabScenariosOf(src));
+   295→   295→    const rateRows = run([1, 2, 3].map((n) => ({ label: `Stress +${n}%`, input: scenarioRate(src, src.actualRate + src.loadFactor + n) })));
+   296→   296→    const tenorRows = run([15, 20, 25].map((yy) => ({ label: `${yy} years`, input: scenarioTenor(src, yy * 12) })));
+   297→   297→    const incomeRows = run(incomeScenariosOf(src));
+   298→   298→    const dlt = (v: number) => (v >= 0 ? "+" : "−") + fmtAED(Math.abs(v));
+   299→   299→    const mk = (title: string, head: string[], rows: { label: string }[], cells: (row: (typeof liabRows)[number], i: number) => (string | number)[]) => ({
+   300→   300→      title, head,
+   301→   301→      body: rows.map((row, i) => [row.label, ...cells(row as (typeof liabRows)[number], i)]),
+   302→   302→    });
+   303→   303→    return [
+   304→   304→      mk("Liability scenarios", ["Scenario", "Current DBR", "Residual DBR", "MPBF", "Change"], [{ label: "Current (baseline)" }, ...liabRows], (row, i) =>
+   305→   305→        i === 0
+   306→   306→          ? [fmtPct(base.currentDbr), fmtPct(base.residualDbr), fmtAED(base.finalMpbf), "—"]
+   307→   307→          : [fmtPct(row.dbr), fmtPct(row.residual), fmtAED(row.mpbf), dlt(row.mpbf - base.finalMpbf)]),
+   308→   308→      mk("Rate scenarios", ["Scenario", "Assessment rate", "MPBF", "Change"], [{ label: `Current (${base.assessmentRate.toFixed(2)}%)` }, ...rateRows], (row, i) =>
+   309→   309→        i === 0 ? [fmtPct(base.assessmentRate), fmtAED(base.finalMpbf), "—"] : [fmtPct(row.rate), fmtAED(row.mpbf), dlt(row.mpbf - base.finalMpbf)]),
+   310→   310→      mk("Tenor scenarios", ["Scenario", "Tenor", "MPBF", "Change"], [{ label: `Current max (${tenorLabel(base.maxTenorMonths)})` }, ...tenorRows], (row, i) =>
+   311→   311→        i === 0 ? [tenorLabel(base.maxTenorMonths), fmtAED(base.finalMpbf), "—"] : [tenorLabel(row.tenor), fmtAED(row.mpbf), dlt(row.mpbf - base.finalMpbf)]),
+   312→   312→      mk("Income scenarios", ["Scenario", "Eligible income", "MPBF", "Change"], [{ label: "Current (baseline)" }, ...incomeRows], (row, i) =>
+   313→   313→        i === 0 ? [fmtAED(base.eligibleIncome), fmtAED(base.finalMpbf), "—"] : [fmtAED(row.extra), fmtAED(row.mpbf), dlt(row.mpbf - base.finalMpbf)]),
+   314→   314→    ];
+   315→   315→  };
+   316→   316→
+   317→   317→  const buildScenarioTables = (): PdfScenarioTable[] => {
+   318→   318→    const liabRows = runScenarios(liabScenarios);
+   319→   319→    const rateRows = runScenarios(rateScenarios);
+   320→   320→    const tenorRows = runScenarios(tenorScenarios);
+   321→   321→    const incomeRows = runScenarios(incomeScenarios);
+   322→   322→    const delta = (v: number) => (v >= 0 ? "+" : "−") + fmtAED(Math.abs(v));
+   323→   323→    const mk = (title: string, head: string[], rows: { label: string }[], cells: (row: (typeof liabRows)[number], i: number) => (string | number)[]) => ({
+   324→   324→      title, head,
+   325→   325→      body: rows.map((row, i) => [row.label, ...cells(row as (typeof liabRows)[number], i)]),
+   326→   326→    });
+   327→   327→    return [
+   328→   328→      mk("Liability scenarios", ["Scenario", "Current DBR", "Residual DBR", "MPBF", "Change"], [{ label: "Current (baseline)" }, ...liabRows], (row, i) =>
+   329→   329→        i === 0
+   330→   330→          ? [fmtPct(r.currentDbr), fmtPct(r.residualDbr), fmtAED(r.finalMpbf), "—"]
+   331→   331→          : [fmtPct(row.dbr), fmtPct(row.residual), fmtAED(row.mpbf), delta(row.mpbf - r.finalMpbf)]),
+   332→   332→      mk("Rate scenarios", ["Scenario", "Assessment rate", "MPBF", "Change"], [{ label: `Current (${r.assessmentRate.toFixed(2)}%)` }, ...rateRows], (row, i) =>
+   333→   333→        i === 0 ? [fmtPct(r.assessmentRate), fmtAED(r.finalMpbf), "—"] : [fmtPct(row.rate), fmtAED(row.mpbf), delta(row.mpbf - r.finalMpbf)]),
+   334→   334→      mk("Tenor scenarios", ["Scenario", "Tenor", "MPBF", "Change"], [{ label: `Current max (${tenorLabel(r.maxTenorMonths)})` }, ...tenorRows], (row, i) =>
+   335→   335→        i === 0 ? [tenorLabel(r.maxTenorMonths), fmtAED(r.finalMpbf), "—"] : [tenorLabel(row.tenor), fmtAED(row.mpbf), delta(row.mpbf - r.finalMpbf)]),
+   336→   336→      mk("Income scenarios", ["Scenario", "Eligible income", "MPBF", "Change"], [{ label: "Current (baseline)" }, ...incomeRows], (row, i) =>
+   337→   337→        i === 0 ? [fmtAED(r.eligibleIncome), fmtAED(r.finalMpbf), "—"] : [fmtAED(row.extra), fmtAED(row.mpbf), delta(row.mpbf - r.finalMpbf)]),
+   338→   338→    ];
+   339→   339→  };
+   340→   340→
+   341→   341→  const buildReport = () => {
+   342→   342→    const tables = buildScenarioTables();
+   343→   343→    const liab = runScenarios(liabScenarios);
+   344→   344→    const income = runScenarios(incomeScenarios);
+   345→   345→    const candidates = [
+   346→   346→      ...liab.map((s) => ({ label: s.label, d: s.mpbf - r.finalMpbf, dbr: s.dbr })),
+   347→   347→      ...income.map((s) => ({ label: s.label, d: s.mpbf - r.finalMpbf, dbr: s.dbr })),
+   348→   348→    ]
+   349→   349→      .filter((c) => c.d > 5000)
+   350→   350→      .sort((a, b) => b.d - a.d);
+   351→   351→    const obs =
+   352→   352→      candidates.length === 0
+   353→   353→        ? `No liability or income scenario meaningfully improves the baseline ${fmtAED(r.finalMpbf)} — the binding constraint is ${r.limitedBy.toLowerCase()}. Movement must come from income, liabilities or the property itself.`
+   354→   354→        : `Strongest lever: ${candidates[0].label} — DBR moves ${fmtPct(r.currentDbr)} → ${fmtPct(candidates[0].dbr)}, unlocking ${fmtAED(candidates[0].d)} of additional MPBF (${fmtAED(r.finalMpbf)} → ${fmtAED(r.finalMpbf + candidates[0].d)}).`;
+   355→   355→    return { tables, obs };
+   356→   356→  };
+   357→   357→
+   358→   358→  const onPdf = () => {
+   359→   359→    const { tables, obs } = buildReport();
+   360→   360→    generateMortgagePdf(input, r, tables, session?.name ?? "HFMC", obs);
+   361→   361→    toast("success", "Bank-facing PDF downloaded.");
+   362→   362→  };
+   363→   363→
+   364→   364→  const onView = () => {
+   365→   365→    const { tables, obs } = buildReport();
+   366→   366→    setPreview({ input, res: r, tables, by: session?.name ?? "HFMC", obs });
+   367→   367→  };
+   368→   368→
+   369→   369→  /* ---------------- render ---------------- */
+   370→   370→
+   371→   371→  const caps = [
+   372→   372→    { label: "DBR / Residual DBR MPBF", v: r.dbrMpbf },
+   373→   373→    { label: "LTV MPBF", v: r.ltvMpbf },
+   374→   374→    ...(r.multiplierCap != null ? [{ label: `Income multiplier (${input.multiplierX}×)`, v: r.multiplierCap }] : []),
+   375→   375→    ...(r.requested > 0 ? [{ label: "Requested finance", v: r.requested }] : []),
+   376→   376→  ];
+   377→   377→  const capMax = Math.max(...caps.map((c) => c.v), 1);
+   378→   378→
+   379→   379→  const checks = [...db.affordabilityChecks].sort((a, b) => b.id - a.id);
+   380→   380→  const sourcePool = input.employment === "Self-Employed" ? SE_SOURCES : SALARIED_SOURCES;
+   381→   381→
+   382→   382→  return (
+   383→   383→    <div className="space-y-4">
+   384→   384→      <div className="flex flex-wrap items-end justify-between gap-3">
+   385→   385→        <div>
+   386→   386→          <h1 className="font-disp font-bold text-[24px] tracking-tight m-0 flex items-center gap-2.5">
+   387→   387→            <ICalc size={22} className="text-[var(--amber)]" /> Mortgage Eligibility Calculator
+   388→   388→          </h1>
+   389→   389→          <p className="text-[13px] text-[var(--ink-dim)] mt-0.5 mb-0">
+   390→   390→            Preliminary MPBF assessment · CBUAE-style DBR {fmtPct(50)} cap · <em>not</em> a bank approval
+   391→   391→          </p>
+   392→   392→        </div>
+   393→   393→        <button className="btn btn-ghost btn-sm" onClick={() => { setInput(defaultInput()); setSavedId(null); setClientMode("trial"); setExistingCaseId(null); toast("info", "Calculator reset."); }}>
+   394→   394→          Reset
+   395→   395→        </button>
+   396→   396→      </div>
+   397→   397→
+   398→   398→      {/* client mode — trial vs existing */}
+   399→   399→      <div className="card px-4 py-3 anim-fade-up">
+   400→   400→        <div className="flex flex-wrap items-center gap-3">
+   401→   401→          <span className="text-[10.5px] uppercase tracking-[0.12em] font-disp font-semibold text-[var(--ink-faint)]">Running for</span>
+   402→   402→          <div className="flex rounded-lg overflow-hidden border" style={{ borderColor: "var(--line)" }}>
+   403→   403→            <button type="button"
+   404→   404→              className="px-3.5 py-1.5 text-[12.5px] font-disp font-semibold transition-colors"
+   405→   405→              style={clientMode === "trial" ? { background: "var(--amber-tint)", color: "var(--amber)" } : { color: "var(--ink-faint)" }}
+   406→   406→              onClick={() => setClientMode("trial")}>
+   407→   407→              New client · trial
+   408→   408→            </button>
+   409→   409→            <button type="button"
+   410→   410→              className="px-3.5 py-1.5 text-[12.5px] font-disp font-semibold transition-colors"
+   411→   411→              style={clientMode === "existing" ? { background: "var(--amber-tint)", color: "var(--amber)" } : { color: "var(--ink-faint)" }}
+   412→   412→              onClick={() => setClientMode("existing")}>
+   413→   413→              Existing client
+   414→   414→            </button>
+   415→   415→          </div>
+   416→   416→
+   417→   417→          {clientMode === "trial" ? (
+   418→   418→            <span className="text-[11.5px] text-[var(--ink-faint)] flex items-center gap-1.5">
+   419→   419→              <span className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--mint)" }} />
+   420→   420→              Pure what-if — saving stores an audit check only, never creates a case.
+   421→   421→            </span>
+   422→   422→          ) : (
+   423→   423→            <select className="select" style={{ width: 280 }} value={existingCaseId ?? ""}
+   424→   424→              onChange={(e) => { const v = e.target.value ? Number(e.target.value) : null; setExistingCaseId(v); if (v) loadExistingCase(v); }}>
+   425→   425→              <option value="">Select a case file…</option>
+   426→   426→              {[...db.cases].sort((a, b) => b.id - a.id).map((c) => (
+   427→   427→                <option key={c.id} value={c.id}>{c.caseNumber} · {c.customer}</option>
+   428→   428→              ))}
+   429→   429→            </select>
+   430→   430→          )}
+   431→   431→        </div>
+   432→   432→      </div>
+   433→   433→
+   434→   434→      <div className="grid grid-cols-1 xl:grid-cols-[1fr_400px] gap-4 items-start">
+   435→   435→        {/* ================= input column ================= */}
+   436→   436→        <div className="space-y-4">
+   437→   437→          <Section num="01" title="Applicant" hint="age sets the usable tenor">
+   438→   438→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+   439→   439→              <div>
+   440→   440→                <label className="label">Applicant name</label>
+   441→   441→                <input className="input" value={input.name} onChange={(e) => up({ name: e.target.value })} placeholder="e.g. Mohammed Al Mansoori" />
+   442→   442→              </div>
+   443→   443→              <div>
+   444→   444→                <label className="label">WhatsApp</label>
+   445→   445→                <input className="input mono" value={input.whatsapp} onChange={(e) => up({ whatsapp: e.target.value })} placeholder="+971 50 …" />
+   446→   446→              </div>
+   447→   447→              <div>
+   448→   448→                <label className="label">Applicant type</label>
+   449→   449→                <ToggleChips options={["Expatriate", "UAE National"]} value={input.applicantType} onChange={(v) => up({ applicantType: v as MortgageInput["applicantType"] })} />
+   450→   450→              </div>
+   451→   451→              <div>
+   452→   452→                <label className="label">Employment</label>
+   453→   453→                <ToggleChips options={["Salaried", "Self-Employed"]} value={input.employment} onChange={setEmployment} />
+   454→   454→              </div>
+   455→   455→              <div>
+   456→   456→                <label className="label">Date of birth</label>
+   457→   457→                <input className="input mono" type="date" value={input.dob} onChange={(e) => e.target.value && up({ dob: e.target.value })} />
+   458→   458→              </div>
+   459→   459→              <div className="grid grid-cols-2 gap-3">
+   460→   460→                <div>
+   461→   461→                  <label className="label">Final age</label>
+   462→   462→                  <NumIn value={input.finalAge} onChange={(n) => up({ finalAge: n })} step={1} min={40} />
+   463→   463→                </div>
+   464→   464→                <div>
+   465→   465→                  <label className="label">Margin (mo)</label>
+   466→   466→                  <NumIn value={input.marginMonths} onChange={(n) => up({ marginMonths: n })} step={1} min={0} />
+   467→   467→                </div>
+   468→   468→              </div>
+   469→   469→            </div>
+   470→   470→            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3.5 pt-3.5" style={{ borderTop: "1px dashed var(--line)" }}>
+   471→   471→              <Stat label="Current age" value={`${r.ageNowYears}y`} />
+   472→   472→              <Stat label="After margin" value={`${Math.floor(r.ageAfterMarginMonths / 12)}y ${r.ageAfterMarginMonths % 12}m`} />
+   473→   473→              <Stat label="Remaining period" value={tenorLabel(r.remainingMonths)} />
+   474→   474→              <Stat label="Max usable tenor" value={tenorLabel(r.maxTenorMonths)} tone="var(--amber)" />
+   475→   475→            </div>
+   476→   476→          </Section>
+   477→   477→
+   478→   478→          <Section num="02" title="Property" hint="only what the calculation needs">
+   479→   479→            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+   480→   480→              <div>
+   481→   481→                <label className="label">Property value (AED)</label>
+   482→   482→                <NumIn value={input.propertyValue} onChange={(n) => up({ propertyValue: n })} step={50000} />
+   483→   483→              </div>
+   484→   484→              <div>
+   485→   485→                <label className="label">Bank valuation — optional</label>
+   486→   486→                <input className="input mono" type="number" min={0} step={50000} value={input.valuation ?? ""} placeholder="blank if not available"
+   487→   487→                  onChange={(e) => up({ valuation: e.target.value === "" ? null : Number(e.target.value) || 0 })} />
+   488→   488→              </div>
+   489→   489→              <div>
+   490→   490→                <label className="label">Requested finance (AED)</label>
+   491→   491→                <NumIn value={input.requested} onChange={(n) => up({ requested: n })} step={50000} />
+   492→   492→              </div>
+   493→   493→            </div>
+   494→   494→
+   495→   495→            <div className="mt-3">
+   496→   496→              <label className="label">
+   497→   497→                LTV applied — default {defaultLtv}% for {input.applicantType}
+   498→   498→                {isCustomLtv && <span style={{ color: "var(--amber)" }}> · using custom {parseFloat(input.customLtv)}%</span>}
+   499→   499→              </label>
+   500→   500→              <div className="flex flex-wrap items-center gap-1.5">
+   501→   501→                <button type="button" className="chip transition-all"
+   502→   502→                  style={input.ltvPctChoice == null && !isCustomLtv ? { background: "var(--amber-tint)", borderColor: "var(--amber)", color: "var(--amber)" } : { background: "var(--bg2)", borderColor: "var(--line)", color: "var(--ink-faint)" }}
+   503→   503→                  onClick={() => up({ ltvPctChoice: null, customLtv: "" })}>
+   504→   504→                  Default {defaultLtv}%
+   505→   505→                </button>
+   506→   506→                {LTV_CHOICES.map((v) => (
+   507→   507→                  <button key={v} type="button" className="chip transition-all"
+   508→   508→                    style={input.ltvPctChoice === v && !isCustomLtv ? { background: "var(--amber-tint)", borderColor: "var(--amber)", color: "var(--amber)" } : { background: "var(--bg2)", borderColor: "var(--line)", color: "var(--ink-faint)" }}
+   509→   509→                    onClick={() => up({ ltvPctChoice: v, customLtv: "" })}>
+   510→   510→                    {v}%
+   511→   511→                  </button>
+   512→   512→                ))}
+   513→   513→                <span className={`flex items-center gap-1.5 transition-all`}
+   514→   514→                  style={{ background: isCustomLtv ? "var(--amber-tint)" : "var(--bg2)", border: `1px solid ${isCustomLtv ? "var(--amber)" : "var(--line)"}`, borderRadius: 5, paddingLeft: 8, paddingRight: 8 }}>
+   515→   515→                  <span className="text-[11px] uppercase tracking-[0.06em] font-disp" style={{ color: isCustomLtv ? "var(--amber)" : "var(--ink-faint)" }}>Custom</span>
+   516→   516→                  <input className="mono" style={{ width: 52, padding: "3px 0", border: "none", background: "transparent", color: "var(--ink)", fontSize: 12, textAlign: "right", outline: "none" }}
+   517→   517→                    type="number" min={1} max={95} step={0.5} placeholder="e.g. 72"
+   518→   518→                    value={input.customLtv}
+   519→   519→                    onChange={(e) => up({ customLtv: e.target.value, ltvPctChoice: null })} />
+   520→   520→                  <span className="text-[11px]" style={{ color: isCustomLtv ? "var(--amber)" : "var(--ink-faint)" }}>%</span>
+   521→   521→                </span>
+   522→   522→              </div>
+   523→   523→            </div>
+   524→   524→
+   525→   525→            <p className="text-[12px] text-[var(--ink-dim)] mt-3 mb-0 rounded-lg px-3 py-2" style={{ background: "var(--tint)" }}>
+   526→   526→              Calculation basis: <strong className="mono">{fmtAED(r.calcBasis)}</strong>
+   527→   527→              <span className="text-[var(--ink-faint)]"> — {r.basisLabel}. LTV {r.ltvPct}% ({input.ltvPctChoice != null ? "selected" : "default"}) for {input.applicantType}.</span>
+   528→   528→            </p>
+   529→   529→          </Section>
+   530→   530→
+   531→   531→          <Section num="03" title="Income" hint={input.employment === "Self-Employed" ? "self-employed basis" : "all sources → monthly equivalent"}>
+   532→   532→            <div className="space-y-2">
+   533→   533→              {input.incomes.map((row) => (
+   534→   534→                <div key={row.id} className="grid grid-cols-[1fr_92px_110px_76px_100px_30px] gap-2 items-center anim-fade-in">
+   535→   535→                  <select className="select" value={row.source} onChange={(e) => patchIncome(row.id, { source: e.target.value })}>
+   536→   536→                    {sourcePool.map((s) => <option key={s}>{s}</option>)}
+   537→   537→                  </select>
+   538→   538→                  <select className="select" value={row.frequency} onChange={(e) => patchIncome(row.id, { frequency: e.target.value as Frequency })}>
+   539→   539→                    {FREQUENCIES.map((f) => <option key={f}>{f}</option>)}
+   540→   540→                  </select>
+   541→   541→                  <NumIn value={row.amount} onChange={(n) => patchIncome(row.id, { amount: n })} step={500} />
+   542→   542→                  <NumIn value={row.eligiblePct} onChange={(n) => patchIncome(row.id, { eligiblePct: Math.min(100, Math.max(0, n)) })} step={5} min={0} />
+   543→   543→                  <span className="mono text-[12.5px] text-right" style={{ color: "var(--mint)" }}>{fmtAED(incomeMonthly(row))}</span>
+   544→   544→                  <button className="text-[var(--ink-faint)] hover:text-[var(--coral)] transition-colors justify-self-center" title="Remove row"
+   545→   545→                    onClick={() => setInput((p) => ({ ...p, incomes: p.incomes.filter((x) => x.id !== row.id) }))}>
+   546→   546→                    <IX size={14} />
+   547→   547→                  </button>
+   548→   548→                </div>
+   549→   549→              ))}
+   550→   550→            </div>
+   551→   551→            <div className="flex items-center justify-between mt-3">
+   552→   552→              <button className="btn btn-ghost btn-sm" onClick={() => setInput((p) => ({ ...p, incomes: [...p.incomes, newIncomeRow(sourcePool[Math.min(p.incomes.length, sourcePool.length - 1)], input.employment)] }))}>
+   553→   553→                <IPlus size={13} /> Add income
+   554→   554→              </button>
+   555→   555→              <div className="text-[12.5px]">
+   556→   556→                Eligible monthly income{input.coBorrower ? " (combined)" : ""}{" "}
+   557→   557→                <strong className="mono text-[15px]" style={{ color: "var(--mint)" }}>{fmtAED(r.eligibleIncome)}</strong>
+   558→   558→              </div>
+   559→   559→            </div>
+   560→   560→            <div className="grid grid-cols-5 gap-2 mt-2 text-[10px] uppercase tracking-[0.08em] text-[var(--ink-faint)] font-disp font-semibold sm:hidden">
+   561→   561→              <span>Source</span><span>Freq</span><span>Amount</span><span>%</span><span className="text-right">Monthly</span>
+   562→   562→            </div>
+   563→   563→
+   564→   564→            {/* co-borrower — calculation only, never written to a case */}
+   565→   565→            <div
+   566→   566→              className="mt-4 rounded-lg p-3.5 transition-colors"
+   567→   567→              style={{
+   568→   568→                border: input.coBorrower ? "1px solid color-mix(in srgb, var(--sky) 35%, transparent)" : "1px dashed var(--line)",
+   569→   569→                background: input.coBorrower ? "color-mix(in srgb, var(--sky) 6%, transparent)" : "transparent",
+   570→   570→              }}
+   571→   571→            >
+   572→   572→              {!input.coBorrower ? (
+   573→   573→                <button
+   574→   574→                  className="btn btn-ghost btn-sm"
+   575→   575→                  onClick={() => up({ coBorrower: { name: "", dob: "1992-01-15", incomes: [newIncomeRow(sourcePool[0], input.employment)], liabilities: [] } })}
+   576→   576→                >
+   577→   577→                  <IPlus size={13} /> Add co-borrower (if applicable)
+   578→   578→                </button>
+   579→   579→              ) : (
+   580→   580→                <div className="anim-fade-in">
+   581→   581→                  <div className="flex items-center justify-between mb-2.5">
+   582→   582→                    <span className="text-[11px] uppercase tracking-[0.12em] font-disp font-semibold" style={{ color: "var(--sky)" }}>
+   583→   583→                      Co-borrower · combined for DBR · age limits the tenor
+   584→   584→                    </span>
+   585→   585→                    <button
+   586→   586→                      className="text-[var(--ink-faint)] hover:text-[var(--coral)] transition-colors"
+   587→   587→                      title="Remove co-borrower"
+   588→   588→                      onClick={() => up({ coBorrower: null })}
+   589→   589→                    >
+   590→   590→                      <ITrash size={14} />
+   591→   591→                    </button>
+   592→   592→                  </div>
+   593→   593→                  <div className="grid grid-cols-1 sm:grid-cols-[1fr_170px_110px] gap-2 mb-2">
+   594→   594→                    <div>
+   595→   595→                      <label className="label">Co-borrower name</label>
+   596→   596→                      <input
+   597→   597→                        className="input"
+   598→   598→                        placeholder="Shown on the report only"
+   599→   599→                        value={input.coBorrower.name}
+   600→   600→                        onChange={(e) => up({ coBorrower: { ...input.coBorrower!, name: e.target.value } })}
+   601→   601→                      />
+   602→   602→                    </div>
+   603→   603→                    <div>
+   604→   604→                      <label className="label">Date of birth</label>
+   605→   605→                      <input
+   606→   606→                        className="input mono"
+   607→   607→                        type="date"
+   608→   608→                        value={input.coBorrower.dob}
+   609→   609→                        onChange={(e) => e.target.value && up({ coBorrower: { ...input.coBorrower!, dob: e.target.value } })}
+   610→   610→                      />
+   611→   611→                    </div>
+   612→   612→                    <div>
+   613→   613→                      <label className="label">Age now</label>
+   614→   614→                      <div className="mono text-[15px] font-semibold pt-1.5" style={{ color: r.tenorLimitedBy === "co-borrower" ? "var(--coral)" : "var(--ink-dim)" }}>
+   615→   615→                        {r.coAgeYears} yrs{r.tenorLimitedBy === "co-borrower" && " ◂ caps tenor"}
+   616→   616→                      </div>
+   617→   617→                    </div>
+   618→   618→                  </div>
+   619→   619→                  <div className="space-y-2">
+   620→   620→                    {input.coBorrower.incomes.map((row) => (
+   621→   621→                      <div key={row.id} className="grid grid-cols-[1fr_92px_110px_76px_100px_30px] gap-2 items-center">
+   622→   622→                        <select className="select" value={row.source} onChange={(e) => patchCoIncome(row.id, { source: e.target.value })}>
+   623→   623→                          {sourcePool.map((s) => <option key={s}>{s}</option>)}
+   624→   624→                        </select>
+   625→   625→                        <select className="select" value={row.frequency} onChange={(e) => patchCoIncome(row.id, { frequency: e.target.value as Frequency })}>
+   626→   626→                          {FREQUENCIES.map((f) => <option key={f}>{f}</option>)}
+   627→   627→                        </select>
+   628→   628→                        <NumIn value={row.amount} onChange={(n) => patchCoIncome(row.id, { amount: n })} step={500} />
+   629→   629→                        <NumIn value={row.eligiblePct} onChange={(n) => patchCoIncome(row.id, { eligiblePct: Math.min(100, Math.max(0, n)) })} step={5} min={0} />
+   630→   630→                        <span className="mono text-[12.5px] text-right" style={{ color: "var(--sky)" }}>{fmtAED(incomeMonthly(row))}</span>
+   631→   631→                        <button
+   632→   632→                          className="text-[var(--ink-faint)] hover:text-[var(--coral)] transition-colors justify-self-center"
+   633→   633→                          title="Remove row"
+   634→   634→                          onClick={() =>
+   635→   635→                            setInput((p) => ({
+   636→   636→                              ...p,
+   637→   637→                              coBorrower: p.coBorrower
+   638→   638→                                ? { ...p.coBorrower, incomes: p.coBorrower.incomes.filter((x) => x.id !== row.id) }
+   639→   639→                                : p.coBorrower,
+   640→   640→                            }))
+   641→   641→                          }
+   642→   642→                        >
+   643→   643→                          <IX size={14} />
+   644→   644→                        </button>
+   645→   645→                      </div>
+   646→   646→                    ))}
+   647→   647→                  </div>
+   648→   648→                  <div className="flex items-center justify-between mt-2.5">
+   649→   649→                    <button
+   650→   650→                      className="btn btn-ghost btn-sm"
+   651→   651→                      onClick={() =>
+   652→   652→                        setInput((p) => ({
+   653→   653→                          ...p,
+   654→   654→                          coBorrower: p.coBorrower
+   655→   655→                            ? { ...p.coBorrower, incomes: [...p.coBorrower.incomes, newIncomeRow(sourcePool[Math.min(p.coBorrower.incomes.length, sourcePool.length - 1)], input.employment)] }
+   656→   656→                            : p.coBorrower,
+   657→   657→                        }))
+   658→   658→                      }
+   659→   659→                    >
+   660→   660→                      <IPlus size={13} /> Add co-borrower income
+   661→   661→                    </button>
+   662→   662→                    <div className="text-[12.5px]">
+   663→   663→                      Co-borrower income <strong className="mono text-[14px]" style={{ color: "var(--sky)" }}>{fmtAED(r.coIncome)}</strong>/mo
+   664→   664→                    </div>
+   665→   665→                  </div>
+   666→   666→
+   667→   667→                  {/* co-borrower liabilities — combined with the applicant's for DBR */}
+   668→   668→                  <div className="mt-3 pt-3" style={{ borderTop: "1px dashed color-mix(in srgb, var(--sky) 30%, transparent)" }}>
+   669→   669→                    <div className="text-[10.5px] uppercase tracking-[0.1em] font-disp font-semibold mb-2" style={{ color: "var(--sky)" }}>
+   670→   670→                      Their liabilities
+   671→   671→                    </div>
+   672→   672→                    {input.coBorrower.liabilities.length === 0 && (
+   673→   673→                      <p className="text-[12px] text-[var(--ink-faint)] m-0 mb-2">No liabilities declared for the co-borrower.</p>
+   674→   674→                    )}
+   675→   675→                    <div className="space-y-2">
+   676→   676→                      {input.coBorrower.liabilities.map((l) => (
+   677→   677→                        <div key={l.id} className="rounded-lg p-2.5 anim-fade-in" style={{ background: "color-mix(in srgb, var(--sky) 5%, transparent)", border: "1px solid color-mix(in srgb, var(--sky) 18%, transparent)" }}>
+   678→   678→                          <div className="grid grid-cols-[1fr_130px_130px] gap-2">
+   679→   679→                            <input className="input" value={l.name} onChange={(e) => patchCoLiab(l.id, { name: e.target.value })} placeholder="Liability name" />
+   680→   680→                            <select className="select" value={l.type} onChange={(e) => patchCoLiab(l.id, { type: e.target.value as LiabRow["type"] })}>
+   681→   681→                              {LIAB_TYPES.map((t) => <option key={t}>{t}</option>)}
+   682→   682→                            </select>
+   683→   683→                            <select className="select" value={l.method} onChange={(e) => patchCoLiab(l.id, { method: e.target.value as LiabRow["method"] })}>
+   684→   684→                              {LIAB_METHODS.map((m) => <option key={m}>{m}</option>)}
+   685→   685→                            </select>
+   686→   686→                          </div>
+   687→   687→                          <div className="grid grid-cols-[1fr_1fr_110px_30px] gap-2 mt-2 items-center">
+   688→   688→                            <div>
+   689→   689→                              <label className="label" style={{ marginBottom: 3 }}>{l.type === "Credit Card" || l.type === "Overdraft" ? "Limit / outstanding" : "Outstanding"}</label>
+   690→   690→                              <NumIn value={l.limitOrOutstanding} onChange={(n) => patchCoLiab(l.id, { limitOrOutstanding: n })} step={1000} />
+   691→   691→                            </div>
+   692→   692→                            <div>
+   693→   693→                              <label className="label" style={{ marginBottom: 3 }}>Monthly EMI {l.method.startsWith("5%") ? "(ignored)" : ""}</label>
+   694→   694→                              <NumIn value={l.monthlyEmi} onChange={(n) => patchCoLiab(l.id, { monthlyEmi: n })} step={100} />
+   695→   695→                            </div>
+   696→   696→                            <div className="text-right">
+   697→   697→                              <div className="text-[10px] uppercase tracking-[0.08em] text-[var(--ink-faint)] font-disp font-semibold">Assessed</div>
+   698→   698→                              <div className="mono text-[13px]" style={{ color: "var(--coral)" }}>{fmtAED(liabilityEmi(l))}</div>
+   699→   699→                            </div>
+   700→   700→                            <button className="text-[var(--ink-faint)] hover:text-[var(--coral)] transition-colors justify-self-center" title="Remove liability"
+   701→   701→                              onClick={() =>
+   702→   702→                                setInput((p) => ({
+   703→   703→                                  ...p,
+   704→   704→                                  coBorrower: p.coBorrower ? { ...p.coBorrower, liabilities: p.coBorrower.liabilities.filter((x) => x.id !== l.id) } : p.coBorrower,
+   705→   705→                                }))
+   706→   706→                              }>
+   707→   707→                              <ITrash size={14} />
+   708→   708→                            </button>
+   709→   709→                          </div>
+   710→   710→                        </div>
+   711→   711→                      ))}
+   712→   712→                    </div>
+   713→   713→                    <div className="flex items-center justify-between mt-2.5">
+   714→   714→                      <button className="btn btn-ghost btn-sm"
+   715→   715→                        onClick={() =>
+   716→   716→                          setInput((p) => ({
+   717→   717→                            ...p,
+   718→   718→                            coBorrower: p.coBorrower ? { ...p.coBorrower, liabilities: [...p.coBorrower.liabilities, newLiabRow()] } : p.coBorrower,
+   719→   719→                          }))
+   720→   720→                        }>
+   721→   721→                        <IPlus size={13} /> Add co-borrower liability
+   722→   722→                      </button>
+   723→   723→                      <div className="text-[12.5px]">
+   724→   724→                        Co-borrower EMIs <strong className="mono text-[14px]" style={{ color: "var(--coral)" }}>{fmtAED(r.coEmis)}</strong>/mo
+   725→   725→                      </div>
+   726→   726→                    </div>
+   727→   727→                  </div>
+   728→   728→
+   729→   729→                  <p className="text-[11px] text-[var(--ink-faint)] mt-2.5 mb-0">
+   730→   730→                    Income, liabilities and age are combined into the eligibility calculation only — the co-borrower is never written to the case file.
+   731→   731→                  </p>
+   732→   732→                </div>
+   733→   733→              )}
+   734→   734→            </div>
+   735→   735→          </Section>
+   736→   736→
+   737→   737→          <Section num="04" title="Liabilities" hint="credit cards assess at 5% of limit by default">
+   738→   738→            {input.liabilities.length === 0 && (
+   739→   739→              <p className="text-[12.5px] text-[var(--ink-faint)] m-0">No liabilities declared — the full DBR headroom is available.</p>
+   740→   740→            )}
+   741→   741→            <div className="space-y-2">
+   742→   742→              {input.liabilities.map((l) => (
+   743→   743→                <div key={l.id} className="rounded-lg p-2.5 anim-fade-in" style={{ background: "var(--tint)", border: "1px solid var(--line-soft)" }}>
+   744→   744→                  <div className="grid grid-cols-[1fr_130px_130px] gap-2">
+   745→   745→                    <input className="input" value={l.name} onChange={(e) => patchLiab(l.id, { name: e.target.value })} placeholder="Liability name" />
+   746→   746→                    <select className="select" value={l.type} onChange={(e) => patchLiab(l.id, { type: e.target.value as LiabRow["type"] })}>
+   747→   747→                      {LIAB_TYPES.map((t) => <option key={t}>{t}</option>)}
+   748→   748→                    </select>
+   749→   749→                    <select className="select" value={l.method} onChange={(e) => patchLiab(l.id, { method: e.target.value as LiabRow["method"] })}>
+   750→   750→                      {LIAB_METHODS.map((m) => <option key={m}>{m}</option>)}
+   751→   751→                    </select>
+   752→   752→                  </div>
+   753→   753→                  <div className="grid grid-cols-[1fr_1fr_110px_30px] gap-2 mt-2 items-center">
+   754→   754→                    <div>
+   755→   755→                      <label className="label" style={{ marginBottom: 3 }}>{l.type === "Credit Card" || l.type === "Overdraft" ? "Limit / outstanding" : "Outstanding"}</label>
+   756→   756→                      <NumIn value={l.limitOrOutstanding} onChange={(n) => patchLiab(l.id, { limitOrOutstanding: n })} step={1000} />
+   757→   757→                    </div>
+   758→   758→                    <div>
+   759→   759→                      <label className="label" style={{ marginBottom: 3 }}>Monthly EMI {l.method.startsWith("5%") ? "(ignored)" : ""}</label>
+   760→   760→                      <NumIn value={l.monthlyEmi} onChange={(n) => patchLiab(l.id, { monthlyEmi: n })} step={100} />
+   761→   761→                    </div>
+   762→   762→                    <div className="text-right">
+   763→   763→                      <div className="text-[10px] uppercase tracking-[0.08em] text-[var(--ink-faint)] font-disp font-semibold">Assessed</div>
+   764→   764→                      <div className="mono text-[13px]" style={{ color: "var(--coral)" }}>{fmtAED(liabilityEmi(l))}</div>
+   765→   765→                    </div>
+   766→   766→                    <button className="text-[var(--ink-faint)] hover:text-[var(--coral)] transition-colors justify-self-center" title="Remove liability"
+   767→   767→                      onClick={() => setInput((p) => ({ ...p, liabilities: p.liabilities.filter((x) => x.id !== l.id) }))}>
+   768→   768→                      <ITrash size={14} />
+   769→   769→                    </button>
+   770→   770→                  </div>
+   771→   771→                </div>
+   772→   772→              ))}
+   773→   773→            </div>
+   774→   774→            <div className="flex items-center justify-between mt-3">
+   775→   775→              <button className="btn btn-ghost btn-sm" onClick={() => setInput((p) => ({ ...p, liabilities: [...p.liabilities, newLiabRow()] }))}>
+   776→   776→                <IPlus size={13} /> Add liability
+   777→   777→              </button>
+   778→   778→              <div className="text-[12.5px]">
+   779→   779→                Existing EMIs <strong className="mono text-[15px]" style={{ color: "var(--coral)" }}>{fmtAED(r.existingEmis)}</strong>
+   780→   780→              </div>
+   781→   781→            </div>
+   782→   782→          </Section>
+   783→   783→
+   784→   784→          <Section num="05" title="Rate & stress" hint="assessment rate drives the DBR MPBF">
+   785→   785→            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+   786→   786→              <div>
+   787→   787→                <label className="label">Actual / contract rate %</label>
+   788→   788→                <input className="input mono" type="number" step={0.05} min={0} value={input.actualRate}
+   789→   789→                  onChange={(e) => up({ actualRate: Number(e.target.value) || 0 })} />
+   790→   790→              </div>
+   791→   791→              <div>
+   792→   792→                <label className="label">Load factor</label>
+   793→   793→                <div className="flex gap-1.5 flex-wrap">
+   794→   794→                  {[1.5, 2, 3, 4].map((l) => (
+   795→   795→                    <button key={l} type="button" className="chip transition-all"
+   796→   796→                      style={input.loadFactor === l && input.stressOverride == null
+   797→   797→                        ? { background: "var(--amber-tint)", borderColor: "var(--amber)", color: "var(--amber)" }
+   798→   798→                        : { background: "var(--bg2)", borderColor: "var(--line)", color: "var(--ink-faint)" }}
+   799→   799→                      onClick={() => up({ loadFactor: l, stressOverride: null })}>
+   800→   800→                      +{l}%
+   801→   801→                    </button>
+   802→   802→                  ))}
+   803→   803→                </div>
+   804→   804→              </div>
+   805→   805→              <div>
+   806→   806→                <label className="label">Manual stress rate — optional</label>
+   807→   807→                <input className="input mono" type="number" step={0.05} min={0} value={input.stressOverride ?? ""} placeholder={`auto: ${fmtPct(input.actualRate + input.loadFactor)}`}
+   808→   808→                  onChange={(e) => up({ stressOverride: e.target.value === "" ? null : Number(e.target.value) || 0 })} />
+   809→   809→              </div>
+   810→   810→            </div>
+   811→   811→            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mt-3.5 pt-3.5" style={{ borderTop: "1px dashed var(--line)" }}>
+   812→   812→              <Stat label="Assessment rate" value={fmtPct(r.assessmentRate)} tone="var(--amber)" />
+   813→   813→              <div>
+   814→   814→                <label className="label">Income multiplier cap</label>
+   815→   815→                <select className="select" style={{ width: 130 }} value={input.multiplierX} onChange={(e) => up({ multiplierX: Number(e.target.value) })}>
+   816→   816→                  <option value={0}>Off</option>
+   817→   817→                  {[5, 6, 7, 8].map((x) => <option key={x} value={x}>{x}× annual</option>)}
+   818→   818→                </select>
+   819→   819→              </div>
+   820→   820→              <Stat label="Tenor used" value={tenorLabel(r.maxTenorMonths)} />
+   821→   821→            </div>
+   822→   822→          </Section>
+   823→   823→        </div>
+   824→   824→
+   825→   825→        {/* ================= result rail ================= */}
+   826→   826→        <div className="space-y-4 xl:sticky xl:top-[86px]">
+   827→   827→          <div className="card p-5 anim-fade-up" style={{ borderColor: "var(--amber-line)", background: "linear-gradient(180deg, var(--amber-tint), var(--surface))", boxShadow: "var(--shadow)" }}>
+   828→   828→            <div className="text-[10.5px] uppercase tracking-[0.14em] font-disp font-semibold" style={{ color: "var(--amber)" }}>Final MPBF</div>
+   829→   829→            <div className="font-disp font-bold text-[38px] leading-[1.05] tracking-tight mt-1 tabular-nums">{fmtAED(mpbfDisplay)}</div>
+   830→   830→            <div className="flex items-center gap-2 mt-1.5">
+   831→   831→              <span className="text-[11.5px] text-[var(--ink-faint)]">limited by</span>
+   832→   832→              <Chip tone={r.limitedBy === "DBR / Income" ? "coral" : r.limitedBy === "LTV" ? "sky" : "amber"}>{r.limitedBy}</Chip>
+   833→   833→              {r.finalMpbf <= 0 && <Chip tone="coral">not eligible</Chip>}
+   834→   834→            </div>
+   835→   835→
+   836→   836→            {/* DBR gauge */}
+   837→   837→            <div className="mt-4">
+   838→   838→              <div className="flex justify-between text-[10.5px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)] mb-1.5">
+   839→   839→                <span>Debt burden</span><span>cap {fmtPct(r.maxDbr)}</span>
+   840→   840→              </div>
+   841→   841→              <div className="relative h-3 rounded-full overflow-hidden" style={{ background: "var(--track)" }}>
+   842→   842→                <div className="absolute inset-y-0 left-0 rounded-l-full transition-all duration-500"
+   843→   843→                  style={{ width: `${Math.min(r.currentDbr, 100)}%`, background: r.currentDbr > 50 ? "linear-gradient(90deg,#d95f4f,#f27363)" : "linear-gradient(90deg,#d99427,#f2b04c)" }} />
+   844→   844→                {r.currentDbr < 50 && (
+   845→   845→                  <div className="absolute inset-y-0 transition-all duration-500"
+   846→   846→                    style={{ left: `${r.currentDbr}%`, width: `${50 - r.currentDbr}%`, background: "color-mix(in srgb, var(--mint) 38%, transparent)" }} />
+   847→   847→                )}
+   848→   848→                <div className="absolute inset-y-0 w-[2px]" style={{ left: "50%", background: "var(--ink)" }} />
+   849→   849→              </div>
+   850→   850→              <div className="grid grid-cols-3 gap-2 mt-2.5">
+   851→   851→                <Stat label="Current DBR" value={fmtPct(r.currentDbr)} tone={r.currentDbr > 50 ? "var(--coral)" : undefined} />
+   852→   852→                <Stat label="Maximum" value={fmtPct(r.maxDbr)} />
+   853→   853→                <Stat label="Residual" value={fmtPct(r.residualDbr)} tone="var(--mint)" />
+   854→   854→              </div>
+   855→   855→            </div>
+   856→   856→
+   857→   857→            {/* caps */}
+   858→   858→            <div className="mt-4 space-y-2">
+   859→   859→              {caps.map((c) => {
+   860→   860→                const limiting = Math.abs(c.v - Math.min(...caps.map((x) => x.v))) < 1;
+   861→   861→                return (
+   862→   862→                  <div key={c.label}>
+   863→   863→                    <div className="flex justify-between text-[11.5px] mb-1">
+   864→   864→                      <span className={limiting ? "text-[var(--ink)] font-semibold" : "text-[var(--ink-dim)]"}>{c.label}{limiting && <span style={{ color: "var(--amber)" }}> ◂ binds</span>}</span>
+   865→   865→                      <span className="mono">{fmtAED(c.v)}</span>
+   866→   866→                    </div>
+   867→   867→                    <div className="h-[5px] rounded-full overflow-hidden" style={{ background: "var(--track)" }}>
+   868→   868→                      <div className="h-full rounded-full transition-all duration-700" style={{ width: `${(c.v / capMax) * 100}%`, background: limiting ? "var(--amber)" : "var(--neutral)" }} />
+   869→   869→                    </div>
+   870→   870→                  </div>
+   871→   871→                );
+   872→   872→              })}
+   873→   873→            </div>
+   874→   874→
+   875→   875→            <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 mt-4 pt-3.5" style={{ borderTop: "1px dashed var(--line)" }}>
+   876→   876→              <Stat label="Required down payment" value={fmtAED(r.downPayment)} />
+   877→   877→              <Stat label="Actual LTV" value={fmtPct(r.actualLtv)} />
+   878→   878→              <Stat label="DBR after mortgage" value={fmtPct(r.dbrAfter)} tone={r.dbrAfter > 50 ? "var(--coral)" : "var(--mint)"} />
+   879→   879→              <Stat label="EMI at actual rate" value={`${fmtAED(r.newEmi)}/mo`} />
+   880→   880→            </div>
+   881→   881→
+   882→   882→            <div className="flex flex-col gap-2 mt-4">
+   883→   883→              <button className="btn btn-primary justify-center" onClick={onView}><IEye size={15} /> View bank-facing report</button>
+   884→   884→              <button className="btn btn-ghost justify-center" onClick={onPdf}><IDownload size={15} /> Download PDF</button>
+   885→   885→              <div className="grid grid-cols-2 gap-2">
+   886→   886→                <button className="btn btn-mint justify-center" onClick={onSave} title="Stores the eligibility check only — never creates a case">Save check</button>
+   887→   887→                <button className="btn btn-ghost justify-center" onClick={onOpenCase} title="Opens a pipeline case from this check (asks for confirmation)">Open case…</button>
+   888→   888→              </div>
+   889→   889→              <p className="text-[10.5px] text-[var(--ink-faint)] text-center m-0">
+   890→   890→                Saving only stores the check for audit — a case is created only when you choose “Open case”.
+   891→   891→              </p>
+   892→   892→              {savedId && <p className="text-[11px] text-[var(--ink-faint)] text-center m-0">Saved as audit entry #{savedId}{input.name ? ` for ${input.name}` : ""}</p>}
+   893→   893→            </div>
+   894→   894→          </div>
+   895→   895→
+   896→   896→          {/* trail */}
+   897→   897→          <div className="card p-4 anim-fade-up">
+   898→   898→            <h3 className="font-disp font-semibold text-[13.5px] m-0 mb-2.5">Calculation trail</h3>
+   899→   899→            <ol className="space-y-1.5 m-0 p-0 list-none">
+   900→   900→              {r.trail.map((t, i) => (
+   901→   901→                <li key={i} className="mono text-[11px] leading-relaxed text-[var(--ink-dim)] flex gap-2">
+   902→   902→                  <span className="text-[var(--ink-faint)] shrink-0">{String(i + 1).padStart(2, "0")}</span>{t}
+   903→   903→                </li>
+   904→   904→              ))}
+   905→   905→            </ol>
+   906→   906→            {r.notes.length > 0 && (
+   907→   907→              <div className="mt-3 pt-3 space-y-1" style={{ borderTop: "1px dashed var(--line)" }}>
+   908→   908→                {r.notes.map((n, i) => (
+   909→   909→                  <p key={i} className="text-[11.5px] m-0" style={{ color: "var(--amber)" }}>⚑ {n}</p>
+   910→   910→                ))}
+   911→   911→              </div>
+   912→   912→            )}
+   913→   913→          </div>
+   914→   914→        </div>
+   915→   915→      </div>
+   916→   916→
+   917→   917→      {/* ================= quick tools ================= */}
+   918→   918→      <div className="anim-fade-up">
+   919→   919→        <div className="flex items-baseline gap-3 mb-2.5 px-1">
+   920→   920→          <span className="mono text-[11px] font-semibold px-1.5 py-0.5 rounded" style={{ background: "color-mix(in srgb, var(--sky) 14%, transparent)", color: "var(--sky)" }}>T</span>
+   921→   921→          <h2 className="font-disp font-semibold text-[15px] m-0">Quick tools</h2>
+   922→   922→          <span className="text-[11.5px] text-[var(--ink-faint)]">inverse answers using the assessment above</span>
+   923→   923→        </div>
+   924→   924→        <QuickTools input={input} r={r} />
+   925→   925→      </div>
+   926→   926→
+   927→   927→      {/* ================= what-if ================= */}
+   928→   928→      <div className="card anim-fade-up">
+   929→   929→        <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b" style={{ borderColor: "var(--line-soft)" }}>
+   930→   930→          <h3 className="font-disp font-semibold text-[14px] m-0">What-if analysis</h3>
+   931→   931→          <div className="flex gap-1.5 ml-auto flex-wrap">
+   932→   932→            {([["liab", "Liabilities"], ["rate", "Rate"], ["tenor", "Tenor"], ["income", "Income"]] as [WhifTab, string][]).map(([k, l]) => (
+   933→   933→              <button key={k} className="chip transition-all"
+   934→   934→                style={whif === k ? { background: "var(--amber-tint)", borderColor: "var(--amber)", color: "var(--amber)" } : { background: "var(--bg2)", borderColor: "var(--line)", color: "var(--ink-faint)" }}
+   935→   935→                onClick={() => setWhif(k)}>
+   936→   936→                {l}
+   937→   937→              </button>
+   938→   938→            ))}
+   939→   939→          </div>
+   940→   940→        </div>
+   941→   941→
+   942→   942→        <div className="p-4">
+   943→   943→          {whif === "liab" && (
+   944→   944→            <div>
+   945→   945→              <div className="flex flex-wrap gap-2 mb-3">
+   946→   946→                {cards.length > 0 && (
+   947→   947→                  <>
+   948→   948→                    <select className="select" style={{ width: 190 }} value={cardId || cards[0].id} onChange={(e) => setCardId(e.target.value)}>
+   949→   949→                      {cards.map((c) => <option key={c.id} value={c.id}>{c.name || "Credit Card"} · {fmtAED(c.limitOrOutstanding)}</option>)}
+   950→   950→                    </select>
+   951→   951→                    <input className="input mono" style={{ width: 170 }} type="number" min={0} step={1000} placeholder="new limit →" value={cardLimit} onChange={(e) => setCardLimit(e.target.value)} />
+   952→   952→                  </>
+   953→   953→                )}
+   954→   954→              </div>
+   955→   955→              {liabScenarios.length === 0 ? (
+   956→   956→                <p className="text-[12.5px] text-[var(--ink-faint)] m-0">Add liabilities above to model reductions and removals.</p>
+   957→   957→              ) : (
+   958→   958→                <ScenarioTable rows={[{ label: "Current (baseline)", dbr: r.currentDbr, residual: r.residualDbr, mpbf: r.finalMpbf }, ...runScenarios(liabScenarios)]} base={r.finalMpbf} delta={delta} />
+   959→   959→              )}
+   960→   960→            </div>
+   961→   961→          )}
+   962→   962→
+   963→   963→          {whif === "rate" && (
+   964→   964→            <div>
+   965→   965→              <div className="flex flex-wrap items-center gap-2 mb-3">
+   966→   966→                <span className="text-[12px] text-[var(--ink-faint)]">Manual assessment rate:</span>
+   967→   967→                <input className="input mono" style={{ width: 130 }} type="number" min={0} step={0.05} placeholder="e.g. 6.50" value={manualRate} onChange={(e) => setManualRate(e.target.value)} />
+   968→   968→              </div>
+   969→   969→              <ScenarioTable
+   970→   970→                rows={[{ label: `Current · ${fmtPct(r.assessmentRate)}`, dbr: r.currentDbr, residual: r.residualDbr, mpbf: r.finalMpbf }, ...runScenarios(rateScenarios)]}
+   971→   971→                base={r.finalMpbf} delta={delta} />
+   972→   972→            </div>
+   973→   973→          )}
+   974→   974→
+   975→   975→          {whif === "tenor" && (
+   976→   976→            <div>
+   977→   977→              <div className="flex flex-wrap items-center gap-2 mb-3">
+   978→   978→                <span className="text-[12px] text-[var(--ink-faint)]">Manual tenor (months):</span>
+   979→   979→                <input className="input mono" style={{ width: 130 }} type="number" min={12} step={12} placeholder="e.g. 178" value={manualTenor} onChange={(e) => setManualTenor(e.target.value)} />
+   980→   980→              </div>
+   981→   981→              <ScenarioTable
+   982→   982→                rows={[{ label: `Current max · ${tenorLabel(r.maxTenorMonths)}`, dbr: r.currentDbr, residual: r.residualDbr, mpbf: r.finalMpbf }, ...runScenarios(tenorScenarios)]}
+   983→   983→                base={r.finalMpbf} delta={delta} />
+   984→   984→            </div>
+   985→   985→          )}
+   986→   986→
+   987→   987→          {whif === "income" && (
+   988→   988→            <div>
+   989→   989→              <div className="flex flex-wrap items-center gap-2 mb-3">
+   990→   990→                <span className="text-[12px] text-[var(--ink-faint)]">Hypothetical extra allowance (AED/mo):</span>
+   991→   991→                <input className="input mono" style={{ width: 150 }} type="number" min={0} step={500} placeholder="e.g. 3000" value={extraIncome} onChange={(e) => setExtraIncome(e.target.value)} />
+   992→   992→              </div>
+   993→   993→              <ScenarioTable
+   994→   994→                rows={[{ label: "Current (baseline)", dbr: r.currentDbr, residual: r.residualDbr, mpbf: r.finalMpbf }, ...runScenarios(incomeScenarios)]}
+   995→   995→                base={r.finalMpbf} delta={delta} />
+   996→   996→            </div>
+   997→   997→          )}
+   998→   998→        </div>
+   999→   999→      </div>
+  1000→  1000→
+  1001→  1001→      {/* ================= audit trail ================= */}
+  1002→  1002→      <div className="card anim-fade-up">
+  1003→  1003→        <div className="px-4 py-3 border-b flex items-center gap-2" style={{ borderColor: "var(--line-soft)" }}>
+  1004→  1004→          <h3 className="font-disp font-semibold text-[13.5px] m-0">Saved checks · audit trail</h3>
+  1005→  1005→          <span className="mono text-[11px] text-[var(--ink-faint)] ml-auto">{checks.length} saved</span>
+  1006→  1006→        </div>
+  1007→  1007→        {checks.length === 0 ? (
+  1008→  1008→          <p className="text-[12.5px] text-[var(--ink-faint)] p-4 m-0">Nothing saved yet — run a check and hit “Save check”.</p>
+  1009→  1009→        ) : (
+  1010→  1010→          <div className="divide-y" style={{ borderColor: "var(--line-soft)" }}>
+  1011→  1011→            {checks.map((k) => {
+  1012→  1012→              const parsed = k.payload ? (JSON.parse(k.payload) as { input?: MortgageInput }) : null;
+  1013→  1013→              return (
+  1014→  1014→                <div key={k.id} className="px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-2" style={{ borderColor: "var(--line-soft)" }}>
+  1015→  1015→                  {k.eligible ? <Chip tone="mint">Eligible</Chip> : <Chip tone="coral">Not eligible</Chip>}
+  1016→  1016→                  <span className="mono font-semibold text-[13.5px]">{fmtAED(k.finalEligibleLoan)}</span>
+  1017→  1017→                  <span className="text-[12px] text-[var(--ink-dim)] min-w-0 truncate">
+  1018→  1018→                    {k.customerName} · income {fmtAED(k.monthlyIncome)} · EMIs {fmtAED(k.existingEmis)} · {k.interestRate}%
+  1019→  1019→                  </span>
+  1020→  1020→                  <span className="text-[11px] text-[var(--ink-faint)]">
+  1021→  1021→                    by {userById(k.createdBy)?.name ?? "—"} · {relTime(k.createdAt)}
+  1022→  1022→                  </span>
+  1023→  1023→                  <div className="ml-auto flex items-center gap-1.5 flex-wrap">
+  1024→  1024→                    {parsed?.input && (
+  1025→  1025→                      <>
+  1026→  1026→                        <button className="btn btn-ghost btn-sm" onClick={() => { setInput(normalizeInput(parsed.input as MortgageInput)); setSavedId(k.id); window.scrollTo({ top: 0, behavior: "smooth" }); toast("info", `Loaded check #${k.id} for ${k.customerName}.`); }}>
+  1027→  1027→                          Open
+  1028→  1028→                        </button>
+  1029→  1029→                        <button className="btn btn-ghost btn-sm" onClick={() => {
+  1030→  1030→                          const ni = normalizeInput(parsed.input as MortgageInput);
+  1031→  1031→                          const ri = computeMortgage(ni);
+  1032→  1032→                          generateMortgagePdf(ni, ri, [], session?.name ?? "HFMC");
+  1033→  1033→                        }}>
+  1034→  1034→                          PDF
+  1035→  1035→                        </button>
+  1036→  1036→                        <button className="btn btn-ghost btn-sm" onClick={() => {
+  1037→  1037→                          const pi = normalizeInput(parsed.input as MortgageInput);
+  1038→  1038→                          const ri = computeMortgage(pi);
+  1039→  1039→                          const liab = runScenarios(liabScenariosOf(pi));
+  1040→  1040→                          const income = runScenarios(incomeScenariosOf(pi));
+  1041→  1041→                          const best = [...liab, ...income]
+  1042→  1042→                            .map((s) => ({ label: s.label, d: s.mpbf - ri.finalMpbf, dbr: s.dbr }))
+  1043→  1043→                            .filter((c) => c.d > 5000)
+  1044→  1044→                            .sort((a, b) => b.d - a.d)[0];
+  1045→  1045→                          const obs = best
+  1046→  1046→                            ? `Strongest lever: ${best.label} — DBR moves ${fmtPct(ri.currentDbr)} → ${fmtPct(best.dbr)}, unlocking ${fmtAED(best.d)} of additional MPBF.`
+  1047→  1047→                            : `No scenario improves the baseline ${fmtAED(ri.finalMpbf)} — the binding constraint is ${ri.limitedBy.toLowerCase()}.`;
+  1048→  1048→                          const tables = buildScenarioTablesFor(pi, ri);
+  1049→  1049→                          setPreview({ input: pi, res: ri, tables, by: session?.name ?? "HFMC", obs });
+  1050→  1050→                        }}>
+  1051→  1051→                          <IEye size={13} /> Report
+  1052→  1052→                        </button>
+  1053→  1053→                      </>
+  1054→  1054→                    )}
+  1055→  1055→                    {k.caseId ? (
+  1056→  1056→                      <button className="btn btn-ghost btn-sm" onClick={() => nav({ name: "case", id: k.caseId as number })}>
+  1057→  1057→                        View case
+  1058→  1058→                      </button>
+  1059→  1059→                    ) : (
+  1060→  1060→                      <select
+  1061→  1061→                        className="select"
+  1062→  1062→                        style={{ width: 170, fontSize: 12 }}
+  1063→  1063→                        value=""
+  1064→  1064→                        onChange={(e) => {
+  1065→  1065→                          if (!e.target.value) return;
+  1066→  1066→                          linkCheckToCase(k.id, parseInt(e.target.value, 10));
+  1067→  1067→                          toast("success", `Check #${k.id} linked to a case.`);
+  1068→  1068→                        }}
+  1069→  1069→                      >
+  1070→  1070→                        <option value="">Link to case…</option>
+  1071→  1071→                        {db.cases.filter((c) => c.caseStatus === "Active").map((c) => (
+  1072→  1072→                          <option key={c.id} value={c.id}>{c.caseNumber} · {c.customer}</option>
+  1073→  1073→                        ))}
+  1074→  1074→                      </select>
+  1075→  1075→                    )}
+  1076→  1076→                  </div>
+  1077→  1077→                </div>
+  1078→  1078→              );
+  1079→  1079→            })}
+  1080→  1080→          </div>
+  1081→  1081→        )}
+  1082→  1082→      </div>
+  1083→  1083→
+  1084→  1084→      <div className="flex items-center gap-2 text-[11.5px] text-[var(--ink-faint)] px-1">
+  1085→  1085→        <Avatar name={session?.name ?? "?"} size={20} />
+  1086→  1086→        Prepared by {session?.name} · figures follow CBUAE-style limits (50% DBR, {input.applicantType} LTV bands, 25y max tenor) — lender policy may differ.
+  1087→  1087→      </div>
+  1088→  1088→
+  1089→  1089→      {preview && (
+  1090→  1090→        <PreviewReport
+  1091→  1091→          data={preview}
+  1092→  1092→          onClose={() => setPreview(null)}
+  1093→  1093→          onPdf={() => generateMortgagePdf(preview.input, preview.res, preview.tables, preview.by)}
+  1094→  1094→        />
+  1095→  1095→      )}
+  1096→  1096→
+  1097→  1097→      <ConfirmModal
+  1098→  1098→        open={confirmCase}
+  1099→  1099→        onClose={() => setConfirmCase(false)}
+  1100→  1100→        tone="mint"
+  1101→  1101→        title="Open a case from this check?"
+  1102→  1102→        body={
+  1103→  1103→          <span>
+  1104→  1104→            This will create a new pipeline case for <strong>{input.name.trim() || "Unnamed applicant"}</strong> with a loan
+  1105→  1105→            amount of <strong>{fmtAED(r.finalMpbf)}</strong> (the final MPBF). The saved eligibility check is attached to it for
+  1106→  1106→            audit. No case is created until you confirm.
+  1107→  1107→          </span>
+  1108→  1108→        }
+  1109→  1109→        confirmLabel="Create case"
+  1110→  1110→        onConfirm={doCreateCase}
+  1111→  1111→      />
+  1112→  1112→    </div>
+  1113→  1113→  );
+  1114→  1114→}
+  1115→  1115→
+  1116→  1116→/* ================= bank-facing report preview ================= */
+  1117→  1117→
+  1118→  1118→function Pkv({ rows }: { rows: [string, string][] }) {
+  1119→  1119→  return (
+  1120→  1120→    <div>
+  1121→  1121→      {rows.map(([k, v]) => (
+  1122→  1122→        <div key={k} className="paper-kv">
+  1123→  1123→          <span className="k">{k}</span>
+  1124→  1124→          <span className="dots" />
+  1125→  1125→          <span className="v">{v}</span>
+  1126→  1126→        </div>
+  1127→  1127→      ))}
+  1128→  1128→    </div>
+  1129→  1129→  );
+  1130→  1130→}
+  1131→  1131→
+  1132→  1132→function PreviewReport({
+  1133→  1133→  data,
+  1134→  1134→  onClose,
+  1135→  1135→  onPdf,
+  1136→  1136→}: {
+  1137→  1137→  data: { input: MortgageInput; res: MortgageResult; tables: PdfScenarioTable[]; by: string; obs: string };
+  1138→  1138→  onClose: () => void;
+  1139→  1139→  onPdf: () => void;
+  1140→  1140→}) {
+  1141→  1141→  const { input: inp, res, tables, by, obs } = data;
+  1142→  1142→
+  1143→  1143→  useEffect(() => {
+  1144→  1144→    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+  1145→  1145→    window.addEventListener("keydown", onKey);
+  1146→  1146→    document.body.style.overflow = "hidden";
+  1147→  1147→    return () => {
+  1148→  1148→      window.removeEventListener("keydown", onKey);
+  1149→  1149→      document.body.style.overflow = "";
+  1150→  1150→    };
+  1151→  1151→  }, [onClose]);
+  1152→  1152→
+  1153→  1153→  const now = new Date();
+  1154→  1154→  const date = now.toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
+  1155→  1155→  const ref = `HFMC-MEA-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(
+  1156→  1156→    now.getDate()
+  1157→  1157→  ).padStart(2, "0")}-${(inp.name || "client").replace(/[^a-z0-9]/gi, "").slice(0, 6).toUpperCase() || "CLIENT"}`;
+  1158→  1158→  const numTh = (t: string) => (
+  1159→  1159→    <th className="num">{t}</th>
+  1160→  1160→  );
+  1161→  1161→
+  1162→  1162→  const PageLabel = ({ n, title }: { n: number; title: string }) => (
+  1163→  1163→    <div className="paper-page-label">
+  1164→  1164→      <span>Page {n} of 3 · {title}</span>
+  1165→  1165→    </div>
+  1166→  1166→  );
+  1167→  1167→
+  1168→  1168→  const SlimBand = ({ n, title }: { n: number; title: string }) => (
+  1169→  1169→    <div className="paper-band paper-band--slim">
+  1170→  1170→      <span className="font-disp font-bold text-[12px] tracking-[0.03em]">HFMC — Mortgage Eligibility Assessment</span>
+  1171→  1171→      <span className="text-[10px] opacity-70 mono">Page {n} · {title} · {ref}</span>
+  1172→  1172→    </div>
+  1173→  1173→  );
+  1174→  1174→
+  1175→  1175→  return (
+  1176→  1176→    <div
+  1177→  1177→      className="fixed inset-0 z-[70] anim-fade-in"
+  1178→  1178→      style={{ background: "rgba(4, 12, 15, 0.8)", backdropFilter: "blur(4px)" }}
+  1179→  1179→      onClick={onClose}
+  1180→  1180→    >
+  1181→  1181→      <div className="h-full overflow-y-auto py-6 px-3 sm:px-6">
+  1182→  1182→        <div className="max-w-[800px] mx-auto" onClick={(e) => e.stopPropagation()}>
+  1183→  1183→          {/* toolbar */}
+  1184→  1184→          <div
+  1185→  1185→            className="card flex flex-wrap items-center gap-2 px-4 py-2.5 mb-5 sticky top-0 z-10"
+  1186→  1186→            style={{ background: "var(--raised)", boxShadow: "0 14px 40px -12px rgba(0,0,0,0.6)" }}
+  1187→  1187→          >
+  1188→  1188→            <IEye size={15} className="text-[var(--amber)]" />
+  1189→  1189→            <span className="font-disp font-semibold text-[13.5px]">Bank-facing report preview</span>
+  1190→  1190→            <span className="text-[11px] text-[var(--ink-faint)] hidden sm:inline">— exactly what the PDF contains</span>
+  1191→  1191→            <div className="ml-auto flex gap-2">
+  1192→  1192→              <button className="btn btn-primary btn-sm" onClick={onPdf}>
+  1193→  1193→                <IDownload size={13} /> Download PDF
+  1194→  1194→              </button>
+  1195→  1195→              <button className="btn btn-ghost btn-sm" onClick={onClose}>
+  1196→  1196→                <IX size={13} /> Close
+  1197→  1197→              </button>
+  1198→  1198→            </div>
+  1199→  1199→          </div>
+  1200→  1200→
+  1201→  1201→          {/* ---------- page 1 ---------- */}
+  1202→  1202→          <PageLabel n={1} title="Eligibility summary" />
+  1203→  1203→          <div className="paper mb-7 anim-fade-up">
+  1204→  1204→            <div className="paper-band">
+  1205→  1205→              <div className="flex items-start justify-between gap-4">
+  1206→  1206→                <div>
+  1207→  1207→                  <div className="font-disp font-bold text-[17px] leading-tight">HFMC — Mortgage Eligibility Assessment</div>
+  1208→  1208→                  <div className="text-[10.5px] opacity-75 mt-1">Preliminary assessment · not a bank approval or binding offer</div>
+  1209→  1209→                </div>
+  1210→  1210→                <div className="text-right shrink-0">
+  1211→  1211→                  <div className="mono text-[10px] opacity-90">{ref}</div>
+  1212→  1212→                  <div className="text-[10px] opacity-70 mt-0.5">{date}</div>
+  1213→  1213→                </div>
+  1214→  1214→              </div>
+  1215→  1215→            </div>
+  1216→  1216→            <div className="paper-body">
+  1217→  1217→              <div className="paper-sec">Applicant & Property</div>
+  1218→  1218→              <Pkv
+  1219→  1219→                rows={[
+  1220→  1220→                  ["Applicant", inp.name || "—"],
+  1221→  1221→                  ["Applicant type", `${inp.applicantType} · ${inp.employment}`],
+  1222→  1222→                  ...(inp.coBorrower
+  1223→  1223→                    ? ([["Co-borrower", `${inp.coBorrower.name || "—"} · age ${res.coAgeYears} · income ${fmtAED(res.coIncome)}/mo · EMIs ${fmtAED(res.coEmis)}/mo (combined)`]] as [string, string][])
+  1224→  1224→                    : []),
+  1225→  1225→                  ["Property value", fmtAED(inp.propertyValue)],
+  1226→  1226→                  ["Bank valuation", inp.valuation ? fmtAED(inp.valuation) : "Not available"],
+  1227→  1227→                  ["Calculation basis", `${fmtAED(res.calcBasis)} (${res.basisLabel})`],
+  1228→  1228→                  ["Requested finance", inp.requested > 0 ? fmtAED(inp.requested) : "—"],
+  1229→  1229→                ]}
+  1230→  1230→              />
+  1231→  1231→              <div className="paper-sec">Eligibility Summary</div>
+  1232→  1232→              <Pkv
+  1233→  1233→                rows={[
+  1234→  1234→                  ["Eligible monthly income", `${fmtAED(res.eligibleIncome)}${inp.coBorrower ? " (combined)" : ""}`],
+  1235→  1235→                  ...(inp.coBorrower
+  1236→  1236→                    ? ([
+  1237→  1237→                        ["  · Applicant", fmtAED(res.ownIncome)],
+  1238→  1238→                        ["  · Co-borrower", fmtAED(res.coIncome)],
+  1239→  1239→                      ] as [string, string][])
+  1240→  1240→                    : []),
+  1241→  1241→                  ["Existing monthly liabilities", `${fmtAED(res.existingEmis)}${inp.coBorrower ? " (combined)" : ""}`],
+  1242→  1242→                  ...(inp.coBorrower
+  1243→  1243→                    ? ([
+  1244→  1244→                        ["  · Applicant EMIs", fmtAED(res.ownEmis)],
+  1245→  1245→                        ["  · Co-borrower EMIs", fmtAED(res.coEmis)],
+  1246→  1246→                      ] as [string, string][])
+  1247→  1247→                    : []),
+  1248→  1248→                  ["Current DBR", fmtPct(res.currentDbr)],
+  1249→  1249→                  ["Maximum DBR (CBUAE)", fmtPct(res.maxDbr)],
+  1250→  1250→                  ["Residual DBR", fmtPct(res.residualDbr)],
+  1251→  1251→                ]}
+  1252→  1252→              />
+  1253→  1253→              <div className="paper-sec">Loan Parameters</div>
+  1254→  1254→              <Pkv
+  1255→  1255→                rows={[
+  1256→  1256→                  ["Actual / contract rate", fmtPct(res.actualRate)],
+  1257→  1257→                  ["Stress load factor", `+ ${res.loadFactor.toFixed(2)}%`],
+  1258→  1258→                  ["Assessment rate", fmtPct(res.assessmentRate)],
+  1259→  1259→                  ["LTV applied", `${res.ltvPct}%${inp.ltvPctChoice != null ? " (selected)" : ` (default · ${inp.applicantType})`}`],
+  1260→  1260→                  ["Current age", `${res.ageNowYears} years`],
+  1261→  1261→                  ["Age processing margin", `${inp.marginMonths} months`],
+  1262→  1262→                  ["Maximum tenor used", tenorLabel(res.maxTenorMonths)],
+  1263→  1263→                ]}
+  1264→  1264→              />
+  1265→  1265→              <div className="paper-sec">MPBF — Eligibility Tests</div>
+  1266→  1266→              <table className="paper-tbl">
+  1267→  1267→                <thead>
+  1268→  1268→                  <tr>
+  1269→  1269→                    <th>Eligibility test</th>
+  1270→  1270→                    {numTh("Maximum finance")}
+  1271→  1271→                  </tr>
+  1272→  1272→                </thead>
+  1273→  1273→                <tbody>
+  1274→  1274→                  <tr><td>DBR / Residual DBR MPBF</td><td className="num">{fmtAED(res.dbrMpbf)}</td></tr>
+  1275→  1275→                  <tr><td>LTV MPBF ({fmtAED(res.calcBasis)} × {res.ltvPct}%)</td><td className="num">{fmtAED(res.ltvMpbf)}</td></tr>
+  1276→  1276→                  {res.multiplierCap != null && (
+  1277→  1277→                    <tr><td>Income multiplier cap</td><td className="num">{fmtAED(res.multiplierCap)}</td></tr>
+  1278→  1278→                  )}
+  1279→  1279→                  {inp.requested > 0 && (
+  1280→  1280→                    <tr><td>Requested finance</td><td className="num">{fmtAED(res.requested)}</td></tr>
+  1281→  1281→                  )}
+  1282→  1282→                </tbody>
+  1283→  1283→              </table>
+  1284→  1284→              <div className="paper-final">
+  1285→  1285→                <span className="font-disp font-bold text-[12px] tracking-[0.1em]">FINAL MPBF</span>
+  1286→  1286→                <span className="amt">{fmtAED(res.finalMpbf)}</span>
+  1287→  1287→              </div>
+  1288→  1288→              <Pkv
+  1289→  1289→                rows={[
+  1290→  1290→                  ["Limited by", res.limitedBy],
+  1291→  1291→                  ["Required down payment", fmtAED(res.downPayment)],
+  1292→  1292→                  ["Actual LTV", fmtPct(res.actualLtv)],
+  1293→  1293→                  ["Proposed mortgage EMI (actual rate)", `${fmtAED(res.newEmi)} / month`],
+  1294→  1294→                  ["DBR after proposed mortgage", fmtPct(res.dbrAfter)],
+  1295→  1295→                ]}
+  1296→  1296→              />
+  1297→  1297→            </div>
+  1298→  1298→          </div>
+  1299→  1299→
+  1300→  1300→          {/* ---------- page 2 ---------- */}
+  1301→  1301→          <PageLabel n={2} title="Supporting calculation" />
+  1302→  1302→          <div className="paper mb-7 anim-fade-up">
+  1303→  1303→            <SlimBand n={2} title="Supporting calculation" />
+  1304→  1304→            <div className="paper-body">
+  1305→  1305→              <div className="paper-sec">Income Breakdown</div>
+  1306→  1306→              <table className="paper-tbl">
+  1307→  1307→                <thead>
+  1308→  1308→                  <tr>
+  1309→  1309→                    <th>Source</th>
+  1310→  1310→                    <th>Frequency</th>
+  1311→  1311→                    {numTh("Amount")}
+  1312→  1312→                    {numTh("Elig %")}
+  1313→  1313→                    {numTh("Monthly")}
+  1314→  1314→                  </tr>
+  1315→  1315→                </thead>
+  1316→  1316→                <tbody>
+  1317→  1317→                  {inp.incomes.length === 0 && (
+  1318→  1318→                    <tr><td colSpan={5}>No income entered</td></tr>
+  1319→  1319→                  )}
+  1320→  1320→                  {inp.incomes.map((row) => (
+  1321→  1321→                    <tr key={row.id}>
+  1322→  1322→                      <td>{row.source}</td>
+  1323→  1323→                      <td>{row.frequency}</td>
+  1324→  1324→                      <td className="num">{fmtAED(row.amount)}</td>
+  1325→  1325→                      <td className="num">{row.eligiblePct}%</td>
+  1326→  1326→                      <td className="num">{fmtAED(incomeMonthly(row))}</td>
+  1327→  1327→                    </tr>
+  1328→  1328→                  ))}
+  1329→  1329→                </tbody>
+  1330→  1330→                <tfoot>
+  1331→  1331→                  <tr>
+  1332→  1332→                    <td colSpan={4}>Eligible monthly income{inp.coBorrower ? " (combined)" : ""}</td>
+  1333→  1333→                    <td className="num">{fmtAED(res.eligibleIncome)}</td>
+  1334→  1334→                  </tr>
+  1335→  1335→                </tfoot>
+  1336→  1336→              </table>
+  1337→  1337→
+  1338→  1338→              {inp.coBorrower && (
+  1339→  1339→                <>
+  1340→  1340→                  <div className="paper-sec">
+  1341→  1341→                    Income Breakdown — Co-borrower{inp.coBorrower.name ? ` (${inp.coBorrower.name})` : ""}
+  1342→  1342→                  </div>
+  1343→  1343→                  <table className="paper-tbl">
+  1344→  1344→                    <thead>
+  1345→  1345→                      <tr>
+  1346→  1346→                        <th>Source</th>
+  1347→  1347→                        <th>Frequency</th>
+  1348→  1348→                        {numTh("Amount")}
+  1349→  1349→                        {numTh("Elig %")}
+  1350→  1350→                        {numTh("Monthly")}
+  1351→  1351→                      </tr>
+  1352→  1352→                    </thead>
+  1353→  1353→                    <tbody>
+  1354→  1354→                      {inp.coBorrower.incomes.length === 0 && (
+  1355→  1355→                        <tr><td colSpan={5}>No income entered</td></tr>
+  1356→  1356→                      )}
+  1357→  1357→                      {inp.coBorrower.incomes.map((row) => (
+  1358→  1358→                        <tr key={row.id}>
+  1359→  1359→                          <td>{row.source}</td>
+  1360→  1360→                          <td>{row.frequency}</td>
+  1361→  1361→                          <td className="num">{fmtAED(row.amount)}</td>
+  1362→  1362→                          <td className="num">{row.eligiblePct}%</td>
+  1363→  1363→                          <td className="num">{fmtAED(incomeMonthly(row))}</td>
+  1364→  1364→                        </tr>
+  1365→  1365→                      ))}
+  1366→  1366→                    </tbody>
+  1367→  1367→                    <tfoot>
+  1368→  1368→                      <tr>
+  1369→  1369→                        <td colSpan={4}>Co-borrower eligible income</td>
+  1370→  1370→                        <td className="num">{fmtAED(res.coIncome)}</td>
+  1371→  1371→                      </tr>
+  1372→  1372→                    </tfoot>
+  1373→  1373→                  </table>
+  1374→  1374→                </>
+  1375→  1375→              )}
+  1376→  1376→
+  1377→  1377→              <div className="paper-sec">Liability Breakdown — Applicant</div>
+  1378→  1378→              <table className="paper-tbl">
+  1379→  1379→                <thead>
+  1380→  1380→                  <tr>
+  1381→  1381→                    <th>Liability</th>
+  1382→  1382→                    <th>Type</th>
+  1383→  1383→                    {numTh("Limit / Outstanding")}
+  1384→  1384→                    <th>Method</th>
+  1385→  1385→                    {numTh("Assessed EMI")}
+  1386→  1386→                  </tr>
+  1387→  1387→                </thead>
+  1388→  1388→                <tbody>
+  1389→  1389→                  {inp.liabilities.length === 0 && (
+  1390→  1390→                    <tr><td colSpan={5}>No liabilities declared</td></tr>
+  1391→  1391→                  )}
+  1392→  1392→                  {inp.liabilities.map((row) => (
+  1393→  1393→                    <tr key={row.id}>
+  1394→  1394→                      <td>{row.name}</td>
+  1395→  1395→                      <td>{row.type}</td>
+  1396→  1396→                      <td className="num">{fmtAED(row.limitOrOutstanding)}</td>
+  1397→  1397→                      <td>{row.method}</td>
+  1398→  1398→                      <td className="num">{fmtAED(liabilityEmi(row))}</td>
+  1399→  1399→                    </tr>
+  1400→  1400→                  ))}
+  1401→  1401→                </tbody>
+  1402→  1402→                <tfoot>
+  1403→  1403→                  <tr>
+  1404→  1404→                    <td colSpan={4}>Applicant existing EMIs</td>
+  1405→  1405→                    <td className="num">{fmtAED(res.ownEmis)}</td>
+  1406→  1406→                  </tr>
+  1407→  1407→                </tfoot>
+  1408→  1408→              </table>
+  1409→  1409→
+  1410→  1410→              {inp.coBorrower && (
+  1411→  1411→                <>
+  1412→  1412→                  <div className="paper-sec">Liability Breakdown — Co-borrower{inp.coBorrower.name ? ` (${inp.coBorrower.name})` : ""}</div>
+  1413→  1413→                  <table className="paper-tbl">
+  1414→  1414→                    <thead>
+  1415→  1415→                      <tr>
+  1416→  1416→                        <th>Liability</th>
+  1417→  1417→                        <th>Type</th>
+  1418→  1418→                        {numTh("Limit / Outstanding")}
+  1419→  1419→                        <th>Method</th>
+  1420→  1420→                        {numTh("Assessed EMI")}
+  1421→  1421→                      </tr>
+  1422→  1422→                    </thead>
+  1423→  1423→                    <tbody>
+  1424→  1424→                      {inp.coBorrower.liabilities.length === 0 && (
+  1425→  1425→                        <tr><td colSpan={5}>No liabilities declared</td></tr>
+  1426→  1426→                      )}
+  1427→  1427→                      {inp.coBorrower.liabilities.map((row) => (
+  1428→  1428→                        <tr key={row.id}>
+  1429→  1429→                          <td>{row.name}</td>
+  1430→  1430→                          <td>{row.type}</td>
+  1431→  1431→                          <td className="num">{fmtAED(row.limitOrOutstanding)}</td>
+  1432→  1432→                          <td>{row.method}</td>
+  1433→  1433→                          <td className="num">{fmtAED(liabilityEmi(row))}</td>
+  1434→  1434→                        </tr>
+  1435→  1435→                      ))}
+  1436→  1436→                    </tbody>
+  1437→  1437→                    <tfoot>
+  1438→  1438→                      <tr>
+  1439→  1439→                        <td colSpan={4}>Co-borrower existing EMIs</td>
+  1440→  1440→                        <td className="num">{fmtAED(res.coEmis)}</td>
+  1441→  1441→                      </tr>
+  1442→  1442→                      <tr>
+  1443→  1443→                        <td colSpan={4}>Combined existing EMIs</td>
+  1444→  1444→                        <td className="num">{fmtAED(res.existingEmis)}</td>
+  1445→  1445→                      </tr>
+  1446→  1446→                    </tfoot>
+  1447→  1447→                  </table>
+  1448→  1448→                </>
+  1449→  1449→              )}
+  1450→  1450→
+  1451→  1451→              <div className="paper-sec">Rate, Stress & Tenor</div>
+  1452→  1452→              <Pkv
+  1453→  1453→                rows={[
+  1454→  1454→                  ["Assessment basis", `${fmtPct(res.actualRate)} actual + ${res.loadFactor.toFixed(2)}% load = ${fmtPct(res.assessmentRate)} assessment`],
+  1455→  1455→                  ["Age calculation", `${res.ageNowYears}y now + ${inp.marginMonths}m margin → final age ${inp.finalAge} → ${tenorLabel(res.remainingMonths)} available`],
+  1456→  1456→                  ["Tenor used", `${tenorLabel(res.maxTenorMonths)}${inp.tenorOverrideMonths ? " (manual override)" : res.tenorLimitedBy === "co-borrower" ? ` (limited by co-borrower, age ${res.coAgeYears})` : " (age-constrained)"}`],
+  1457→  1457→                  ["LTV applied", `${res.ltvPct}% — ${inp.applicantType}${res.calcBasis > 5000000 ? ", above AED 5M band" : ", up to AED 5M band"}`],
+  1458→  1458→                ]}
+  1459→  1459→              />
+  1460→  1460→
+  1461→  1461→              <div className="paper-sec">Calculation Trail</div>
+  1462→  1462→              <div className="paper-trail">
+  1463→  1463→                {res.trail.map((t, i) => (
+  1464→  1464→                  <div key={i}>{t}</div>
+  1465→  1465→                ))}
+  1466→  1466→              </div>
+  1467→  1467→            </div>
+  1468→  1468→          </div>
+  1469→  1469→
+  1470→  1470→          {/* ---------- page 3 ---------- */}
+  1471→  1471→          <PageLabel n={3} title="What-if analysis" />
+  1472→  1472→          <div className="paper mb-7 anim-fade-up">
+  1473→  1473→            <SlimBand n={3} title="What-if analysis" />
+  1474→  1474→            <div className="paper-body">
+  1475→  1475→              <p className="text-[11.5px] mt-0 mb-4" style={{ color: "#5b6367" }}>
+  1476→  1476→                Each scenario re-runs the full calculation with one input changed. Baseline final MPBF:{" "}
+  1477→  1477→                <strong style={{ color: "#172024" }}>{fmtAED(res.finalMpbf)}</strong> — positive deltas add eligibility.
+  1478→  1478→              </p>
+  1479→  1479→
+  1480→  1480→              {obs && (
+  1481→  1481→                <div
+  1482→  1482→                  className="mb-5"
+  1483→  1483→                  style={{
+  1484→  1484→                    background: "#fbf6ec",
+  1485→  1485→                    border: "1px solid rgba(198,138,40,0.45)",
+  1486→  1486→                    borderLeft: "4px solid #c68a28",
+  1487→  1487→                    borderRadius: 4,
+  1488→  1488→                    padding: "12px 16px",
+  1489→  1489→                  }}
+  1490→  1490→                >
+  1491→  1491→                  <div
+  1492→  1492→                    className="font-disp font-bold text-[10px] tracking-[0.14em] mb-1.5"
+  1493→  1493→                    style={{ color: "#c68a28" }}
+  1494→  1494→                  >
+  1495→  1495→                    KEY OBSERVATION
+  1496→  1496→                  </div>
+  1497→  1497→                  <div className="text-[12px] leading-relaxed" style={{ color: "#172024" }}>
+  1498→  1498→                    {obs}
+  1499→  1499→                  </div>
+  1500→  1500→                </div>
+  1501→  1501→              )}
+  1502→  1502→
+  1503→  1503→              {tables.length === 0 && (
+  1504→  1504→                <p className="text-[11.5px] m-0" style={{ color: "#5b6367" }}>
+  1505→  1505→                  No what-if scenarios were captured for this saved check. Re-run the assessment to include them.
+  1506→  1506→                </p>
+  1507→  1507→              )}
+  1508→  1508→              {tables.map((t) => (
+  1509→  1509→                <div key={t.title}>
+  1510→  1510→                  <div className="paper-sec">{t.title}</div>
+  1511→  1511→                  <table className="paper-tbl">
+  1512→  1512→                    <thead>
+  1513→  1513→                      <tr>
+  1514→  1514→                        {t.head.map((h, i) => (
+  1515→  1515→                          <th key={h} className={i > 0 ? "num" : ""}>{h}</th>
+  1516→  1516→                        ))}
+  1517→  1517→                      </tr>
+  1518→  1518→                    </thead>
+  1519→  1519→                    <tbody>
+  1520→  1520→                      {t.body.map((row, ri) => (
+  1521→  1521→                        <tr key={ri}>
+  1522→  1522→                          {row.map((cell, ci) => (
+  1523→  1523→                            <td key={ci} className={ci > 0 ? "num" : ""}>{cell}</td>
+  1524→  1524→                          ))}
+  1525→  1525→                        </tr>
+  1526→  1526→                      ))}
+  1527→  1527→                    </tbody>
+  1528→  1528→                  </table>
+  1529→  1529→                </div>
+  1530→  1530→              ))}
+  1531→  1531→
+  1532→  1532→              <p className="text-[10px] italic mt-5 mb-3" style={{ color: "#7a8286" }}>
+  1533→  1533→                These figures are indicative and based solely on the inputs provided, CBUAE-style DBR/LTV limits and the lender age
+  1534→  1534→                policy selected. They do not constitute a bank approval, sanction or binding offer. Final eligibility, pricing and
+  1535→  1535→                tenor are at the sole discretion of the lender.
+  1536→  1536→              </p>
+  1537→  1537→              <div className="flex items-baseline justify-between text-[11px]">
+  1538→  1538→                <span className="font-semibold" style={{ color: "#172024" }}>Prepared by: {by}</span>
+  1539→  1539→                <span style={{ color: "#7a8286" }}>
+  1540→  1540→                  {new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+  1541→  1541→                </span>
+  1542→  1542→              </div>
+  1543→  1543→            </div>
+  1544→  1544→          </div>
+  1545→  1545→
+  1546→  1546→          <div className="text-center text-[11px] text-[var(--ink-faint)] pb-6">
+  1547→  1547→            This preview mirrors the PDF page-for-page · <button className="btn btn-ghost btn-sm" onClick={onPdf}><IDownload size={13} /> Download PDF</button>
+  1548→  1548→          </div>
+  1549→  1549→        </div>
+  1550→  1550→      </div>
+  1551→  1551→    </div>
+  1552→  1552→  );
+  1553→  1553→}
+  1554→  1554→
+  1555→  1555→function ToolCard({ title, children, out, note }: { title: string; children: ReactNode; out: string; note: string }) {
+  1556→  1556→  return (
+  1557→  1557→    <div className="card card-hover p-4">
+  1558→  1558→      <div className="text-[10.5px] uppercase tracking-[0.12em] font-disp font-semibold text-[var(--ink-faint)] mb-2.5">{title}</div>
+  1559→  1559→      {children}
+  1560→  1560→      <div className="mono text-[19px] font-semibold mt-2.5" style={{ color: "var(--mint)" }}>{out}</div>
+  1561→  1561→      <div className="text-[11px] text-[var(--ink-faint)] mt-0.5">{note}</div>
+  1562→  1562→    </div>
+  1563→  1563→  );
+  1564→  1564→}
+  1565→  1565→
+  1566→  1566→function QuickTools({ input, r }: { input: MortgageInput; r: MortgageResult }) {
+  1567→  1567→  const [finance, setFinance] = useState(1000000);
+  1568→  1568→  const [propVal, setPropVal] = useState(1500000);
+  1569→  1569→  const [reqFin, setReqFin] = useState(1200000);
+  1570→  1570→
+  1571→  1571→  const reqEmi = emiFor(finance, r.assessmentRate, r.maxTenorMonths);
+  1572→  1572→  const reqIncome = reqEmi / 0.5 + r.existingEmis;
+  1573→  1573→  const maxProp = r.ltvPct > 0 ? r.dbrMpbf / (r.ltvPct / 100) : 0;
+  1574→  1574→  const ltvCap = (propVal * r.ltvPct) / 100;
+  1575→  1575→  const funded = Math.min(reqFin, ltvCap);
+  1576→  1576→  const reqDp = Math.max(0, propVal - funded);
+  1577→  1577→
+  1578→  1578→  return (
+  1579→  1579→    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+  1580→  1580→      <ToolCard
+  1581→  1581→        title="Required income"
+  1582→  1582→        out={fmtAED(reqIncome)}
+  1583→  1583→        note={`eligible monthly income needed · ${r.assessmentRate.toFixed(2)}% over ${tenorLabel(r.maxTenorMonths)} · incl. existing EMIs`}
+  1584→  1584→      >
+  1585→  1585→        <label className="label">Desired finance (AED)</label>
+  1586→  1586→        <NumIn value={finance} onChange={setFinance} step={50000} />
+  1587→  1587→      </ToolCard>
+  1588→  1588→      <ToolCard
+  1589→  1589→        title="Maximum property value"
+  1590→  1590→        out={fmtAED(maxProp)}
+  1591→  1591→        note={`income supports ${fmtAED(r.dbrMpbf)} at ${r.ltvPct}% LTV (${input.applicantType})`}
+  1592→  1592→      >
+  1593→  1593→        <label className="label">Based on current eligible income</label>
+  1594→  1594→        <div className="text-[12px] text-[var(--ink-dim)]">DBR MPBF {fmtAED(r.dbrMpbf)} ÷ {r.ltvPct}% LTV</div>
+  1595→  1595→      </ToolCard>
+  1596→  1596→      <ToolCard
+  1597→  1597→        title="Required down payment"
+  1598→  1598→        out={fmtAED(reqDp)}
+  1599→  1599→        note={reqFin > ltvCap ? `bank funds at most ${fmtAED(ltvCap)} at ${r.ltvPct}% LTV — rest is cash` : "requested finance fits inside the LTV cap"}
+  1600→  1600→      >
+  1601→  1601→        <div className="grid grid-cols-2 gap-2">
+  1602→  1602→          <div>
+  1603→  1603→            <label className="label">Property (AED)</label>
+  1604→  1604→            <NumIn value={propVal} onChange={setPropVal} step={50000} />
+  1605→  1605→          </div>
+  1606→  1606→          <div>
+  1607→  1607→            <label className="label">Finance (AED)</label>
+  1608→  1608→            <NumIn value={reqFin} onChange={setReqFin} step={50000} />
+  1609→  1609→          </div>
+  1610→  1610→        </div>
+  1611→  1611→      </ToolCard>
+  1612→  1612→    </div>
+  1613→  1613→  );
+  1614→  1614→}
+  1615→  1615→
+  1616→  1616→function ScenarioTable({ rows, base, delta }: {
+  1617→  1617→  rows: { label: string; dbr: number; residual: number; mpbf: number }[];
+  1618→  1618→  base: number;
+  1619→  1619→  delta: (v: number) => ReactNode;
+  1620→  1620→}) {
+  1621→  1621→  return (
+  1622→  1622→    <div className="overflow-x-auto">
+  1623→  1623→      <table className="tbl" style={{ minWidth: 560 }}>
+  1624→  1624→        <thead>
+  1625→  1625→          <tr>
+  1626→  1626→            <th>Scenario</th>
+  1627→  1627→            <th>Current DBR</th>
+  1628→  1628→            <th>Residual DBR</th>
+  1629→  1629→            <th>Final MPBF</th>
+  1630→  1630→            <th>Change</th>
+  1631→  1631→          </tr>
+  1632→  1632→        </thead>
+  1633→  1633→        <tbody>
+  1634→  1634→          {rows.map((row, i) => (
+  1635→  1635→            <tr key={row.label + i} style={{ cursor: "default" }} className={i === 0 ? "anim-fade-in" : ""}>
+  1636→  1636→              <td className={i === 0 ? "font-semibold" : ""}>{row.label}</td>
+  1637→  1637→              <td className="mono text-[12.5px]">{fmtPct(row.dbr)}</td>
+  1638→  1638→              <td className="mono text-[12.5px]" style={{ color: "var(--mint)" }}>{fmtPct(row.residual)}</td>
+  1639→  1639→              <td className="mono font-semibold">{fmtAED(row.mpbf)}</td>
+  1640→  1640→              <td className="mono text-[12.5px]">{i === 0 ? <span className="text-[var(--ink-faint)]">baseline</span> : delta(row.mpbf)}</td>
+  1641→  1641→            </tr>
+  1642→  1642→          ))}
+  1643→  1643→        </tbody>
+  1644→  1644→      </table>
+  1645→  1645→      <span className="hidden">{base}</span>
+  1646→  1646→    </div>
+  1647→  1647→  );
+  1648→  1648→}
+  1649→  1649→

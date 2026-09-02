@@ -1,0 +1,524 @@
+     1→     1→import { useMemo, useState } from "react";
+     2→     2→import type { ReactNode } from "react";
+     3→     3→import { computeEscalations, useStore } from "../lib/store";
+     4→     4→import type { CaseStatus, LoanCase } from "../lib/types";
+     5→     5→import {
+     6→     6→  TONE_HEX, ageDays, caseStatusOf, commissionFor, downloadCSV, fmtMoney, fmtRate, primaryBank, rateFor, todayISO,
+     7→     7→} from "../lib/format";
+     8→     8→import { Avatar, Chip, DueChip, StatusChip } from "../components/ui";
+     9→     9→import { BarList, Donut } from "../components/charts";
+    10→    10→import { IDownload, IInbox } from "../components/icons";
+    11→    11→
+    12→    12→function ReportCard({ title, sub, onExport, children, span, extra }: { title: string; sub: string; onExport: () => void; children: ReactNode; span?: string; extra?: ReactNode }) {
+    13→    13→  return (
+    14→    14→    <div className={`card p-4 anim-fade-up ${span ?? ""}`}>
+    15→    15→      <div className="flex items-start justify-between gap-3 mb-1">
+    16→    16→        <div>
+    17→    17→          <h3 className="font-disp font-semibold text-[14px] m-0">{title}</h3>
+    18→    18→          <p className="text-[11.5px] text-[var(--ink-faint)] mt-0.5 mb-0">{sub}</p>
+    19→    19→        </div>
+    20→    20→        <div className="flex items-center gap-2 shrink-0">
+    21→    21→          {extra}
+    22→    22→          <button className="btn btn-ghost btn-sm" onClick={onExport} title="Download CSV">
+    23→    23→            <IDownload size={14} /> CSV
+    24→    24→          </button>
+    25→    25→        </div>
+    26→    26→      </div>
+    27→    27→      <div className="mt-3">{children}</div>
+    28→    28→    </div>
+    29→    29→  );
+    30→    30→}
+    31→    31→
+    32→    32→function GroupLabel({ children }: { children: ReactNode }) {
+    33→    33→  return (
+    34→    34→    <div className="col-span-1 lg:col-span-2 flex items-center gap-3 mt-2">
+    35→    35→      <span className="font-disp font-bold text-[12px] uppercase tracking-[0.16em]" style={{ color: "var(--amber)" }}>{children}</span>
+    36→    36→      <span className="h-px flex-1" style={{ background: "var(--line-soft)" }} />
+    37→    37→    </div>
+    38→    38→  );
+    39→    39→}
+    40→    40→
+    41→    41→const PALETTE = ["#f2b04c", "#57c2ea", "#43d69b", "#f27363", "#b48ef2", "#8ca6b0", "#e8c15a", "#6fd3c7"];
+    42→    42→
+    43→    43→export default function Reports() {
+    44→    44→  const { db, nav, visibleCases, visibleTasks, userById, toast } = useStore();
+    45→    45→  const cases = useMemo(() => visibleCases(), [visibleCases]);
+    46→    46→  const tasks = useMemo(() => visibleTasks(), [visibleTasks]);
+    47→    47→  const statusOf = (c: LoanCase): CaseStatus => caseStatusOf(c, db.tasks);
+    48→    48→  const openTasks = tasks.filter((t) => t.status === "Open");
+    49→    49→  const today = todayISO();
+    50→    50→  const openCases = cases.filter((c) => c.caseStatus === "Active");
+    51→    51→  const booked = cases.filter((c) => c.caseStatus === "Closed");
+    52→    52→
+    53→    53→  const [bizBank, setBizBank] = useState("All");
+    54→    54→  const [bizOwner, setBizOwner] = useState("All");
+    55→    55→
+    56→    56→  /* 1 — why pending */
+    57→    57→  const whyRows = db.whyPending
+    58→    58→    .map((w) => ({ label: w.label, value: openTasks.filter((t) => t.whyPending === w.label).length, color: TONE_HEX.amber }))
+    59→    59→    .filter((r) => r.value > 0)
+    60→    60→    .sort((a, b) => b.value - a.value);
+    61→    61→
+    62→    62→  /* 2 — waiting for */
+    63→    63→  const waitSegs = db.waitingFor
+    64→    64→    .map((w, i) => ({ label: w.label, value: openTasks.filter((t) => t.waitingFor === w.label).length, color: PALETTE[i % PALETTE.length] }))
+    65→    65→    .filter((s) => s.value > 0);
+    66→    66→
+    67→    67→  /* 3 — overdue & at risk */
+    68→    68→  const risky = openCases
+    69→    69→    .map((c) => ({ c, s: statusOf(c), nt: openTasks.filter((t) => t.caseId === c.id).sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0] }))
+    70→    70→    .filter((r) => r.s === "Overdue" || r.s === "At Risk")
+    71→    71→    .sort((a, b) => (a.nt?.dueDate ?? "9999").localeCompare(b.nt?.dueDate ?? "9999"));
+    72→    72→
+    73→    73→  /* 4 — owner workload */
+    74→    74→  const owners = Array.from(new Set(openTasks.map((t) => t.ownerId)))
+    75→    75→    .map((id) => {
+    76→    76→      const mine = openTasks.filter((t) => t.ownerId === id);
+    77→    77→      return { id, name: userById(id)?.name ?? "Unassigned", open: mine.length, od: mine.filter((t) => t.dueDate < today).length, value: mine.reduce((s, t) => s + (db.cases.find((c) => c.id === t.caseId)?.loanAmount ?? 0), 0) };
+    78→    78→    })
+    79→    79→    .sort((a, b) => b.open - a.open);
+    80→    80→
+    81→    81→  /* 5 — stage ageing */
+    82→    82→  const stageRows = [...db.stages]
+    83→    83→    .sort((a, b) => a.sortOrder - b.sortOrder)
+    84→    84→    .map((s) => {
+    85→    85→      const inStage = openCases.filter((c) => c.stage === s.label);
+    86→    86→      const avg = inStage.length ? Math.round(inStage.reduce((sum, c) => sum + ageDays(c.createdAt), 0) / inStage.length) : 0;
+    87→    87→      return { label: s.label, value: avg, color: avg > 25 ? TONE_HEX.coral : avg > 14 ? TONE_HEX.amber : TONE_HEX.mint, sub: `${inStage.length} case${inStage.length === 1 ? "" : "s"}` };
+    88→    88→    })
+    89→    89→    .filter((r) => r.value > 0);
+    90→    90→
+    91→    91→  /* 6 — no next action */
+    92→    92→  const noAction = openCases.filter((c) => statusOf(c) === "No Action").sort((a, b) => ageDays(b.createdAt) - ageDays(a.createdAt));
+    93→    93→
+    94→    94→  /* 7 — monthly business */
+    95→    95→  const months: string[] = [];
+    96→    96→  for (let i = 5; i >= 0; i--) {
+    97→    97→    const d = new Date();
+    98→    98→    d.setDate(1);
+    99→    99→    d.setMonth(d.getMonth() - i);
+   100→   100→    months.push(d.toISOString().slice(0, 7));
+   101→   101→  }
+   102→   102→  const monthLabel = (m: string) => new Date(m + "-02").toLocaleDateString("en-GB", { month: "short" });
+   103→   103→  const bizFiltered = booked.filter((c) => (bizBank === "All" || c.wonBank === bizBank) && (bizOwner === "All" || c.ownerId === Number(bizOwner)));
+   104→   104→  const monthly = months.map((m) => ({
+   105→   105→    m,
+   106→   106→    label: monthLabel(m),
+   107→   107→    volume: bizFiltered.filter((c) => (c.closedDate ?? "").slice(0, 7) === m).reduce((s, c) => s + c.loanAmount, 0),
+   108→   108→    count: bizFiltered.filter((c) => (c.closedDate ?? "").slice(0, 7) === m).length,
+   109→   109→    earn: bizFiltered.filter((c) => (c.closedDate ?? "").slice(0, 7) === m).reduce((s, c) => s + commissionFor(c, db.banks).gross, 0),
+   110→   110→  }));
+   111→   111→
+   112→   112→  /* 8 — conversion */
+   113→   113→  const conv = months.map((m) => {
+   114→   114→    const opened = cases.filter((c) => c.createdAt.slice(0, 7) === m).length;
+   115→   115→    const won = booked.filter((c) => (c.closedDate ?? "").slice(0, 7) === m).length;
+   116→   116→    const lost = cases.filter((c) => c.caseStatus === "Lost" && (c.closedDate ?? "").slice(0, 7) === m).length;
+   117→   117→    return { m, label: monthLabel(m), opened, won, lost };
+   118→   118→  });
+   119→   119→  const totOpened = conv.reduce((s, x) => s + x.opened, 0);
+   120→   120→  const totWon = conv.reduce((s, x) => s + x.won, 0);
+   121→   121→  const totLost = conv.reduce((s, x) => s + x.lost, 0);
+   122→   122→
+   123→   123→  /* 9 — leaderboard */
+   124→   124→  const leaders = db.users
+   125→   125→    .map((u) => {
+   126→   126→      const won = booked.filter((c) => c.ownerId === u.id);
+   127→   127→      const thisMonth = won.filter((c) => (c.closedDate ?? "").slice(0, 7) === today.slice(0, 7));
+   128→   128→      return { u, count: won.length, amount: won.reduce((s, c) => s + c.loanAmount, 0), earn: won.reduce((s, c) => s + commissionFor(c, db.banks).net, 0), monthCount: thisMonth.length, monthAmount: thisMonth.reduce((s, c) => s + c.loanAmount, 0) };
+   129→   129→    })
+   130→   130→    .filter((r) => r.count > 0)
+   131→   131→    .sort((a, b) => b.amount - a.amount);
+   132→   132→
+   133→   133→  /* 10 — commission earnings per bank */
+   134→   134→  const earnRows = db.banks
+   135→   135→    .map((b) => {
+   136→   136→      const won = booked.filter((c) => c.wonBank === b.name);
+   137→   137→      const volume = won.reduce((s, c) => s + c.loanAmount, 0);
+   138→   138→      const gross = won.reduce((s, c) => s + commissionFor(c, db.banks).gross, 0);
+   139→   139→      const payout = won.reduce((s, c) => s + commissionFor(c, db.banks).partnerCut, 0);
+   140→   140→      const inPlay = openCases.filter((c) => c.banks.includes(b.name));
+   141→   141→      return { b, count: won.length, volume, gross, payout, net: gross - payout, inPlay: inPlay.length, pipeline: inPlay.reduce((s, c) => s + c.loanAmount, 0) };
+   142→   142→    })
+   143→   143→    .filter((r) => r.count > 0 || r.inPlay > 0)
+   144→   144→    .sort((a, b) => b.gross - a.gross);
+   145→   145→
+   146→   146→  /* 11 — partner commission */
+   147→   147→  const partnerNames = Array.from(new Set(cases.filter((c) => c.partner).map((c) => c.partner!.name)));
+   148→   148→  const partnerRows = partnerNames
+   149→   149→    .map((name) => {
+   150→   150→      const intro = cases.filter((c) => c.partner?.name === name);
+   151→   151→      const wonB = intro.filter((c) => c.caseStatus === "Closed");
+   152→   152→      const gross = wonB.reduce((s, c) => s + commissionFor(c, db.banks).gross, 0);
+   153→   153→      const payout = wonB.reduce((s, c) => s + commissionFor(c, db.banks).partnerCut, 0);
+   154→   154→      const pendingCases = intro.filter((c) => c.caseStatus === "Active");
+   155→   155→      const pendingPayout = pendingCases.reduce((s, c) => s + commissionFor(c, db.banks).partnerCut, 0);
+   156→   156→      return { kind: intro[0].partner!.kind, name, share: intro[0].partner!.sharePct, intro: intro.length, bookedN: wonB.length, bookedVol: wonB.reduce((s, c) => s + c.loanAmount, 0), gross, payout, pendingCases: pendingCases.length, pendingPayout };
+   157→   157→    })
+   158→   158→    .sort((a, b) => b.payout - a.payout);
+   159→   159→
+   160→   160→  /* 12 — bank performance */
+   161→   161→  const bankPerf = db.banks
+   162→   162→    .map((b) => {
+   163→   163→      const submitted = openCases.filter((c) => c.banks.includes(b.name));
+   164→   164→      const won = booked.filter((c) => c.wonBank === b.name);
+   165→   165→      const avgTurn = won.length ? Math.round(won.reduce((s, c) => s + Math.max(0, Math.round((new Date(c.closedDate!).getTime() - new Date(c.createdAt).getTime()) / 86400000)), 0) / won.length) : 0;
+   166→   166→      const avgAge = submitted.length ? Math.round(submitted.reduce((s, c) => s + ageDays(c.createdAt), 0) / submitted.length) : 0;
+   167→   167→      return { b, inProgress: submitted.length, closed: won.length, volume: won.reduce((s, c) => s + c.loanAmount, 0), avgTurn, avgAge };
+   168→   168→    })
+   169→   169→    .filter((r) => r.inProgress > 0 || r.closed > 0)
+   170→   170→    .sort((a, b) => b.volume - a.volume);
+   171→   171→
+   172→   172→  /* 13 — bank × stage ageing */
+   173→   173→  const ageStages = [...db.stages].filter((s) => s.label !== "Closure" && s.label !== "Closed").sort((a, b) => a.sortOrder - b.sortOrder);
+   174→   174→  const bankAge = db.banks
+   175→   175→    .map((b) => ({ b, cells: ageStages.map((st) => { const cs = openCases.filter((c) => c.banks.includes(b.name) && c.stage === st.label); return cs.length ? Math.round(cs.reduce((s, c) => s + ageDays(c.createdAt), 0) / cs.length) : null; }) }))
+   176→   176→    .filter((r) => r.cells.some((x) => x != null));
+   177→   177→
+   178→   178→  /* 14 — escalations */
+   179→   179→  const escalations = computeEscalations(db, cases);
+   180→   180→
+   181→   181→  const exportOk = (name: string, header: string[], rows: (string | number)[][]) => {
+   182→   182→    downloadCSV(name, header, rows);
+   183→   183→    toast("success", `${name} downloaded.`);
+   184→   184→  };
+   185→   185→
+   186→   186→  return (
+   187→   187→    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+   188→   188→      <GroupLabel>Operational — the floor, today</GroupLabel>
+   189→   189→
+   190→   190→      <ReportCard title="Why pending" sub={`${openTasks.length} open tasks classified by blocker`} onExport={() => exportOk("why-pending.csv", ["Reason", "Open tasks"], whyRows.map((r) => [r.label, r.value]))}>
+   191→   191→        {whyRows.length ? <BarList items={whyRows} /> : <p className="text-[12.5px] text-[var(--ink-faint)]">No open tasks to classify.</p>}
+   192→   192→      </ReportCard>
+   193→   193→
+   194→   194→      <ReportCard title="Waiting for" sub="Where the clock is actually running" onExport={() => exportOk("waiting-for.csv", ["Waiting for", "Open tasks"], waitSegs.map((s) => [s.label, s.value]))}>
+   195→   195→        {waitSegs.length ? <Donut segments={waitSegs} centerLabel="open" size={140} /> : <p className="text-[12.5px] text-[var(--ink-faint)]">No open tasks in scope.</p>}
+   196→   196→      </ReportCard>
+   197→   197→
+   198→   198→      <ReportCard title="Overdue & at risk" sub={`${risky.length} cases need a decision this week`} onExport={() => exportOk("overdue-at-risk.csv", ["Case", "Customer", "Banks", "Stage", "Owner", "Status", "Next task", "Due"], risky.map((r) => [r.c.caseNumber, r.c.customer, r.c.banks.join(" / ") || "TBC", r.c.stage, userById(r.c.ownerId)?.name ?? "", r.s, r.nt?.description ?? "—", r.nt?.dueDate ?? "—"]))}>
+   199→   199→        {risky.length === 0 ? (
+   200→   200→          <p className="text-[12.5px] text-[var(--ink-faint)]">Nothing overdue or at risk. Enjoy it while it lasts.</p>
+   201→   201→        ) : (
+   202→   202→          <div className="space-y-1.5 max-h-[300px] overflow-y-auto pr-1">
+   203→   203→            {risky.map(({ c, s, nt }) => (
+   204→   204→              <button key={c.id} className="rowlink w-full flex items-center gap-3 text-left px-2.5 py-2 rounded-lg" onClick={() => nav({ name: "case", id: c.id })}>
+   205→   205→                <span className={s === "Overdue" ? "dot-overdue shrink-0" : "w-[7px] h-[7px] rounded-full shrink-0"} style={s === "At Risk" ? { background: "var(--amber)" } : undefined} />
+   206→   206→                <span className="min-w-0 flex-1">
+   207→   207→                  <span className="mono text-[11.5px] block" style={{ color: "var(--amber)" }}>{c.caseNumber}</span>
+   208→   208→                  <span className="text-[12px] text-[var(--ink-dim)] block truncate">{c.customer} · {c.banks.join(" / ") || "bank TBC"} · {nt?.description ?? "no task"}</span>
+   209→   209→                </span>
+   210→   210→                {nt && <DueChip dueISO={nt.dueDate} />}
+   211→   211→                <StatusChip status={s} />
+   212→   212→              </button>
+   213→   213→            ))}
+   214→   214→          </div>
+   215→   215→        )}
+   216→   216→      </ReportCard>
+   217→   217→
+   218→   218→      <ReportCard title="Owner workload" sub="Open tasks and stuck value per teammate" onExport={() => exportOk("owner-workload.csv", ["Owner", "Open tasks", "Overdue", "Value at stake"], owners.map((o) => [o.name, o.open, o.od, o.value]))}>
+   219→   219→        {owners.length ? (
+   220→   220→          <div className="space-y-2.5">
+   221→   221→            {owners.map((o) => {
+   222→   222→              const max = owners[0].open || 1;
+   223→   223→              return (
+   224→   224→                <div key={o.id} className="flex items-center gap-3">
+   225→   225→                  <Avatar name={o.name} size={26} />
+   226→   226→                  <div className="flex-1 min-w-0">
+   227→   227→                    <div className="flex justify-between items-baseline mb-1">
+   228→   228→                      <span className="text-[12.5px] truncate">{o.name}</span>
+   229→   229→                      <span className="mono text-[11.5px]">
+   230→   230→                        {o.open} open{o.od > 0 && <span style={{ color: "var(--coral)" }}> · {o.od} od</span>}
+   231→   231→                        <span className="text-[var(--ink-faint)]"> · {fmtMoney(o.value)}</span>
+   232→   232→                      </span>
+   233→   233→                    </div>
+   234→   234→                    <div className="h-[6px] rounded-full overflow-hidden" style={{ background: "var(--track)" }}>
+   235→   235→                      <div className="h-full rounded-full" style={{ width: `${(o.open / max) * 100}%`, background: o.od > 0 ? `linear-gradient(90deg, ${TONE_HEX.mint}, ${TONE_HEX.coral})` : TONE_HEX.mint, transition: "width 0.8s cubic-bezier(0.22,1,0.36,1)" }} />
+   236→   236→                    </div>
+   237→   237→                  </div>
+   238→   238→                </div>
+   239→   239→              );
+   240→   240→            })}
+   241→   241→          </div>
+   242→   242→        ) : (
+   243→   243→          <p className="text-[12.5px] text-[var(--ink-faint)]">No open tasks assigned.</p>
+   244→   244→        )}
+   245→   245→      </ReportCard>
+   246→   246→
+   247→   247→      <ReportCard title="Stage ageing" sub="Average case age by stage — red means the stage is a parking lot" onExport={() => exportOk("stage-ageing.csv", ["Stage", "Avg age (days)", "Cases"], stageRows.map((r) => [r.label, r.value, r.sub]))}>
+   248→   248→        {stageRows.length ? <BarList items={stageRows} unit="d" /> : <p className="text-[12.5px] text-[var(--ink-faint)]">No live cases.</p>}
+   249→   249→      </ReportCard>
+   250→   250→
+   251→   251→      <ReportCard title="No next action" sub="Open cases with nobody owning the next step — the silent killers" onExport={() => exportOk("no-next-action.csv", ["Case", "Customer", "Stage", "Owner", "Age (days)"], noAction.map((c) => [c.caseNumber, c.customer, c.stage, userById(c.ownerId)?.name ?? "", ageDays(c.createdAt)]))}>
+   252→   252→        {noAction.length === 0 ? (
+   253→   253→          <div className="flex items-center gap-2 text-[12.5px] py-2" style={{ color: "var(--mint)" }}>
+   254→   254→            <IInbox size={16} /> Every open case has an owner and a task. Textbook.
+   255→   255→          </div>
+   256→   256→        ) : (
+   257→   257→          <div className="space-y-1.5 max-h-[260px] overflow-y-auto pr-1">
+   258→   258→            {noAction.map((c) => (
+   259→   259→              <button key={c.id} className="rowlink w-full flex items-center gap-3 text-left px-2.5 py-2 rounded-lg" onClick={() => nav({ name: "case", id: c.id })}>
+   260→   260→                <Chip tone="slate">{ageDays(c.createdAt)}d</Chip>
+   261→   261→                <span className="min-w-0 flex-1">
+   262→   262→                  <span className="mono text-[11.5px] block" style={{ color: "var(--amber)" }}>{c.caseNumber}</span>
+   263→   263→                  <span className="text-[12px] text-[var(--ink-dim)] block truncate">{c.customer} · stuck in {c.stage}</span>
+   264→   264→                </span>
+   265→   265→                <Avatar name={userById(c.ownerId)?.name ?? "?"} size={24} />
+   266→   266→              </button>
+   267→   267→            ))}
+   268→   268→          </div>
+   269→   269→        )}
+   270→   270→      </ReportCard>
+   271→   271→
+   272→   272→      <GroupLabel>Business — what the firm earns</GroupLabel>
+   273→   273→
+   274→   274→      <ReportCard
+   275→   275→        title="Monthly business"
+   276→   276→        sub="Booked volume and bank commission per month"
+   277→   277→        extra={
+   278→   278→          <>
+   279→   279→            <select className="select !w-auto !py-1 text-[11.5px]" value={bizBank} onChange={(e) => setBizBank(e.target.value)}>
+   280→   280→              <option>All banks</option>
+   281→   281→              {db.banks.map((b) => <option key={b.id}>{b.name}</option>)}
+   282→   282→            </select>
+   283→   283→            <select className="select !w-auto !py-1 text-[11.5px]" value={bizOwner} onChange={(e) => setBizOwner(e.target.value)}>
+   284→   284→              <option value="All">All owners</option>
+   285→   285→              {db.users.filter((u) => u.role !== "Head of Company" && u.role !== "PA to HoC").map((u) => <option key={u.id} value={u.id}>{u.name.split(" ")[0]}</option>)}
+   286→   286→            </select>
+   287→   287→          </>
+   288→   288→        }
+   289→   289→        onExport={() => exportOk("monthly-business.csv", ["Month", "Cases", "Volume (AED)", "Commission (AED)"], monthly.map((r) => [r.m, r.count, r.volume, Math.round(r.earn)]))}
+   290→   290→      >
+   291→   291→        {(() => {
+   292→   292→          const max = Math.max(...monthly.map((r) => r.volume), 1);
+   293→   293→          return (
+   294→   294→            <div className="flex items-end gap-2 h-[150px] pt-2">
+   295→   295→              {monthly.map((r, i) => (
+   296→   296→                <div key={r.m} className="flex-1 flex flex-col items-center gap-1.5 h-full justify-end">
+   297→   297→                  <span className="mono text-[10px] text-[var(--ink-dim)]">{r.count > 0 ? fmtMoney(r.volume) : ""}</span>
+   298→   298→                  <div className="w-full max-w-[46px] rounded-t-md" style={{ height: `${Math.max((r.volume / max) * 100, r.volume > 0 ? 4 : 1)}%`, background: `linear-gradient(180deg, ${TONE_HEX.amber}, ${TONE_HEX.amber}66)`, transition: `height 0.8s cubic-bezier(0.22,1,0.36,1) ${i * 60}ms` }} title={`${r.volume ? fmtMoney(r.earn) + " commission" : "no bookings"}`} />
+   299→   299→                  <span className="text-[10.5px] text-[var(--ink-faint)] font-disp">{r.label}</span>
+   300→   300→                </div>
+   301→   301→              ))}
+   302→   302→            </div>
+   303→   303→          );
+   304→   304→        })()}
+   305→   305→        <div className="flex gap-4 mt-3 pt-2 text-[11.5px]" style={{ borderTop: "1px dashed var(--line)" }}>
+   306→   306→          <span className="text-[var(--ink-faint)]">Period commission <span className="mono text-[var(--mint)]">{fmtMoney(monthly.reduce((s, r) => s + r.earn, 0))}</span></span>
+   307→   307→          <span className="text-[var(--ink-faint)]">Volume <span className="mono text-[var(--ink)]">{fmtMoney(monthly.reduce((s, r) => s + r.volume, 0))}</span></span>
+   308→   308→        </div>
+   309→   309→      </ReportCard>
+   310→   310→
+   311→   311→      <ReportCard
+   312→   312→        title="Conversion"
+   313→   313→        sub="Opened vs booked vs lost per month"
+   314→   314→        onExport={() => exportOk("conversion.csv", ["Month", "Opened", "Booked", "Lost"], conv.map((r) => [r.m, r.opened, r.won, r.lost]))}
+   315→   315→      >
+   316→   316→        <div className="flex items-end gap-2 h-[130px] pt-2">
+   317→   317→          {conv.map((r, i) => {
+   318→   318→            const max = Math.max(...conv.map((x) => x.opened), 1);
+   319→   319→            return (
+   320→   320→              <div key={r.m} className="flex-1 flex flex-col items-center gap-1.5 h-full justify-end">
+   321→   321→                <div className="flex items-end gap-[3px] h-full w-full max-w-[56px] justify-center">
+   322→   322→                  {[
+   323→   323→                    { v: r.opened, c: "var(--neutral)" },
+   324→   324→                    { v: r.won, c: TONE_HEX.mint },
+   325→   325→                    { v: r.lost, c: TONE_HEX.coral },
+   326→   326→                  ].map((seg, j) => (
+   327→   327→                    <div key={j} className="w-[30%] rounded-t-sm" style={{ height: `${Math.max((seg.v / max) * 100, seg.v > 0 ? 4 : 1)}%`, background: seg.c, transition: `height 0.8s cubic-bezier(0.22,1,0.36,1) ${i * 60 + j * 40}ms` }} />
+   328→   328→                  ))}
+   329→   329→                </div>
+   330→   330→                <span className="text-[10.5px] text-[var(--ink-faint)] font-disp">{r.label}</span>
+   331→   331→              </div>
+   332→   332→            );
+   333→   333→          })}
+   334→   334→        </div>
+   335→   335→        <div className="flex gap-4 mt-3 pt-2 text-[11.5px]" style={{ borderTop: "1px dashed var(--line)" }}>
+   336→   336→          <span className="text-[var(--ink-faint)]">Opened <span className="mono text-[var(--ink)]">{totOpened}</span></span>
+   337→   337→          <span className="text-[var(--ink-faint)]">Booked <span className="mono" style={{ color: "var(--mint)" }}>{totWon}</span></span>
+   338→   338→          <span className="text-[var(--ink-faint)]">Lost <span className="mono" style={{ color: "var(--coral)" }}>{totLost}</span></span>
+   339→   339→          <span className="text-[var(--ink-faint)] ml-auto">Hit rate <span className="mono text-[var(--amber)]">{totOpened ? Math.round((totWon / totOpened) * 100) : 0}%</span></span>
+   340→   340→        </div>
+   341→   341→      </ReportCard>
+   342→   342→
+   343→   343→      <ReportCard
+   344→   344→        title="Owner leaderboard"
+   345→   345→        sub="Lifetime booked business + net commission per owner, this month in brackets"
+   346→   346→        onExport={() => exportOk("leaderboard.csv", ["Owner", "Cases", "Volume (AED)", "Net commission (AED)", "This month cases", "This month volume"], leaders.map((r) => [r.u.name, r.count, r.amount, Math.round(r.earn), r.monthCount, r.monthAmount]))}
+   347→   347→      >
+   348→   348→        <div className="space-y-2">
+   349→   349→          {leaders.length === 0 && <p className="text-[12.5px] text-[var(--ink-faint)]">No booked cases yet.</p>}
+   350→   350→          {leaders.map((r, i) => (
+   351→   351→            <div key={r.u.id} className="flex items-center gap-3 px-2 py-1.5 rounded-lg" style={{ background: i === 0 ? "rgba(242,176,76,0.06)" : undefined }}>
+   352→   352→              <span className="mono text-[12px] w-5 text-center" style={{ color: i === 0 ? "var(--amber)" : "var(--ink-faint)" }}>{i + 1}</span>
+   353→   353→              <Avatar name={r.u.name} size={26} />
+   354→   354→              <span className="text-[12.5px] flex-1 truncate">{r.u.name}</span>
+   355→   355→              <span className="text-right">
+   356→   356→                <span className="mono text-[12px] block">{fmtMoney(r.amount)} <span className="text-[var(--ink-faint)]">({r.monthCount} this mo)</span></span>
+   357→   357→                <span className="mono text-[11px] block" style={{ color: "var(--mint)" }}>{fmtMoney(r.earn)} net</span>
+   358→   358→              </span>
+   359→   359→            </div>
+   360→   360→          ))}
+   361→   361→        </div>
+   362→   362→      </ReportCard>
+   363→   363→
+   364→   364→      <ReportCard
+   365→   365→        title="Commission earnings by bank"
+   366→   366→        sub="Our take per bank at admin-managed rates — partners already deducted"
+   367→   367→        onExport={() => exportOk("commission-earnings.csv", ["Bank", "Rate %", "Booked", "Volume (AED)", "Gross (AED)", "Partner payout (AED)", "Net (AED)", "In play", "Pipeline (AED)"], earnRows.map((r) => [r.b.name, r.b.ratePct, r.count, r.volume, Math.round(r.gross), Math.round(r.payout), Math.round(r.net), r.inPlay, r.pipeline]))}
+   368→   368→        span="lg:col-span-2"
+   369→   369→      >
+   370→   370→        {earnRows.length === 0 ? (
+   371→   371→          <p className="text-[12.5px] text-[var(--ink-faint)]">No bookings yet.</p>
+   372→   372→        ) : (
+   373→   373→          <div className="overflow-x-auto">
+   374→   374→            <table className="tbl min-w-[760px]">
+   375→   375→              <thead>
+   376→   376→                <tr><th>Bank</th><th>Rate</th><th>Booked</th><th>Volume</th><th>Gross</th><th>Paid to partners</th><th>Net to firm</th><th>In play</th><th>Pipeline</th></tr>
+   377→   377→              </thead>
+   378→   378→              <tbody>
+   379→   379→                {earnRows.map((r) => (
+   380→   380→                  <tr key={r.b.id} style={{ cursor: "default" }}>
+   381→   381→                    <td className="font-medium">{r.b.name}</td>
+   382→   382→                    <td className="mono">{fmtRate(r.b.ratePct)}</td>
+   383→   383→                    <td className="mono">{r.count}</td>
+   384→   384→                    <td className="mono">{fmtMoney(r.volume)}</td>
+   385→   385→                    <td className="mono">{fmtMoney(r.gross)}</td>
+   386→   386→                    <td className="mono" style={{ color: r.payout > 0 ? "var(--coral)" : "var(--ink-faint)" }}>{r.payout > 0 ? `− ${fmtMoney(r.payout)}` : "—"}</td>
+   387→   387→                    <td className="mono font-semibold" style={{ color: "var(--mint)" }}>{fmtMoney(r.net)}</td>
+   388→   388→                    <td className="mono text-[var(--ink-dim)]">{r.inPlay}</td>
+   389→   389→                    <td className="mono text-[var(--ink-dim)]">{fmtMoney(r.pipeline)}</td>
+   390→   390→                  </tr>
+   391→   391→                ))}
+   392→   392→                <tr style={{ cursor: "default", background: "rgba(242,176,76,0.04)" }}>
+   393→   393→                  <td className="font-disp font-semibold">Total</td>
+   394→   394→                  <td />
+   395→   395→                  <td className="mono font-semibold">{earnRows.reduce((s, r) => s + r.count, 0)}</td>
+   396→   396→                  <td className="mono font-semibold">{fmtMoney(earnRows.reduce((s, r) => s + r.volume, 0))}</td>
+   397→   397→                  <td className="mono font-semibold">{fmtMoney(earnRows.reduce((s, r) => s + r.gross, 0))}</td>
+   398→   398→                  <td className="mono font-semibold" style={{ color: "var(--coral)" }}>− {fmtMoney(earnRows.reduce((s, r) => s + r.payout, 0))}</td>
+   399→   399→                  <td className="mono font-bold" style={{ color: "var(--mint)" }}>{fmtMoney(earnRows.reduce((s, r) => s + r.net, 0))}</td>
+   400→   400→                  <td className="mono">{earnRows.reduce((s, r) => s + r.inPlay, 0)}</td>
+   401→   401→                  <td className="mono">{fmtMoney(earnRows.reduce((s, r) => s + r.pipeline, 0))}</td>
+   402→   402→                </tr>
+   403→   403→              </tbody>
+   404→   404→            </table>
+   405→   405→          </div>
+   406→   406→        )}
+   407→   407→      </ReportCard>
+   408→   408→
+   409→   409→      <ReportCard
+   410→   410→        title="Partner commission"
+   411→   411→        sub="What agents, brokers and referrers have earned — and what's accruing on live files"
+   412→   412→        onExport={() => exportOk("partner-commission.csv", ["Kind", "Partner", "Share %", "Introduced", "Booked", "Booked volume (AED)", "Gross commission (AED)", "Payout due (AED)", "Live files", "Accruing payout (AED)"], partnerRows.map((r) => [r.kind, r.name, r.share, r.intro, r.bookedN, r.bookedVol, Math.round(r.gross), Math.round(r.payout), r.pendingCases, Math.round(r.pendingPayout)]))}
+   413→   413→        span="lg:col-span-2"
+   414→   414→      >
+   415→   415→        {partnerRows.length === 0 ? (
+   416→   416→          <p className="text-[12.5px] text-[var(--ink-faint)]">No sourced cases yet.</p>
+   417→   417→        ) : (
+   418→   418→          <div className="overflow-x-auto">
+   419→   419→            <table className="tbl min-w-[720px]">
+   420→   420→              <thead>
+   421→   421→                <tr><th>Partner</th><th>Kind</th><th>Share</th><th>Introduced</th><th>Booked</th><th>Gross</th><th>Payout due</th><th>Accruing on live</th></tr>
+   422→   422→              </thead>
+   423→   423→              <tbody>
+   424→   424→                {partnerRows.map((r) => (
+   425→   425→                  <tr key={r.name} style={{ cursor: "default" }}>
+   426→   426→                    <td className="font-medium">{r.name}</td>
+   427→   427→                    <td><Chip tone={r.kind === "Agent" ? "amber" : r.kind === "Broker" ? "sky" : "coral"}>{r.kind}</Chip></td>
+   428→   428→                    <td className="mono">{r.share}%</td>
+   429→   429→                    <td className="mono">{r.intro}</td>
+   430→   430→                    <td className="mono">{r.bookedN} · {fmtMoney(r.bookedVol)}</td>
+   431→   431→                    <td className="mono">{fmtMoney(r.gross)}</td>
+   432→   432→                    <td className="mono font-semibold" style={{ color: "var(--amber)" }}>{fmtMoney(r.payout)}</td>
+   433→   433→                    <td className="mono text-[var(--ink-dim)]">{r.pendingCases} files · {fmtMoney(r.pendingPayout)}</td>
+   434→   434→                  </tr>
+   435→   435→                ))}
+   436→   436→              </tbody>
+   437→   437→            </table>
+   438→   438→          </div>
+   439→   439→        )}
+   440→   440→      </ReportCard>
+   441→   441→
+   442→   442→      <GroupLabel>Bank & SLA — where files stall</GroupLabel>
+   443→   443→
+   444→   444→      <ReportCard
+   445→   445→        title="Bank performance"
+   446→   446→        sub="Per bank: files in play, booked volume, turnaround and live-file age"
+   447→   447→        onExport={() => exportOk("bank-performance.csv", ["Bank", "In progress", "Closed", "Volume (AED)", "Avg turnaround (days)", "Avg live age (days)"], bankPerf.map((r) => [r.b.name, r.inProgress, r.closed, r.volume, r.avgTurn, r.avgAge]))}
+   448→   448→      >
+   449→   449→        <div className="space-y-1.5 max-h-[280px] overflow-y-auto pr-1">
+   450→   450→          {bankPerf.map((r) => (
+   451→   451→            <div key={r.b.id} className="flex items-center gap-3 px-2.5 py-2 rounded-lg" style={{ background: "var(--tint)" }}>
+   452→   452→              <span className="font-disp font-semibold text-[12.5px] w-[86px] shrink-0">{r.b.name}</span>
+   453→   453→              <span className="mono text-[11.5px] text-[var(--ink-dim)]">{r.inProgress} live · {r.closed} booked</span>
+   454→   454→              <span className="mono text-[11.5px] ml-auto">{fmtMoney(r.volume)}</span>
+   455→   455→              <span className="mono text-[11px] text-[var(--ink-faint)] w-[120px] text-right">{r.avgTurn ? `${r.avgTurn}d turnaround` : "—"}{r.avgAge ? ` · ${r.avgAge}d age` : ""}</span>
+   456→   456→            </div>
+   457→   457→          ))}
+   458→   458→          {bankPerf.length === 0 && <p className="text-[12.5px] text-[var(--ink-faint)]">No bank activity yet.</p>}
+   459→   459→        </div>
+   460→   460→      </ReportCard>
+   461→   461→
+   462→   462→      <ReportCard
+   463→   463→        title="Bank × stage ageing"
+   464→   464→        sub="Average live-case age where each bank meets each stage — spot the slow lane"
+   465→   465→        onExport={() => exportOk("bank-stage-ageing.csv", ["Bank", ...ageStages.map((s) => s.label)], bankAge.map((r) => [r.b.name, ...r.cells.map((x) => (x == null ? "" : x))]))}
+   466→   466→      >
+   467→   467→        <div className="overflow-x-auto">
+   468→   468→          <table className="tbl" style={{ minWidth: 560 }}>
+   469→   469→            <thead>
+   470→   470→              <tr><th>Bank</th>{ageStages.map((s) => <th key={s.id} className="!px-1.5 text-[9px]">{s.label.split(" ")[0]}</th>)}</tr>
+   471→   471→            </thead>
+   472→   472→            <tbody>
+   473→   473→              {bankAge.map((r) => (
+   474→   474→                <tr key={r.b.id} style={{ cursor: "default" }}>
+   475→   475→                  <td className="font-medium text-[12px]">{r.b.name}</td>
+   476→   476→                  {r.cells.map((x, i) => (
+   477→   477→                    <td key={i} className="!px-1.5 !py-1.5 text-center">
+   478→   478→                      {x == null ? (
+   479→   479→                        <span className="text-[var(--ink-faint)] opacity-40">·</span>
+   480→   480→                      ) : (
+   481→   481→                        <span className="mono text-[11px] px-1.5 py-0.5 rounded" style={{ background: x > 25 ? "rgba(242,115,99,0.16)" : x > 14 ? "rgba(242,176,76,0.14)" : "rgba(67,214,155,0.1)", color: x > 25 ? "var(--coral)" : x > 14 ? "var(--amber)" : "var(--mint)" }}>{x}d</span>
+   482→   482→                      )}
+   483→   483→                    </td>
+   484→   484→                  ))}
+   485→   485→                </tr>
+   486→   486→              ))}
+   487→   487→              {bankAge.length === 0 && <tr><td colSpan={ageStages.length + 1} className="text-[12.5px] text-[var(--ink-faint)]">No live cases submitted to banks.</td></tr>}
+   488→   488→            </tbody>
+   489→   489→          </table>
+   490→   490→        </div>
+   491→   491→      </ReportCard>
+   492→   492→
+   493→   493→      <ReportCard
+   494→   494→        title="SLA escalations"
+   495→   495→        sub="Cases past the allowed days in their current stage (bank-specific rules win)"
+   496→   496→        onExport={() => exportOk("sla-escalations.csv", ["Case", "Customer", "Stage", "Bank", "Days in stage", "SLA max", "Over by"], escalations.map((e) => [e.c.caseNumber, e.c.customer, e.c.stage, primaryBank(e.c) ?? "TBC", e.days, e.rule.maxDays, e.days - e.rule.maxDays]))}
+   497→   497→        span="lg:col-span-2"
+   498→   498→      >
+   499→   499→        {escalations.length === 0 ? (
+   500→   500→          <div className="flex items-center gap-2 text-[12.5px] py-2" style={{ color: "var(--mint)" }}>
+   501→   501→            <IInbox size={16} /> Every active case is inside its stage SLA.
+   502→   502→          </div>
+   503→   503→        ) : (
+   504→   504→          <div className="grid sm:grid-cols-2 gap-2">
+   505→   505→            {escalations.map((e) => (
+   506→   506→              <button key={e.c.id} className="flex items-center gap-3 text-left px-3 py-2.5 rounded-lg transition-colors hover:bg-[rgba(242,115,99,0.08)]" style={{ border: "1px solid rgba(242,115,99,0.25)" }} onClick={() => nav({ name: "case", id: e.c.id })}>
+   507→   507→                <span className="dot-overdue shrink-0" />
+   508→   508→                <span className="min-w-0 flex-1">
+   509→   509→                  <span className="mono text-[11.5px] block" style={{ color: "var(--coral)" }}>{e.c.caseNumber}</span>
+   510→   510→                  <span className="text-[12px] text-[var(--ink-dim)] block truncate">{e.c.customer} · {e.c.stage} @ {primaryBank(e.c) ?? "bank TBC"}</span>
+   511→   511→                </span>
+   512→   512→                <span className="text-right shrink-0">
+   513→   513→                  <span className="mono text-[13px] font-semibold block" style={{ color: "var(--coral)" }}>{e.days}d</span>
+   514→   514→                  <span className="text-[10.5px] text-[var(--ink-faint)] block">SLA {e.rule.maxDays}d · over {e.days - e.rule.maxDays}d</span>
+   515→   515→                </span>
+   516→   516→              </button>
+   517→   517→            ))}
+   518→   518→          </div>
+   519→   519→        )}
+   520→   520→      </ReportCard>
+   521→   521→    </div>
+   522→   522→  );
+   523→   523→}
+   524→   524→

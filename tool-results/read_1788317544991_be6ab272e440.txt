@@ -1,0 +1,502 @@
+   400→        <div className="flex flex-wrap items-center gap-3">
+   401→          <span className="text-[10.5px] uppercase tracking-[0.12em] font-disp font-semibold text-[var(--ink-faint)]">Running for</span>
+   402→          <div className="flex rounded-lg overflow-hidden border" style={{ borderColor: "var(--line)" }}>
+   403→            <button type="button"
+   404→              className="px-3.5 py-1.5 text-[12.5px] font-disp font-semibold transition-colors"
+   405→              style={clientMode === "trial" ? { background: "var(--amber-tint)", color: "var(--amber)" } : { color: "var(--ink-faint)" }}
+   406→              onClick={() => setClientMode("trial")}>
+   407→              New client · trial
+   408→            </button>
+   409→            <button type="button"
+   410→              className="px-3.5 py-1.5 text-[12.5px] font-disp font-semibold transition-colors"
+   411→              style={clientMode === "existing" ? { background: "var(--amber-tint)", color: "var(--amber)" } : { color: "var(--ink-faint)" }}
+   412→              onClick={() => setClientMode("existing")}>
+   413→              Existing client
+   414→            </button>
+   415→          </div>
+   416→
+   417→          {clientMode === "trial" ? (
+   418→            <span className="text-[11.5px] text-[var(--ink-faint)] flex items-center gap-1.5">
+   419→              <span className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--mint)" }} />
+   420→              Pure what-if — saving stores an audit check only, never creates a case.
+   421→            </span>
+   422→          ) : (
+   423→            <select className="select" style={{ width: 280 }} value={existingCaseId ?? ""}
+   424→              onChange={(e) => { const v = e.target.value ? Number(e.target.value) : null; setExistingCaseId(v); if (v) loadExistingCase(v); }}>
+   425→              <option value="">Select a case file…</option>
+   426→              {[...db.cases].sort((a, b) => b.id - a.id).map((c) => (
+   427→                <option key={c.id} value={c.id}>{c.caseNumber} · {c.customer}</option>
+   428→              ))}
+   429→            </select>
+   430→          )}
+   431→        </div>
+   432→      </div>
+   433→
+   434→      <div className="grid grid-cols-1 xl:grid-cols-[1fr_400px] gap-4 items-start">
+   435→        {/* ================= input column ================= */}
+   436→        <div className="space-y-4">
+   437→          <Section num="01" title="Applicant" hint="age sets the usable tenor">
+   438→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+   439→              <div>
+   440→                <label className="label">Applicant name</label>
+   441→                <input className="input" value={input.name} onChange={(e) => up({ name: e.target.value })} placeholder="e.g. Mohammed Al Mansoori" />
+   442→              </div>
+   443→              <div>
+   444→                <label className="label">WhatsApp</label>
+   445→                <input className="input mono" value={input.whatsapp} onChange={(e) => up({ whatsapp: e.target.value })} placeholder="+971 50 …" />
+   446→              </div>
+   447→              <div>
+   448→                <label className="label">Applicant type</label>
+   449→                <ToggleChips options={["Expatriate", "UAE National"]} value={input.applicantType} onChange={(v) => up({ applicantType: v as MortgageInput["applicantType"] })} />
+   450→              </div>
+   451→              <div>
+   452→                <label className="label">Employment</label>
+   453→                <ToggleChips options={["Salaried", "Self-Employed"]} value={input.employment} onChange={setEmployment} />
+   454→              </div>
+   455→              <div>
+   456→                <label className="label">Date of birth</label>
+   457→                <input className="input mono" type="date" value={input.dob} onChange={(e) => e.target.value && up({ dob: e.target.value })} />
+   458→              </div>
+   459→              <div className="grid grid-cols-2 gap-3">
+   460→                <div>
+   461→                  <label className="label">Final age</label>
+   462→                  <NumIn value={input.finalAge} onChange={(n) => up({ finalAge: n })} step={1} min={40} />
+   463→                </div>
+   464→                <div>
+   465→                  <label className="label">Margin (mo)</label>
+   466→                  <NumIn value={input.marginMonths} onChange={(n) => up({ marginMonths: n })} step={1} min={0} />
+   467→                </div>
+   468→              </div>
+   469→            </div>
+   470→            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3.5 pt-3.5" style={{ borderTop: "1px dashed var(--line)" }}>
+   471→              <Stat label="Current age" value={`${r.ageNowYears}y`} />
+   472→              <Stat label="After margin" value={`${Math.floor(r.ageAfterMarginMonths / 12)}y ${r.ageAfterMarginMonths % 12}m`} />
+   473→              <Stat label="Remaining period" value={tenorLabel(r.remainingMonths)} />
+   474→              <Stat label="Max usable tenor" value={tenorLabel(r.maxTenorMonths)} tone="var(--amber)" />
+   475→            </div>
+   476→          </Section>
+   477→
+   478→          <Section num="02" title="Property" hint="only what the calculation needs">
+   479→            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+   480→              <div>
+   481→                <label className="label">Property value (AED)</label>
+   482→                <NumIn value={input.propertyValue} onChange={(n) => up({ propertyValue: n })} step={50000} />
+   483→              </div>
+   484→              <div>
+   485→                <label className="label">Bank valuation — optional</label>
+   486→                <input className="input mono" type="number" min={0} step={50000} value={input.valuation ?? ""} placeholder="blank if not available"
+   487→                  onChange={(e) => up({ valuation: e.target.value === "" ? null : Number(e.target.value) || 0 })} />
+   488→              </div>
+   489→              <div>
+   490→                <label className="label">Requested finance (AED)</label>
+   491→                <NumIn value={input.requested} onChange={(n) => up({ requested: n })} step={50000} />
+   492→              </div>
+   493→            </div>
+   494→
+   495→            <div className="mt-3">
+   496→              <label className="label">
+   497→                LTV applied — default {defaultLtv}% for {input.applicantType}
+   498→                {isCustomLtv && <span style={{ color: "var(--amber)" }}> · using custom {parseFloat(input.customLtv)}%</span>}
+   499→              </label>
+   500→              <div className="flex flex-wrap items-center gap-1.5">
+   501→                <button type="button" className="chip transition-all"
+   502→                  style={input.ltvPctChoice == null && !isCustomLtv ? { background: "var(--amber-tint)", borderColor: "var(--amber)", color: "var(--amber)" } : { background: "var(--bg2)", borderColor: "var(--line)", color: "var(--ink-faint)" }}
+   503→                  onClick={() => up({ ltvPctChoice: null, customLtv: "" })}>
+   504→                  Default {defaultLtv}%
+   505→                </button>
+   506→                {LTV_CHOICES.map((v) => (
+   507→                  <button key={v} type="button" className="chip transition-all"
+   508→                    style={input.ltvPctChoice === v && !isCustomLtv ? { background: "var(--amber-tint)", borderColor: "var(--amber)", color: "var(--amber)" } : { background: "var(--bg2)", borderColor: "var(--line)", color: "var(--ink-faint)" }}
+   509→                    onClick={() => up({ ltvPctChoice: v, customLtv: "" })}>
+   510→                    {v}%
+   511→                  </button>
+   512→                ))}
+   513→                <span className={`flex items-center gap-1.5 transition-all`}
+   514→                  style={{ background: isCustomLtv ? "var(--amber-tint)" : "var(--bg2)", border: `1px solid ${isCustomLtv ? "var(--amber)" : "var(--line)"}`, borderRadius: 5, paddingLeft: 8, paddingRight: 8 }}>
+   515→                  <span className="text-[11px] uppercase tracking-[0.06em] font-disp" style={{ color: isCustomLtv ? "var(--amber)" : "var(--ink-faint)" }}>Custom</span>
+   516→                  <input className="mono" style={{ width: 52, padding: "3px 0", border: "none", background: "transparent", color: "var(--ink)", fontSize: 12, textAlign: "right", outline: "none" }}
+   517→                    type="number" min={1} max={95} step={0.5} placeholder="e.g. 72"
+   518→                    value={input.customLtv}
+   519→                    onChange={(e) => up({ customLtv: e.target.value, ltvPctChoice: null })} />
+   520→                  <span className="text-[11px]" style={{ color: isCustomLtv ? "var(--amber)" : "var(--ink-faint)" }}>%</span>
+   521→                </span>
+   522→              </div>
+   523→            </div>
+   524→
+   525→            <p className="text-[12px] text-[var(--ink-dim)] mt-3 mb-0 rounded-lg px-3 py-2" style={{ background: "var(--tint)" }}>
+   526→              Calculation basis: <strong className="mono">{fmtAED(r.calcBasis)}</strong>
+   527→              <span className="text-[var(--ink-faint)]"> — {r.basisLabel}. LTV {r.ltvPct}% ({input.ltvPctChoice != null ? "selected" : "default"}) for {input.applicantType}.</span>
+   528→            </p>
+   529→          </Section>
+   530→
+   531→          <Section num="03" title="Income" hint={input.employment === "Self-Employed" ? "self-employed basis" : "all sources → monthly equivalent"}>
+   532→            <div className="space-y-2">
+   533→              {input.incomes.map((row) => (
+   534→                <div key={row.id} className="grid grid-cols-[1fr_92px_110px_76px_100px_30px] gap-2 items-center anim-fade-in">
+   535→                  <select className="select" value={row.source} onChange={(e) => patchIncome(row.id, { source: e.target.value })}>
+   536→                    {sourcePool.map((s) => <option key={s}>{s}</option>)}
+   537→                  </select>
+   538→                  <select className="select" value={row.frequency} onChange={(e) => patchIncome(row.id, { frequency: e.target.value as Frequency })}>
+   539→                    {FREQUENCIES.map((f) => <option key={f}>{f}</option>)}
+   540→                  </select>
+   541→                  <NumIn value={row.amount} onChange={(n) => patchIncome(row.id, { amount: n })} step={500} />
+   542→                  <NumIn value={row.eligiblePct} onChange={(n) => patchIncome(row.id, { eligiblePct: Math.min(100, Math.max(0, n)) })} step={5} min={0} />
+   543→                  <span className="mono text-[12.5px] text-right" style={{ color: "var(--mint)" }}>{fmtAED(incomeMonthly(row))}</span>
+   544→                  <button className="text-[var(--ink-faint)] hover:text-[var(--coral)] transition-colors justify-self-center" title="Remove row"
+   545→                    onClick={() => setInput((p) => ({ ...p, incomes: p.incomes.filter((x) => x.id !== row.id) }))}>
+   546→                    <IX size={14} />
+   547→                  </button>
+   548→                </div>
+   549→              ))}
+   550→            </div>
+   551→            <div className="flex items-center justify-between mt-3">
+   552→              <button className="btn btn-ghost btn-sm" onClick={() => setInput((p) => ({ ...p, incomes: [...p.incomes, newIncomeRow(sourcePool[Math.min(p.incomes.length, sourcePool.length - 1)], input.employment)] }))}>
+   553→                <IPlus size={13} /> Add income
+   554→              </button>
+   555→              <div className="text-[12.5px]">
+   556→                Eligible monthly income{input.coBorrower ? " (combined)" : ""}{" "}
+   557→                <strong className="mono text-[15px]" style={{ color: "var(--mint)" }}>{fmtAED(r.eligibleIncome)}</strong>
+   558→              </div>
+   559→            </div>
+   560→            <div className="grid grid-cols-5 gap-2 mt-2 text-[10px] uppercase tracking-[0.08em] text-[var(--ink-faint)] font-disp font-semibold sm:hidden">
+   561→              <span>Source</span><span>Freq</span><span>Amount</span><span>%</span><span className="text-right">Monthly</span>
+   562→            </div>
+   563→
+   564→            {/* co-borrower — calculation only, never written to a case */}
+   565→            <div
+   566→              className="mt-4 rounded-lg p-3.5 transition-colors"
+   567→              style={{
+   568→                border: input.coBorrower ? "1px solid color-mix(in srgb, var(--sky) 35%, transparent)" : "1px dashed var(--line)",
+   569→                background: input.coBorrower ? "color-mix(in srgb, var(--sky) 6%, transparent)" : "transparent",
+   570→              }}
+   571→            >
+   572→              {!input.coBorrower ? (
+   573→                <button
+   574→                  className="btn btn-ghost btn-sm"
+   575→                  onClick={() => up({ coBorrower: { name: "", dob: "1992-01-15", incomes: [newIncomeRow(sourcePool[0], input.employment)], liabilities: [] } })}
+   576→                >
+   577→                  <IPlus size={13} /> Add co-borrower (if applicable)
+   578→                </button>
+   579→              ) : (
+   580→                <div className="anim-fade-in">
+   581→                  <div className="flex items-center justify-between mb-2.5">
+   582→                    <span className="text-[11px] uppercase tracking-[0.12em] font-disp font-semibold" style={{ color: "var(--sky)" }}>
+   583→                      Co-borrower · combined for DBR · age limits the tenor
+   584→                    </span>
+   585→                    <button
+   586→                      className="text-[var(--ink-faint)] hover:text-[var(--coral)] transition-colors"
+   587→                      title="Remove co-borrower"
+   588→                      onClick={() => up({ coBorrower: null })}
+   589→                    >
+   590→                      <ITrash size={14} />
+   591→                    </button>
+   592→                  </div>
+   593→                  <div className="grid grid-cols-1 sm:grid-cols-[1fr_170px_110px] gap-2 mb-2">
+   594→                    <div>
+   595→                      <label className="label">Co-borrower name</label>
+   596→                      <input
+   597→                        className="input"
+   598→                        placeholder="Shown on the report only"
+   599→                        value={input.coBorrower.name}
+   600→                        onChange={(e) => up({ coBorrower: { ...input.coBorrower!, name: e.target.value } })}
+   601→                      />
+   602→                    </div>
+   603→                    <div>
+   604→                      <label className="label">Date of birth</label>
+   605→                      <input
+   606→                        className="input mono"
+   607→                        type="date"
+   608→                        value={input.coBorrower.dob}
+   609→                        onChange={(e) => e.target.value && up({ coBorrower: { ...input.coBorrower!, dob: e.target.value } })}
+   610→                      />
+   611→                    </div>
+   612→                    <div>
+   613→                      <label className="label">Age now</label>
+   614→                      <div className="mono text-[15px] font-semibold pt-1.5" style={{ color: r.tenorLimitedBy === "co-borrower" ? "var(--coral)" : "var(--ink-dim)" }}>
+   615→                        {r.coAgeYears} yrs{r.tenorLimitedBy === "co-borrower" && " ◂ caps tenor"}
+   616→                      </div>
+   617→                    </div>
+   618→                  </div>
+   619→                  <div className="space-y-2">
+   620→                    {input.coBorrower.incomes.map((row) => (
+   621→                      <div key={row.id} className="grid grid-cols-[1fr_92px_110px_76px_100px_30px] gap-2 items-center">
+   622→                        <select className="select" value={row.source} onChange={(e) => patchCoIncome(row.id, { source: e.target.value })}>
+   623→                          {sourcePool.map((s) => <option key={s}>{s}</option>)}
+   624→                        </select>
+   625→                        <select className="select" value={row.frequency} onChange={(e) => patchCoIncome(row.id, { frequency: e.target.value as Frequency })}>
+   626→                          {FREQUENCIES.map((f) => <option key={f}>{f}</option>)}
+   627→                        </select>
+   628→                        <NumIn value={row.amount} onChange={(n) => patchCoIncome(row.id, { amount: n })} step={500} />
+   629→                        <NumIn value={row.eligiblePct} onChange={(n) => patchCoIncome(row.id, { eligiblePct: Math.min(100, Math.max(0, n)) })} step={5} min={0} />
+   630→                        <span className="mono text-[12.5px] text-right" style={{ color: "var(--sky)" }}>{fmtAED(incomeMonthly(row))}</span>
+   631→                        <button
+   632→                          className="text-[var(--ink-faint)] hover:text-[var(--coral)] transition-colors justify-self-center"
+   633→                          title="Remove row"
+   634→                          onClick={() =>
+   635→                            setInput((p) => ({
+   636→                              ...p,
+   637→                              coBorrower: p.coBorrower
+   638→                                ? { ...p.coBorrower, incomes: p.coBorrower.incomes.filter((x) => x.id !== row.id) }
+   639→                                : p.coBorrower,
+   640→                            }))
+   641→                          }
+   642→                        >
+   643→                          <IX size={14} />
+   644→                        </button>
+   645→                      </div>
+   646→                    ))}
+   647→                  </div>
+   648→                  <div className="flex items-center justify-between mt-2.5">
+   649→                    <button
+   650→                      className="btn btn-ghost btn-sm"
+   651→                      onClick={() =>
+   652→                        setInput((p) => ({
+   653→                          ...p,
+   654→                          coBorrower: p.coBorrower
+   655→                            ? { ...p.coBorrower, incomes: [...p.coBorrower.incomes, newIncomeRow(sourcePool[Math.min(p.coBorrower.incomes.length, sourcePool.length - 1)], input.employment)] }
+   656→                            : p.coBorrower,
+   657→                        }))
+   658→                      }
+   659→                    >
+   660→                      <IPlus size={13} /> Add co-borrower income
+   661→                    </button>
+   662→                    <div className="text-[12.5px]">
+   663→                      Co-borrower income <strong className="mono text-[14px]" style={{ color: "var(--sky)" }}>{fmtAED(r.coIncome)}</strong>/mo
+   664→                    </div>
+   665→                  </div>
+   666→
+   667→                  {/* co-borrower liabilities — combined with the applicant's for DBR */}
+   668→                  <div className="mt-3 pt-3" style={{ borderTop: "1px dashed color-mix(in srgb, var(--sky) 30%, transparent)" }}>
+   669→                    <div className="text-[10.5px] uppercase tracking-[0.1em] font-disp font-semibold mb-2" style={{ color: "var(--sky)" }}>
+   670→                      Their liabilities
+   671→                    </div>
+   672→                    {input.coBorrower.liabilities.length === 0 && (
+   673→                      <p className="text-[12px] text-[var(--ink-faint)] m-0 mb-2">No liabilities declared for the co-borrower.</p>
+   674→                    )}
+   675→                    <div className="space-y-2">
+   676→                      {input.coBorrower.liabilities.map((l) => (
+   677→                        <div key={l.id} className="rounded-lg p-2.5 anim-fade-in" style={{ background: "color-mix(in srgb, var(--sky) 5%, transparent)", border: "1px solid color-mix(in srgb, var(--sky) 18%, transparent)" }}>
+   678→                          <div className="grid grid-cols-[1fr_130px_130px] gap-2">
+   679→                            <input className="input" value={l.name} onChange={(e) => patchCoLiab(l.id, { name: e.target.value })} placeholder="Liability name" />
+   680→                            <select className="select" value={l.type} onChange={(e) => patchCoLiab(l.id, { type: e.target.value as LiabRow["type"] })}>
+   681→                              {LIAB_TYPES.map((t) => <option key={t}>{t}</option>)}
+   682→                            </select>
+   683→                            <select className="select" value={l.method} onChange={(e) => patchCoLiab(l.id, { method: e.target.value as LiabRow["method"] })}>
+   684→                              {LIAB_METHODS.map((m) => <option key={m}>{m}</option>)}
+   685→                            </select>
+   686→                          </div>
+   687→                          <div className="grid grid-cols-[1fr_1fr_110px_30px] gap-2 mt-2 items-center">
+   688→                            <div>
+   689→                              <label className="label" style={{ marginBottom: 3 }}>{l.type === "Credit Card" || l.type === "Overdraft" ? "Limit / outstanding" : "Outstanding"}</label>
+   690→                              <NumIn value={l.limitOrOutstanding} onChange={(n) => patchCoLiab(l.id, { limitOrOutstanding: n })} step={1000} />
+   691→                            </div>
+   692→                            <div>
+   693→                              <label className="label" style={{ marginBottom: 3 }}>Monthly EMI {l.method.startsWith("5%") ? "(ignored)" : ""}</label>
+   694→                              <NumIn value={l.monthlyEmi} onChange={(n) => patchCoLiab(l.id, { monthlyEmi: n })} step={100} />
+   695→                            </div>
+   696→                            <div className="text-right">
+   697→                              <div className="text-[10px] uppercase tracking-[0.08em] text-[var(--ink-faint)] font-disp font-semibold">Assessed</div>
+   698→                              <div className="mono text-[13px]" style={{ color: "var(--coral)" }}>{fmtAED(liabilityEmi(l))}</div>
+   699→                            </div>
+   700→                            <button className="text-[var(--ink-faint)] hover:text-[var(--coral)] transition-colors justify-self-center" title="Remove liability"
+   701→                              onClick={() =>
+   702→                                setInput((p) => ({
+   703→                                  ...p,
+   704→                                  coBorrower: p.coBorrower ? { ...p.coBorrower, liabilities: p.coBorrower.liabilities.filter((x) => x.id !== l.id) } : p.coBorrower,
+   705→                                }))
+   706→                              }>
+   707→                              <ITrash size={14} />
+   708→                            </button>
+   709→                          </div>
+   710→                        </div>
+   711→                      ))}
+   712→                    </div>
+   713→                    <div className="flex items-center justify-between mt-2.5">
+   714→                      <button className="btn btn-ghost btn-sm"
+   715→                        onClick={() =>
+   716→                          setInput((p) => ({
+   717→                            ...p,
+   718→                            coBorrower: p.coBorrower ? { ...p.coBorrower, liabilities: [...p.coBorrower.liabilities, newLiabRow()] } : p.coBorrower,
+   719→                          }))
+   720→                        }>
+   721→                        <IPlus size={13} /> Add co-borrower liability
+   722→                      </button>
+   723→                      <div className="text-[12.5px]">
+   724→                        Co-borrower EMIs <strong className="mono text-[14px]" style={{ color: "var(--coral)" }}>{fmtAED(r.coEmis)}</strong>/mo
+   725→                      </div>
+   726→                    </div>
+   727→                  </div>
+   728→
+   729→                  <p className="text-[11px] text-[var(--ink-faint)] mt-2.5 mb-0">
+   730→                    Income, liabilities and age are combined into the eligibility calculation only — the co-borrower is never written to the case file.
+   731→                  </p>
+   732→                </div>
+   733→              )}
+   734→            </div>
+   735→          </Section>
+   736→
+   737→          <Section num="04" title="Liabilities" hint="credit cards assess at 5% of limit by default">
+   738→            {input.liabilities.length === 0 && (
+   739→              <p className="text-[12.5px] text-[var(--ink-faint)] m-0">No liabilities declared — the full DBR headroom is available.</p>
+   740→            )}
+   741→            <div className="space-y-2">
+   742→              {input.liabilities.map((l) => (
+   743→                <div key={l.id} className="rounded-lg p-2.5 anim-fade-in" style={{ background: "var(--tint)", border: "1px solid var(--line-soft)" }}>
+   744→                  <div className="grid grid-cols-[1fr_130px_130px] gap-2">
+   745→                    <input className="input" value={l.name} onChange={(e) => patchLiab(l.id, { name: e.target.value })} placeholder="Liability name" />
+   746→                    <select className="select" value={l.type} onChange={(e) => patchLiab(l.id, { type: e.target.value as LiabRow["type"] })}>
+   747→                      {LIAB_TYPES.map((t) => <option key={t}>{t}</option>)}
+   748→                    </select>
+   749→                    <select className="select" value={l.method} onChange={(e) => patchLiab(l.id, { method: e.target.value as LiabRow["method"] })}>
+   750→                      {LIAB_METHODS.map((m) => <option key={m}>{m}</option>)}
+   751→                    </select>
+   752→                  </div>
+   753→                  <div className="grid grid-cols-[1fr_1fr_110px_30px] gap-2 mt-2 items-center">
+   754→                    <div>
+   755→                      <label className="label" style={{ marginBottom: 3 }}>{l.type === "Credit Card" || l.type === "Overdraft" ? "Limit / outstanding" : "Outstanding"}</label>
+   756→                      <NumIn value={l.limitOrOutstanding} onChange={(n) => patchLiab(l.id, { limitOrOutstanding: n })} step={1000} />
+   757→                    </div>
+   758→                    <div>
+   759→                      <label className="label" style={{ marginBottom: 3 }}>Monthly EMI {l.method.startsWith("5%") ? "(ignored)" : ""}</label>
+   760→                      <NumIn value={l.monthlyEmi} onChange={(n) => patchLiab(l.id, { monthlyEmi: n })} step={100} />
+   761→                    </div>
+   762→                    <div className="text-right">
+   763→                      <div className="text-[10px] uppercase tracking-[0.08em] text-[var(--ink-faint)] font-disp font-semibold">Assessed</div>
+   764→                      <div className="mono text-[13px]" style={{ color: "var(--coral)" }}>{fmtAED(liabilityEmi(l))}</div>
+   765→                    </div>
+   766→                    <button className="text-[var(--ink-faint)] hover:text-[var(--coral)] transition-colors justify-self-center" title="Remove liability"
+   767→                      onClick={() => setInput((p) => ({ ...p, liabilities: p.liabilities.filter((x) => x.id !== l.id) }))}>
+   768→                      <ITrash size={14} />
+   769→                    </button>
+   770→                  </div>
+   771→                </div>
+   772→              ))}
+   773→            </div>
+   774→            <div className="flex items-center justify-between mt-3">
+   775→              <button className="btn btn-ghost btn-sm" onClick={() => setInput((p) => ({ ...p, liabilities: [...p.liabilities, newLiabRow()] }))}>
+   776→                <IPlus size={13} /> Add liability
+   777→              </button>
+   778→              <div className="text-[12.5px]">
+   779→                Existing EMIs <strong className="mono text-[15px]" style={{ color: "var(--coral)" }}>{fmtAED(r.existingEmis)}</strong>
+   780→              </div>
+   781→            </div>
+   782→          </Section>
+   783→
+   784→          <Section num="05" title="Rate & stress" hint="assessment rate drives the DBR MPBF">
+   785→            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+   786→              <div>
+   787→                <label className="label">Actual / contract rate %</label>
+   788→                <input className="input mono" type="number" step={0.05} min={0} value={input.actualRate}
+   789→                  onChange={(e) => up({ actualRate: Number(e.target.value) || 0 })} />
+   790→              </div>
+   791→              <div>
+   792→                <label className="label">Load factor</label>
+   793→                <div className="flex gap-1.5 flex-wrap">
+   794→                  {[1.5, 2, 3, 4].map((l) => (
+   795→                    <button key={l} type="button" className="chip transition-all"
+   796→                      style={input.loadFactor === l && input.stressOverride == null
+   797→                        ? { background: "var(--amber-tint)", borderColor: "var(--amber)", color: "var(--amber)" }
+   798→                        : { background: "var(--bg2)", borderColor: "var(--line)", color: "var(--ink-faint)" }}
+   799→                      onClick={() => up({ loadFactor: l, stressOverride: null })}>
+   800→                      +{l}%
+   801→                    </button>
+   802→                  ))}
+   803→                </div>
+   804→              </div>
+   805→              <div>
+   806→                <label className="label">Manual stress rate — optional</label>
+   807→                <input className="input mono" type="number" step={0.05} min={0} value={input.stressOverride ?? ""} placeholder={`auto: ${fmtPct(input.actualRate + input.loadFactor)}`}
+   808→                  onChange={(e) => up({ stressOverride: e.target.value === "" ? null : Number(e.target.value) || 0 })} />
+   809→              </div>
+   810→            </div>
+   811→            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mt-3.5 pt-3.5" style={{ borderTop: "1px dashed var(--line)" }}>
+   812→              <Stat label="Assessment rate" value={fmtPct(r.assessmentRate)} tone="var(--amber)" />
+   813→              <div>
+   814→                <label className="label">Income multiplier cap</label>
+   815→                <select className="select" style={{ width: 130 }} value={input.multiplierX} onChange={(e) => up({ multiplierX: Number(e.target.value) })}>
+   816→                  <option value={0}>Off</option>
+   817→                  {[5, 6, 7, 8].map((x) => <option key={x} value={x}>{x}× annual</option>)}
+   818→                </select>
+   819→              </div>
+   820→              <Stat label="Tenor used" value={tenorLabel(r.maxTenorMonths)} />
+   821→            </div>
+   822→          </Section>
+   823→        </div>
+   824→
+   825→        {/* ================= result rail ================= */}
+   826→        <div className="space-y-4 xl:sticky xl:top-[86px]">
+   827→          <div className="card p-5 anim-fade-up" style={{ borderColor: "var(--amber-line)", background: "linear-gradient(180deg, var(--amber-tint), var(--surface))", boxShadow: "var(--shadow)" }}>
+   828→            <div className="text-[10.5px] uppercase tracking-[0.14em] font-disp font-semibold" style={{ color: "var(--amber)" }}>Final MPBF</div>
+   829→            <div className="font-disp font-bold text-[38px] leading-[1.05] tracking-tight mt-1 tabular-nums">{fmtAED(mpbfDisplay)}</div>
+   830→            <div className="flex items-center gap-2 mt-1.5">
+   831→              <span className="text-[11.5px] text-[var(--ink-faint)]">limited by</span>
+   832→              <Chip tone={r.limitedBy === "DBR / Income" ? "coral" : r.limitedBy === "LTV" ? "sky" : "amber"}>{r.limitedBy}</Chip>
+   833→              {r.finalMpbf <= 0 && <Chip tone="coral">not eligible</Chip>}
+   834→            </div>
+   835→
+   836→            {/* DBR gauge */}
+   837→            <div className="mt-4">
+   838→              <div className="flex justify-between text-[10.5px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)] mb-1.5">
+   839→                <span>Debt burden</span><span>cap {fmtPct(r.maxDbr)}</span>
+   840→              </div>
+   841→              <div className="relative h-3 rounded-full overflow-hidden" style={{ background: "var(--track)" }}>
+   842→                <div className="absolute inset-y-0 left-0 rounded-l-full transition-all duration-500"
+   843→                  style={{ width: `${Math.min(r.currentDbr, 100)}%`, background: r.currentDbr > 50 ? "linear-gradient(90deg,#d95f4f,#f27363)" : "linear-gradient(90deg,#d99427,#f2b04c)" }} />
+   844→                {r.currentDbr < 50 && (
+   845→                  <div className="absolute inset-y-0 transition-all duration-500"
+   846→                    style={{ left: `${r.currentDbr}%`, width: `${50 - r.currentDbr}%`, background: "color-mix(in srgb, var(--mint) 38%, transparent)" }} />
+   847→                )}
+   848→                <div className="absolute inset-y-0 w-[2px]" style={{ left: "50%", background: "var(--ink)" }} />
+   849→              </div>
+   850→              <div className="grid grid-cols-3 gap-2 mt-2.5">
+   851→                <Stat label="Current DBR" value={fmtPct(r.currentDbr)} tone={r.currentDbr > 50 ? "var(--coral)" : undefined} />
+   852→                <Stat label="Maximum" value={fmtPct(r.maxDbr)} />
+   853→                <Stat label="Residual" value={fmtPct(r.residualDbr)} tone="var(--mint)" />
+   854→              </div>
+   855→            </div>
+   856→
+   857→            {/* caps */}
+   858→            <div className="mt-4 space-y-2">
+   859→              {caps.map((c) => {
+   860→                const limiting = Math.abs(c.v - Math.min(...caps.map((x) => x.v))) < 1;
+   861→                return (
+   862→                  <div key={c.label}>
+   863→                    <div className="flex justify-between text-[11.5px] mb-1">
+   864→                      <span className={limiting ? "text-[var(--ink)] font-semibold" : "text-[var(--ink-dim)]"}>{c.label}{limiting && <span style={{ color: "var(--amber)" }}> ◂ binds</span>}</span>
+   865→                      <span className="mono">{fmtAED(c.v)}</span>
+   866→                    </div>
+   867→                    <div className="h-[5px] rounded-full overflow-hidden" style={{ background: "var(--track)" }}>
+   868→                      <div className="h-full rounded-full transition-all duration-700" style={{ width: `${(c.v / capMax) * 100}%`, background: limiting ? "var(--amber)" : "var(--neutral)" }} />
+   869→                    </div>
+   870→                  </div>
+   871→                );
+   872→              })}
+   873→            </div>
+   874→
+   875→            <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 mt-4 pt-3.5" style={{ borderTop: "1px dashed var(--line)" }}>
+   876→              <Stat label="Required down payment" value={fmtAED(r.downPayment)} />
+   877→              <Stat label="Actual LTV" value={fmtPct(r.actualLtv)} />
+   878→              <Stat label="DBR after mortgage" value={fmtPct(r.dbrAfter)} tone={r.dbrAfter > 50 ? "var(--coral)" : "var(--mint)"} />
+   879→              <Stat label="EMI at actual rate" value={`${fmtAED(r.newEmi)}/mo`} />
+   880→            </div>
+   881→
+   882→            <div className="flex flex-col gap-2 mt-4">
+   883→              <button className="btn btn-primary justify-center" onClick={onView}><IEye size={15} /> View bank-facing report</button>
+   884→              <button className="btn btn-ghost justify-center" onClick={onPdf}><IDownload size={15} /> Download PDF</button>
+   885→              <div className="grid grid-cols-2 gap-2">
+   886→                <button className="btn btn-mint justify-center" onClick={onSave} title="Stores the eligibility check only — never creates a case">Save check</button>
+   887→                <button className="btn btn-ghost justify-center" onClick={onOpenCase} title="Opens a pipeline case from this check (asks for confirmation)">Open case…</button>
+   888→              </div>
+   889→              <p className="text-[10.5px] text-[var(--ink-faint)] text-center m-0">
+   890→                Saving only stores the check for audit — a case is created only when you choose “Open case”.
+   891→              </p>
+   892→              {savedId && <p className="text-[11px] text-[var(--ink-faint)] text-center m-0">Saved as audit entry #{savedId}{input.name ? ` for ${input.name}` : ""}</p>}
+   893→            </div>
+   894→          </div>
+   895→
+   896→          {/* trail */}
+   897→          <div className="card p-4 anim-fade-up">
+   898→            <h3 className="font-disp font-semibold text-[13.5px] m-0 mb-2.5">Calculation trail</h3>
+   899→            <ol className="space-y-1.5 m-0 p-0 list-none">
+
+[showing lines 400-899 of 1649; use offset=900 with limit to continue reading]

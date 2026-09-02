@@ -1,0 +1,391 @@
+     1→import type {
+     2→  Activity, AffordabilityCheck, BankItem, BulletinItem, DB, Designation, Instruction, LoanCase, MasterItem,
+     3→  PartnerItem, SlaRule, StageItem, Task, User,
+     4→} from "./types";
+     5→import { daysAgoISO, inDaysISO, todayISO } from "./format";
+     6→import { computeAffordability } from "./calc";
+     7→
+     8→const DAY = 86400000;
+     9→const ts = (daysBack: number, hourJitter = 0) =>
+    10→  new Date(Date.now() - daysBack * DAY - hourJitter * 3600000).toISOString();
+    11→
+    12→export function seedDb(): DB {
+    13→  const designations: Designation[] = [
+    14→    { id: 1, name: "Super Admin", scope: "all", issueTasks: true, admin: true, super: true, builtIn: true },
+    15→    { id: 2, name: "Head of Company", scope: "all", issueTasks: true, admin: true, super: false, builtIn: true },
+    16→    { id: 3, name: "PA to HoC", scope: "all", issueTasks: true, admin: false, super: false, builtIn: true },
+    17→    { id: 4, name: "Mortgage Head", scope: "all", issueTasks: true, admin: true, super: false, builtIn: true },
+    18→    { id: 5, name: "Team Leader SPO", scope: "team", issueTasks: true, admin: false, super: false, builtIn: true },
+    19→    { id: 6, name: "Team Leader VRM", scope: "team", issueTasks: true, admin: false, super: false, builtIn: true },
+    20→    { id: 7, name: "SPO", scope: "own", issueTasks: false, admin: false, super: false, builtIn: true },
+    21→    { id: 8, name: "VRM", scope: "own", issueTasks: false, admin: false, super: false, builtIn: true },
+    22→  ];
+    23→
+    24→  const users: User[] = [
+    25→    { id: 11, name: "Salem Al Marri", email: "super@meridian.ae", password: "super123", role: "Super Admin", team: "Management", active: true, createdAt: ts(500) },
+    26→    { id: 1, name: "Rashid Al Falasi", email: "head@meridian.ae", password: "admin123", role: "Head of Company", team: "Management", active: true, createdAt: ts(400) },
+    27→    { id: 2, name: "Layla Haddad", email: "pa@meridian.ae", password: "demo123", role: "PA to HoC", team: "Management", active: true, createdAt: ts(360) },
+    28→    { id: 3, name: "Omar Qassim", email: "omar@meridian.ae", password: "demo123", role: "Mortgage Head", team: "Management", active: true, createdAt: ts(330) },
+    29→    { id: 4, name: "Imran Sheikh", email: "imran@meridian.ae", password: "demo123", role: "Team Leader SPO", team: "Dubai", active: true, createdAt: ts(300) },
+    30→    { id: 5, name: "Aisha Rahman", email: "aisha@meridian.ae", password: "demo123", role: "SPO", team: "Dubai", active: true, createdAt: ts(260) },
+    31→    { id: 6, name: "Karim Fawaz", email: "karim@meridian.ae", password: "demo123", role: "SPO", team: "Dubai", active: true, createdAt: ts(220) },
+    32→    { id: 7, name: "Nadia Farouk", email: "nadia@meridian.ae", password: "demo123", role: "VRM", team: "Dubai", active: true, createdAt: ts(180) },
+    33→    { id: 8, name: "Fatima Al Suwaidi", email: "fatima@meridian.ae", password: "demo123", role: "Team Leader VRM", team: "Abu Dhabi", active: true, createdAt: ts(200) },
+    34→    { id: 9, name: "Jose Mathew", email: "jose@meridian.ae", password: "demo123", role: "VRM", team: "Abu Dhabi", active: true, createdAt: ts(140) },
+    35→  ];
+    36→
+    37→  const stages: StageItem[] = [
+    38→    "WhatsApp Group Creation", "Document collection and QC", "Bank Submission", "Pre-Approval",
+    39→    "Bank Query", "Pre-Approval QC", "Valuation", "Valuation Report", "FOL Conversion", "FOL",
+    40→    "DDA/Signing", "Loan Booking", "Liability/Release", "Final Transfer", "Title Deed QC", "Closure",
+    41→  ].map((label, i) => ({ id: i + 1, label, active: true, sortOrder: i + 1 }));
+    42→
+    43→  /* legacy pipeline → new 16-stage pipeline (keeps seeded history coherent) */
+    44→  const STAGE_MAP: Record<string, string> = {
+    45→    "New Login": "WhatsApp Group Creation",
+    46→    "Documents & KYC": "Document collection and QC",
+    47→    "Credit Appraisal": "Pre-Approval",
+    48→    "Valuation": "Valuation",
+    49→    "Legal & Technical": "FOL Conversion",
+    50→    "Sanction": "FOL",
+    51→    "Offer & Acceptance": "DDA/Signing",
+    52→    "Disbursement": "Loan Booking",
+    53→    "Post-Disbursement": "Final Transfer",
+    54→    "Closed": "Closure",
+    55→  };
+    56→  /* cases whose open task fits a different stage better than the straight map */
+    57→  const STAGE_OVERRIDES: Record<string, string> = {
+    58→    "Priya Menon": "Bank Query",
+    59→    "Anna Kowalski": "Document collection and QC",
+    60→  };
+    61→  const mapStage = (s: string): string => STAGE_MAP[s] ?? s;
+    62→
+    63→  const whyPending: MasterItem[] = [
+    64→    "Awaiting client documents", "Bank query raised", "Valuer visit pending", "Legal opinion pending",
+    65→    "Internal review", "Payment confirmation", "System / portal issue", "No response from client",
+    66→  ].map((label, i) => ({ id: i + 1, label, active: true }));
+    67→
+    68→  const waitingFor: MasterItem[] = ["Client", "Bank", "Valuer", "Legal", "Internal", "Developer"].map((label, i) => ({
+    69→    id: i + 1, label, active: true,
+    70→  }));
+    71→
+    72→  const banks: BankItem[] = (
+    73→    [
+    74→      ["ADCB", 1], ["ADIB", 0.95], ["Ajman Bank", 0.7], ["Al Hilal", 0.7], ["Arab Bank", 0.7],
+    75→      ["CBD", 1], ["DIB", 0.75], ["EIB", 0.7], ["ENBD", 0.85], ["FAB", 0.75], ["HSBC", 0.85],
+    76→      ["Mashreq", 1], ["NBF", 0.7], ["RAK Bank", 0.75], ["SCB", 0.825], ["UAB", 0.9],
+    77→    ] as [string, number][]
+    78→  ).map(([name, ratePct], i) => ({ id: i + 1, name, ratePct, active: true }));
+    79→
+    80→  const partners: PartnerItem[] = [
+    81→    { id: 1, kind: "Agent", name: "Falcon Properties", defaultSharePct: 20, active: true },
+    82→    { id: 2, kind: "Agent", name: "Skyline Realty", defaultSharePct: 15, active: true },
+    83→    { id: 3, kind: "Agent", name: "Palm Gate Homes", defaultSharePct: 20, active: true },
+    84→    { id: 4, kind: "Broker", name: "Mortgage Souq", defaultSharePct: 30, active: true },
+    85→    { id: 5, kind: "Broker", name: "Capital Bridge", defaultSharePct: 20, active: true },
+    86→    { id: 6, kind: "Referral", name: "Nasser Al Mansoori", defaultSharePct: 10, active: true },
+    87→    { id: 7, kind: "Referral", name: "Hessa Al Qasimi", defaultSharePct: 15, active: true },
+    88→    { id: 8, kind: "Referral", name: "Bilal Hussain", defaultSharePct: 10, active: true },
+    89→  ];
+    90→
+    91→  const slaRules: SlaRule[] = [
+    92→    { id: 1, stage: "WhatsApp Group Creation", bank: null, maxDays: 1, active: true },
+    93→    { id: 2, stage: "Document collection and QC", bank: null, maxDays: 7, active: true },
+    94→    { id: 3, stage: "Bank Submission", bank: null, maxDays: 2, active: true },
+    95→    { id: 4, stage: "Pre-Approval", bank: null, maxDays: 7, active: true },
+    96→    { id: 5, stage: "Pre-Approval", bank: "EIB", maxDays: 10, active: true },
+    97→    { id: 6, stage: "Bank Query", bank: null, maxDays: 10, active: true },
+    98→    { id: 7, stage: "Pre-Approval QC", bank: null, maxDays: 2, active: true },
+    99→    { id: 8, stage: "Valuation", bank: null, maxDays: 5, active: true },
+   100→    { id: 9, stage: "Valuation Report", bank: null, maxDays: 3, active: true },
+   101→    { id: 10, stage: "FOL Conversion", bank: null, maxDays: 5, active: true },
+   102→    { id: 11, stage: "FOL", bank: null, maxDays: 5, active: true },
+   103→    { id: 12, stage: "FOL", bank: "FAB", maxDays: 7, active: true },
+   104→    { id: 13, stage: "DDA/Signing", bank: null, maxDays: 5, active: true },
+   105→    { id: 14, stage: "Loan Booking", bank: null, maxDays: 3, active: true },
+   106→    { id: 15, stage: "Liability/Release", bank: null, maxDays: 5, active: true },
+   107→    { id: 16, stage: "Final Transfer", bank: null, maxDays: 5, active: true },
+   108→    { id: 17, stage: "Final Transfer", bank: "DIB", maxDays: 7, active: true },
+   109→    { id: 18, stage: "Title Deed QC", bank: null, maxDays: 3, active: true },
+   110→  ];
+   111→
+   112→  const cases: LoanCase[] = [];
+   113→  const tasks: Task[] = [];
+   114→  const activities: Activity[] = [];
+   115→  let cid = 0;
+   116→  let tid = 0;
+   117→  let aid = 0;
+   118→
+   119→  interface DoneSeed { desc: string; owner: number; waiting: string; why: string; doneAgo: number; remarks?: string; by?: number }
+   120→  interface OpenSeed { desc: string; owner: number; waiting: string; why: string; dueIn: number; openedAgo: number; by?: number }
+   121→  interface CaseSeed {
+   122→    customer: string; banks: string[]; amountK: number; stage: string; owner: number; age: number;
+   123→    source: "Direct" | "Agent" | "Broker" | "Website" | "Referral";
+   124→    partner?: { kind: "Agent" | "Broker" | "Referral"; name: string; share: number };
+   125→    open?: OpenSeed; done?: DoneSeed[];
+   126→    trail?: [number, number, string, string?, string?][];
+   127→    state?: "Active" | "Closed" | "Lost";
+   128→    won?: string;
+   129→    closedAgo?: number;
+   130→  }
+   131→
+   132→  const seeds: CaseSeed[] = [
+   133→    { customer: "Mohammed Al Mansoori", banks: ["ADCB", "FAB"], amountK: 1850, stage: "Credit Appraisal", owner: 5, age: 21, source: "Agent", partner: { kind: "Agent", name: "Falcon Properties", share: 20 },
+   134→      open: { desc: "Collect latest 3 salary certificates & 6-mo statements", owner: 5, waiting: "Client", why: "Awaiting client documents", dueIn: -3, openedAgo: 6, by: 4 },
+   135→      done: [
+   136→        { desc: "Login case & verify KYC set", owner: 5, waiting: "Internal", why: "Internal review", doneAgo: 17, remarks: "Passport + Emirates ID verified." },
+   137→        { desc: "Send document checklist to client", owner: 5, waiting: "Client", why: "Awaiting client documents", doneAgo: 12 },
+   138→      ],
+   139→      trail: [[5, 21, "Case created"], [5, 12, "Stage moved", "Documents & KYC", "Credit Appraisal"]] },
+   140→    { customer: "Sarah Thomson", banks: ["ENBD"], amountK: 2400, stage: "Valuation", owner: 6, age: 14, source: "Broker", partner: { kind: "Broker", name: "Mortgage Souq", share: 30 },
+   141→      open: { desc: "Confirm valuer visit — Marina apartment access", owner: 6, waiting: "Valuer", why: "Valuer visit pending", dueIn: 0, openedAgo: 3 },
+   142→      done: [{ desc: "Upload title deed to ENBD portal", owner: 6, waiting: "Bank", why: "Bank query raised", doneAgo: 5, remarks: "Ref #ENBD-8842." }],
+   143→      trail: [[6, 14, "Case created"], [6, 6, "Stage moved", "Credit Appraisal", "Valuation"]] },
+   144→    { customer: "Ahmed Khan", banks: ["DIB", "ADIB", "Ajman Bank"], amountK: 950, stage: "Documents & KYC", owner: 5, age: 6, source: "Website",
+   145→      open: { desc: "Follow up on missing 6-month bank statements", owner: 5, waiting: "Client", why: "Awaiting client documents", dueIn: 4, openedAgo: 2 },
+   146→      trail: [[5, 6, "Case created"]] },
+   147→    { customer: "Priya Menon", banks: ["HSBC", "SCB"], amountK: 3100, stage: "Sanction", owner: 7, age: 26, source: "Referral", partner: { kind: "Referral", name: "Hessa Al Qasimi", share: 15 },
+   148→      open: { desc: "Answer bank query on spouse income declaration", owner: 7, waiting: "Bank", why: "Bank query raised", dueIn: -1, openedAgo: 4, by: 3 },
+   149→      done: [{ desc: "Submit sanction file to credit team", owner: 7, waiting: "Internal", why: "Internal review", doneAgo: 8 }],
+   150→      trail: [[7, 26, "Case created"], [7, 9, "Stage moved", "FOL Conversion", "FOL"], [7, 5, "Stage moved", "FOL", "Bank Query"]] },
+   151→    { customer: "John Okafor", banks: [], amountK: 1200, stage: "New Login", owner: 9, age: 2, source: "Direct",
+   152→      open: { desc: "Pre-login eligibility check — bank not yet decided", owner: 9, waiting: "Internal", why: "Internal review", dueIn: 6, openedAgo: 2, by: 8 },
+   153→      trail: [[9, 2, "Case created"]] },
+   154→    { customer: "Fatima Noor", banks: ["FAB"], amountK: 4200, stage: "Legal & Technical", owner: 6, age: 30, source: "Agent", partner: { kind: "Agent", name: "Skyline Realty", share: 15 },
+   155→      done: [
+   156→        { desc: "Coordinate legal vendor for title search", owner: 6, waiting: "Legal", why: "Legal opinion pending", doneAgo: 7, remarks: "Vendor: Gulf Title Services." },
+   157→        { desc: "Share valuation report with bank", owner: 6, waiting: "Bank", why: "Bank query raised", doneAgo: 13 },
+   158→      ],
+   159→      trail: [[6, 30, "Case created"], [6, 13, "Stage moved", "Valuation", "Legal & Technical"]] },
+   160→    { customer: "David Chen", banks: ["Mashreq"], amountK: 1600, stage: "Disbursement", owner: 7, age: 34, source: "Broker", partner: { kind: "Broker", name: "Capital Bridge", share: 20 },
+   161→      open: { desc: "Track disbursement & confirm with client", owner: 7, waiting: "Bank", why: "Payment confirmation", dueIn: 1, openedAgo: 2 },
+   162→      done: [{ desc: "Collect signed offer & security cheque", owner: 7, waiting: "Client", why: "Awaiting client documents", doneAgo: 4 }],
+   163→      trail: [[7, 34, "Case created"], [7, 4, "Stage moved", "Offer & Acceptance", "Disbursement"]] },
+   164→    { customer: "Hamad Al Suwaidi", banks: ["ADCB"], amountK: 5600, stage: "Offer & Acceptance", owner: 5, age: 18, source: "Direct",
+   165→      open: { desc: "Get offer letter signed — both applicants", owner: 5, waiting: "Client", why: "No response from client", dueIn: 5, openedAgo: 3 },
+   166→      trail: [[5, 18, "Case created"], [5, 5, "Stage moved", "Sanction", "Offer & Acceptance"]] },
+   167→    { customer: "Elena Petrova", banks: ["RAK Bank"], amountK: 800, stage: "Credit Appraisal", owner: 7, age: 9, source: "Website",
+   168→      open: { desc: "Re-check Al Etihad credit bureau report", owner: 7, waiting: "Internal", why: "Internal review", dueIn: -5, openedAgo: 8, by: 4 },
+   169→      trail: [[7, 9, "Case created"]] },
+   170→    { customer: "Yusuf Karim", banks: ["UAB", "CBD"], amountK: 1450, stage: "Documents & KYC", owner: 9, age: 4, source: "Referral", partner: { kind: "Referral", name: "Nasser Al Mansoori", share: 10 },
+   171→      done: [{ desc: "Collect KYC + salary certificate set", owner: 9, waiting: "Client", why: "Awaiting client documents", doneAgo: 1, remarks: "2 payslips still pending." }],
+   172→      trail: [[9, 4, "Case created"], [9, 1, "Task completed", "Collect KYC + salary certificate set"]] },
+   173→    { customer: "Grace Muthoni", banks: ["ENBD", "Emirates NBD"], amountK: 2100, stage: "Valuation", owner: 6, age: 12, source: "Agent", partner: { kind: "Agent", name: "Palm Gate Homes", share: 20 },
+   174→      open: { desc: "Reschedule valuer visit — client travelling", owner: 6, waiting: "Valuer", why: "Valuer visit pending", dueIn: 3, openedAgo: 2 },
+   175→      trail: [[6, 12, "Case created"], [6, 4, "Stage moved", "Credit Appraisal", "Valuation"]] },
+   176→    { customer: "Sultan Al Nuaimi", banks: ["Ajman Bank"], amountK: 700, stage: "New Login", owner: 7, age: 1, source: "Direct",
+   177→      open: { desc: "Collect login form + processing fee", owner: 7, waiting: "Client", why: "Awaiting client documents", dueIn: 7, openedAgo: 1 },
+   178→      trail: [[7, 1, "Case created"]] },
+   179→    { customer: "Rachel Fernandes", banks: ["FAB", "ADCB"], amountK: 2750, stage: "Sanction", owner: 5, age: 23, source: "Broker", partner: { kind: "Broker", name: "Mortgage Souq", share: 30 },
+   180→      open: { desc: "Push credit team for sanction memo", owner: 5, waiting: "Bank", why: "Bank query raised", dueIn: 0, openedAgo: 5 },
+   181→      done: [{ desc: "Clarify property chain query", owner: 5, waiting: "Legal", why: "Legal opinion pending", doneAgo: 6 }],
+   182→      trail: [[5, 23, "Case created"], [5, 7, "Stage moved", "Legal & Technical", "Sanction"]] },
+   183→    { customer: "Khalid Bin Omar", banks: ["ADIB"], amountK: 3400, stage: "Post-Disbursement", owner: 7, age: 41, source: "Referral", partner: { kind: "Referral", name: "Bilal Hussain", share: 10 },
+   184→      open: { desc: "Collect original title deed for bank custody", owner: 7, waiting: "Client", why: "No response from client", dueIn: 10, openedAgo: 4 },
+   185→      trail: [[7, 41, "Case created"], [7, 6, "Stage moved", "Disbursement", "Post-Disbursement"]] },
+   186→    { customer: "Anna Kowalski", banks: ["HSBC"], amountK: 1900, stage: "Credit Appraisal", owner: 8, age: 16, source: "Website",
+   187→      open: { desc: "Third call — income proof still pending", owner: 8, waiting: "Client", why: "No response from client", dueIn: -2, openedAgo: 5 },
+   188→      trail: [[8, 16, "Case created"], [8, 10, "Stage moved", "WhatsApp Group Creation", "Document collection and QC"]] },
+   189→    { customer: "Omar Al Shamsi", banks: ["CBD"], amountK: 1100, stage: "Documents & KYC", owner: 9, age: 5, source: "Direct",
+   190→      done: [{ desc: "Verify employment with HR desk", owner: 9, waiting: "Client", why: "Awaiting client documents", doneAgo: 2, remarks: "HR letter issued." }],
+   191→      trail: [[9, 5, "Case created"], [9, 2, "Task completed", "Verify employment with HR desk"]] },
+   192→    { customer: "Michelle Tan", banks: ["SCB", "HSBC", "CBD"], amountK: 4800, stage: "Legal & Technical", owner: 6, age: 28, source: "Agent", partner: { kind: "Agent", name: "Falcon Properties", share: 20 },
+   193→      open: { desc: "Chase legal opinion — 2nd reminder sent", owner: 6, waiting: "Legal", why: "Legal opinion pending", dueIn: 2, openedAgo: 6, by: 4 },
+   194→      done: [{ desc: "Book technical inspection", owner: 6, waiting: "Valuer", why: "Valuer visit pending", doneAgo: 9, remarks: "Report received, value OK." }],
+   195→      trail: [[6, 28, "Case created"], [6, 10, "Stage moved", "Valuation", "Legal & Technical"]] },
+   196→    { customer: "Hassan Raza", banks: ["NBF"], amountK: 900, stage: "Credit Appraisal", owner: 4, age: 11, source: "Referral", partner: { kind: "Referral", name: "Nasser Al Mansoori", share: 10 },
+   197→      open: { desc: "Prepare credit note for underwriting", owner: 4, waiting: "Internal", why: "Internal review", dueIn: 2, openedAgo: 2 },
+   198→      trail: [[4, 11, "Case created"], [4, 3, "Stage moved", "Documents & KYC", "Credit Appraisal"]] },
+   199→    { customer: "Lucia Gomez", banks: ["Mashreq", "UAB"], amountK: 1350, stage: "Valuation", owner: 6, age: 8, source: "Broker", partner: { kind: "Broker", name: "Capital Bridge", share: 20 },
+   200→      open: { desc: "Upload valuation invoice for reimbursement", owner: 6, waiting: "Client", why: "Payment confirmation", dueIn: 6, openedAgo: 1 },
+   201→      trail: [[6, 8, "Case created"]] },
+   202→    { customer: "Viktor Ivanov", banks: ["ENBD"], amountK: 2900, stage: "Offer & Acceptance", owner: 7, age: 15, source: "Direct",
+   203→      open: { desc: "Negotiate rate reset clause with bank RM", owner: 7, waiting: "Bank", why: "Bank query raised", dueIn: 4, openedAgo: 3 },
+   204→      trail: [[7, 15, "Case created"], [7, 4, "Stage moved", "Sanction", "Offer & Acceptance"]] },
+   205→    { customer: "Maryam Al Ketbi", banks: [], amountK: 1750, stage: "New Login", owner: 5, age: 3, source: "Website",
+   206→      open: { desc: "Run affordability check — bank shortlist pending", owner: 5, waiting: "Internal", why: "Internal review", dueIn: 8, openedAgo: 1 },
+   207→      trail: [[5, 3, "Case created"]] },
+   208→    { customer: "Daniel Osei", banks: ["UAB"], amountK: 1000, stage: "Documents & KYC", owner: 9, age: 7, source: "Agent", partner: { kind: "Agent", name: "Skyline Realty", share: 15 },
+   209→      open: { desc: "Collect tenancy contract & Ejari", owner: 9, waiting: "Client", why: "Awaiting client documents", dueIn: -4, openedAgo: 6 },
+   210→      trail: [[9, 7, "Case created"]] },
+   211→
+   212→    /* ---- booked history (business + commission reports) ---- */
+   213→    { customer: "Sunita Pawar", banks: ["ADCB"], amountK: 2150, stage: "Closed", owner: 5, age: 55, state: "Closed", won: "ADCB", closedAgo: 11, source: "Agent", partner: { kind: "Agent", name: "Falcon Properties", share: 20 },
+   214→      trail: [[5, 55, "Case created"], [5, 12, "Stage moved", "Post-Disbursement", "Closed"], [5, 11, "Case booked", undefined, "ADCB"]] },
+   215→    { customer: "Vinod Kamble", banks: ["ENBD", "ADCB"], amountK: 1800, stage: "Closed", owner: 5, age: 32, state: "Closed", won: "ENBD", closedAgo: 4, source: "Direct",
+   216→      trail: [[5, 32, "Case created"], [5, 4, "Case booked", undefined, "ENBD"]] },
+   217→    { customer: "Asha Pillai", banks: ["FAB"], amountK: 3200, stage: "Closed", owner: 6, age: 40, state: "Closed", won: "FAB", closedAgo: 9, source: "Broker", partner: { kind: "Broker", name: "Mortgage Souq", share: 30 },
+   218→      trail: [[6, 40, "Case created"], [6, 9, "Case booked", undefined, "FAB"]] },
+   219→    { customer: "Prakash Jain", banks: ["DIB", "ADIB"], amountK: 1400, stage: "Closed", owner: 5, age: 52, state: "Closed", won: "DIB", closedAgo: 16, source: "Referral", partner: { kind: "Referral", name: "Bilal Hussain", share: 10 },
+   220→      trail: [[5, 52, "Case created"], [5, 16, "Case booked", undefined, "DIB"]] },
+   221→    { customer: "Rukmini Rao", banks: ["HSBC"], amountK: 4100, stage: "Closed", owner: 6, age: 63, state: "Closed", won: "HSBC", closedAgo: 24, source: "Direct",
+   222→      trail: [[6, 63, "Case created"], [6, 24, "Case booked", undefined, "HSBC"]] },
+   223→    { customer: "Salim Ansari", banks: ["Mashreq", "CBD"], amountK: 1650, stage: "Closed", owner: 7, age: 44, state: "Closed", won: "Mashreq", closedAgo: 37, source: "Agent", partner: { kind: "Agent", name: "Palm Gate Homes", share: 20 },
+   224→      trail: [[7, 44, "Case created"], [7, 37, "Case booked", undefined, "Mashreq"]] },
+   225→    { customer: "Bhavna Trivedi", banks: ["SCB"], amountK: 2300, stage: "Closed", owner: 7, age: 55, state: "Closed", won: "SCB", closedAgo: 49, source: "Broker", partner: { kind: "Broker", name: "Capital Bridge", share: 20 },
+   226→      trail: [[7, 55, "Case created"], [7, 49, "Case booked", undefined, "SCB"]] },
+   227→    { customer: "Kiran Bedi", banks: ["UAB", "RAK Bank"], amountK: 1250, stage: "Closed", owner: 4, age: 60, state: "Closed", won: "UAB", closedAgo: 66, source: "Website",
+   228→      trail: [[4, 60, "Case created"], [4, 66, "Case booked", undefined, "UAB"]] },
+   229→    { customer: "Mahesh Yadav", banks: ["Ajman Bank"], amountK: 850, stage: "Closed", owner: 9, age: 80, state: "Closed", won: "Ajman Bank", closedAgo: 74, source: "Direct",
+   230→      trail: [[9, 80, "Case created"], [9, 74, "Case booked", undefined, "Ajman Bank"]] },
+   231→    { customer: "Geeta Sundaram", banks: ["ADCB", "ENBD"], amountK: 2600, stage: "Closed", owner: 6, age: 95, state: "Closed", won: "ADCB", closedAgo: 88, source: "Agent", partner: { kind: "Agent", name: "Skyline Realty", share: 15 },
+   232→      trail: [[6, 95, "Case created"], [6, 88, "Case booked", undefined, "ADCB"]] },
+   233→    { customer: "Nilesh Phadke", banks: ["CBD"], amountK: 1950, stage: "Closed", owner: 5, age: 128, state: "Closed", won: "CBD", closedAgo: 105, source: "Direct",
+   234→      trail: [[5, 128, "Case created"], [5, 105, "Case booked", undefined, "CBD"]] },
+   235→    { customer: "Tara Bhandari", banks: ["ADIB"], amountK: 1500, stage: "Closed", owner: 7, age: 152, state: "Closed", won: "ADIB", closedAgo: 132, source: "Referral", partner: { kind: "Referral", name: "Hessa Al Qasimi", share: 15 },
+   236→      trail: [[7, 152, "Case created"], [7, 132, "Case booked", undefined, "ADIB"]] },
+   237→
+   238→    /* ---- lost ---- */
+   239→    { customer: "Om Prakash", banks: ["EIB"], amountK: 1300, stage: "Credit Appraisal", owner: 7, age: 33, state: "Lost", closedAgo: 12, source: "Website",
+   240→      trail: [[7, 33, "Case created"], [7, 12, "Case marked lost", "Credit Appraisal", "Went with another broker"]] },
+   241→    { customer: "Jyoti Naik", banks: ["NBF", "UAB"], amountK: 2050, stage: "Sanction", owner: 7, age: 85, state: "Lost", closedAgo: 47, source: "Agent", partner: { kind: "Agent", name: "Falcon Properties", share: 20 },
+   242→      trail: [[7, 85, "Case created"], [7, 47, "Case marked lost", "Sanction", "Bank declined — DBR"]] },
+   243→  ];
+   244→
+   245→  for (const s of seeds) {
+   246→    cid += 1;
+   247→    const id = cid;
+   248→    const createdAt = ts(s.age, id % 5);
+   249→    cases.push({
+   250→      id,
+   251→      caseNumber: `CASE-${String(111 + id).padStart(6, "0")}`,
+   252→      customer: s.customer,
+   253→      banks: s.banks,
+   254→      wonBank: s.state === "Closed" ? s.won ?? s.banks[0] ?? null : null,
+   255→      loanAmount: s.amountK * 1000,
+   256→      stage: STAGE_OVERRIDES[s.customer] ?? mapStage(s.stage),
+   257→      caseStatus: s.state ?? "Active",
+   258→      closedDate: s.state && s.state !== "Active" ? daysAgoISO(s.closedAgo ?? 1) : null,
+   259→      ownerId: s.owner,
+   260→      source: s.source,
+   261→      partner: s.partner ? { kind: s.partner.kind, name: s.partner.name, sharePct: s.partner.share } : null,
+   262→      whatsapp: "",
+   263→      waGroup: null,
+   264→      createdAt,
+   265→      updatedAt: ts(Math.max(0.02, (s.open?.openedAgo ?? s.done?.[0]?.doneAgo ?? s.closedAgo ?? 1) * 0.4), id % 3),
+   266→    });
+   267→
+   268→    for (const d of s.done ?? []) {
+   269→      tid += 1;
+   270→      tasks.push({
+   271→        id: tid, caseId: id, description: d.desc, ownerId: d.owner, createdBy: d.by ?? d.owner, waitingFor: d.waiting,
+   272→        whyPending: d.why, createdAt: ts(d.doneAgo + 2, id % 4), dueDate: daysAgoISO(d.doneAgo - 1),
+   273→        status: "Done", completedAt: ts(d.doneAgo, id % 6), remarks: d.remarks ?? "",
+   274→      });
+   275→    }
+   276→    if (s.open) {
+   277→      tid += 1;
+   278→      tasks.push({
+   279→        id: tid, caseId: id, description: s.open.desc, ownerId: s.open.owner, createdBy: s.open.by ?? s.open.owner,
+   280→        waitingFor: s.open.waiting, whyPending: s.open.why, createdAt: ts(s.open.openedAgo, id % 4),
+   281→        dueDate: s.open.dueIn < 0 ? daysAgoISO(-s.open.dueIn) : inDaysISO(s.open.dueIn),
+   282→        status: "Open", completedAt: null, remarks: "",
+   283→      });
+   284→    }
+   285→
+   286→    aid += 1;
+   287→    activities.push({ id: aid, caseId: id, userId: s.owner, at: createdAt, action: "Case created", newValue: STAGE_OVERRIDES[s.customer] ?? mapStage(s.stage) });
+   288→    if (s.partner) {
+   289→      aid += 1;
+   290→      activities.push({ id: aid, caseId: id, userId: s.owner, at: createdAt, action: "Source logged", newValue: `${s.source} · ${s.partner.name} @ ${s.partner.share}%` });
+   291→    }
+   292→    for (const [u, ago, action, ov, nv] of s.trail ?? []) {
+   293→      aid += 1;
+   294→      const mapIfStage = (v: string | undefined) => (v === undefined ? v : mapStage(v));
+   295→      const mv = action === "Stage moved" || action === "Case marked lost" || action === "Case booked"
+   296→        ? [mapIfStage(ov), mapIfStage(nv)]
+   297→        : [ov, nv];
+   298→      activities.push({ id: aid, caseId: id, userId: u, at: ts(ago, (id + ago) % 5), action, oldValue: mv[0], newValue: mv[1] });
+   299→    }
+   300→  }
+   301→
+   302→  const waMap: Record<string, { wa: string; group?: string }> = {
+   303→    "Mohammed Al Mansoori": { wa: "+971 50 234 8811", group: "https://chat.whatsapp.com/HfmcAlMansoori01" },
+   304→    "Sarah Thomson": { wa: "+971 55 810 2245", group: "https://chat.whatsapp.com/HfmcThomson02" },
+   305→    "Priya Menon": { wa: "+971 52 667 9034" },
+   306→    "Fatima Noor": { wa: "+971 54 402 7789", group: "https://chat.whatsapp.com/HfmcFatimaNoor04" },
+   307→    "David Chen": { wa: "+971 56 300 7719" },
+   308→    "Hamad Al Suwaidi": { wa: "+971 50 918 3345" },
+   309→    "Sunita Pawar": { wa: "+971 54 902 3361" },
+   310→  };
+   311→  for (const c of cases) {
+   312→    const p = waMap[c.customer];
+   313→    if (p) {
+   314→      c.whatsapp = p.wa;
+   315→      c.waGroup = p.group ?? null;
+   316→    }
+   317→  }
+   318→
+   319→  const instructions: Instruction[] = [
+   320→    { id: 1, caseId: 1, issuedBy: 4, instruction: "Client has gone quiet on documents. Do a home visit before Friday — do not let this slip to 'no response'.", assignedTo: 5, dueDate: inDaysISO(2), status: "Open", createdAt: ts(2, 3), completedAt: null,
+   321→      replies: [
+   322→        { id: 1, userId: 5, text: "Home visit done yesterday evening. 4 of 6 statements collected — balance promised Friday morning.", at: ts(1, 2) },
+   323→        { id: 2, userId: 4, text: "Good. If Friday slips, we pull the file from ADCB and re-submit to FAB.", at: ts(0, 6) },
+   324→      ] },
+   325→    { id: 2, caseId: 4, issuedBy: 1, instruction: "This HSBC query is a day overdue. Call the RM directly today and close the spouse income point.", assignedTo: 7, dueDate: inDaysISO(0), status: "Open", createdAt: ts(1, 5), completedAt: null,
+   326→      replies: [{ id: 3, userId: 7, text: "On it — RM confirmed an 11:30 call today.", at: ts(0, 4) }] },
+   327→    { id: 3, caseId: 7, issuedBy: 3, instruction: "Confirm Mashreq disbursement with the client and update the tracker the same day.", assignedTo: 7, dueDate: daysAgoISO(1), status: "Done", createdAt: ts(3, 2), completedAt: ts(1, 4),
+   328→      replies: [{ id: 4, userId: 7, text: "Disbursed AED 1.6M confirmed with client. Tracker updated.", at: ts(1, 3) }] },
+   329→    { id: 4, caseId: 17, issuedBy: 1, instruction: "If the legal opinion is not in by Monday, switch to our empanelled vendor. This file is worth AED 4.8M.", assignedTo: 6, dueDate: inDaysISO(3), status: "Open", createdAt: ts(1, 1), completedAt: null, replies: [] },
+   330→    { id: 5, caseId: 5, issuedBy: 2, instruction: "Run the affordability calculator and shortlist two banks for this client by tomorrow.", assignedTo: 9, dueDate: inDaysISO(1), status: "Open", createdAt: ts(1, 2), completedAt: null, replies: [] },
+   331→  ];
+   332→
+   333→  const bulletin: BulletinItem[] = [
+   334→    { id: 1, date: todayISO(), issuedBy: 4, task: "Morning huddle 9:30 sharp — everyone bring their overdue files. We clear the Pre-Approval backlog today, no file older than 5 days leaves the room unresolved.", caseId: null, targets: [5, 6, 9], status: "Open", completedAt: null, completedBy: null, createdAt: ts(0, 7),
+   335→      replies: [{ id: 5, userId: 9, text: "Bringing John Okafor — shortlist is ready for review.", at: ts(0, 5) }] },
+   336→    { id: 2, date: todayISO(), issuedBy: 1, task: "HSBC file CASE-000114 is a day overdue on the spouse-income query. Owner to call the RM before 12:00 — no email ping-pong on this one.", caseId: 4, targets: [7], status: "Open", completedAt: null, completedBy: null, createdAt: ts(0, 6), replies: [] },
+   337→    { id: 3, date: todayISO(), issuedBy: 3, task: "Daniel Osei — Ejari + tenancy contract is the third reminder now. If silent by 17:00, schedule a home visit for tomorrow morning.", caseId: 22, targets: [9], status: "Open", completedAt: null, completedBy: null, createdAt: ts(0, 5), replies: [] },
+   338→    { id: 4, date: todayISO(), issuedBy: 2, task: "All WhatsApp groups created yesterday must have the document checklist pinned today. Audit at EOD.", caseId: null, targets: [5, 6, 7, 8, 9], status: "Open", completedAt: null, completedBy: null, createdAt: ts(0, 4), replies: [] },
+   339→    { id: 5, date: daysAgoISO(1), issuedBy: 4, task: "Every valuation report older than 2 days gets chased with the valuer before EOD. Valuation Report stage is our biggest leak.", caseId: null, targets: [5, 6], status: "Done", completedAt: ts(0, 9), completedBy: 6, createdAt: ts(1, 6),
+   340→      replies: [{ id: 6, userId: 6, text: "Both chased — Grace Muthoni's report lands tomorrow morning, Lucia's invoice uploaded.", at: ts(1, 2) }] },
+   341→    { id: 6, date: daysAgoISO(1), issuedBy: 1, task: "Falcon Properties introduced 3 files this week — acknowledge each lead with a same-day WhatsApp. Agents remember speed.", caseId: null, targets: [5], status: "Done", completedAt: ts(1, 1), completedBy: 5, createdAt: ts(1, 8), replies: [] },
+   342→    /* missed yesterday — still open, will surface as MISSED */
+   343→    { id: 7, date: daysAgoISO(1), issuedBy: 2, task: "Reconcile the Ajman Bank login fees for last week's files and post the total in the group.", caseId: null, targets: [5, 6], status: "Open", completedAt: null, completedBy: null, createdAt: ts(1, 5), replies: [] },
+   344→    /* carried forward from two days ago */
+   345→    { id: 8, date: todayISO(), issuedBy: 1, task: "Get the ADCB rate-lock confirmation for the Al Mansoori file in writing — this is the third ask, escalate to the branch manager.", caseId: null, targets: [7], status: "Open", completedAt: null, completedBy: null, createdAt: ts(2, 4), carriedFrom: daysAgoISO(2), replies: [{ id: 7, userId: 7, text: "RM promised it by 2pm yesterday, nothing yet. Escalating now.", at: ts(0, 3) }] },
+   346→    /* dropped, not done */
+   347→    { id: 9, date: daysAgoISO(3), issuedBy: 2, task: "Re-type the old SPO checklist from the shared drive.", caseId: null, targets: [9], status: "Done", dropped: true, completedAt: ts(3, 1), completedBy: 2, createdAt: ts(3, 6), replies: [{ id: 8, userId: 2, text: "Dropped — superseded by the new checklist directive, ignore this one.", at: ts(3, 1) }] },
+   348→    /* routine templates — materialized into a fresh instance every eligible morning */
+   349→    { id: 10, date: daysAgoISO(6), issuedBy: 4, task: "Routine: clear your overdue chase list before EOD and mark each file's task done.", caseId: null, targets: [5, 6, 7, 8, 9], status: "Open", completedAt: null, completedBy: null, createdAt: ts(6, 8), replies: [], repeat: "weekdays", isTemplate: true },
+   350→    { id: 11, date: daysAgoISO(6), issuedBy: 1, task: "Routine: post a one-line EOD update per active case in your book.", caseId: null, targets: [5, 6, 7, 8, 9], status: "Open", completedAt: null, completedBy: null, createdAt: ts(6, 7), replies: [], repeat: "daily", isTemplate: true },
+   351→  ];
+   352→
+   353→  /* a directive pinned to an already-booked case — will auto-resolve on load */
+   354→  const bookedCase = cases.find((c) => c.caseStatus === "Closed");
+   355→  if (bookedCase) {
+   356→    bulletin.push({ id: 12, date: daysAgoISO(2), issuedBy: 3, task: "Chase the liability release letter for this file before the weekend.", caseId: bookedCase.id, targets: [7], status: "Open", completedAt: null, completedBy: null, createdAt: ts(2, 6), replies: [] });
+   357→  }
+   358→
+   359→  const mkCheck = (
+   360→    id: number, caseId: number | null, customerName: string, createdBy: number, createdAgo: number,
+   361→    input: { mi: number; oi: number; emi: number; age: number; emp: "Salaried" | "Self-Employed"; pv: number; bank: string; rate: number | null; ten: number | null }
+   362→  ): AffordabilityCheck => {
+   363→    const r = computeAffordability({
+   364→      monthlyIncome: input.mi, otherIncome: input.oi, existingEmis: input.emi, age: input.age,
+   365→      employmentType: input.emp, propertyValue: input.pv, bank: input.bank,
+   366→      interestRate: input.rate, tenureYears: input.ten,
+   367→    });
+   368→    return {
+   369→      id, caseId, customerName, createdBy, createdAt: ts(createdAgo, id),
+   370→      monthlyIncome: input.mi, otherIncome: input.oi, existingEmis: input.emi, age: input.age,
+   371→      employmentType: input.emp, propertyValue: input.pv, bank: input.bank,
+   372→      interestRate: r.rateUsed, tenureYears: r.tenureUsed,
+   373→      applicableLtv: r.applicableLtv, maxLoanByLtv: r.maxLoanByLtv, maxDbrPct: r.maxDbrPct,
+   374→      availableDbrEmi: r.availableDbrEmi, maxLoanByDbr: r.maxLoanByDbr, maxTenureByAge: r.maxTenureByAge,
+   375→      finalEligibleLoan: r.finalEligibleLoan, estimatedEmi: r.estimatedEmi, eligible: r.eligible,
+   376→    };
+   377→  };
+   378→
+   379→  const affordabilityChecks: AffordabilityCheck[] = [
+   380→    mkCheck(1, 3, "Ahmed Khan", 7, 6, { mi: 24000, oi: 3000, emi: 2800, age: 31, emp: "Salaried", pv: 1500000, bank: "DIB", rate: 4.65, ten: 25 }),
+   381→    mkCheck(2, null, "Tariq Aziz", 7, 3, { mi: 16000, oi: 0, emi: 6500, age: 38, emp: "Self-Employed", pv: 1100000, bank: "UAB", rate: null, ten: null }),
+   382→    mkCheck(3, null, "Neha Kothari", 3, 1, { mi: 45000, oi: 6000, emi: 8000, age: 29, emp: "Salaried", pv: 3600000, bank: "ADCB", rate: null, ten: 25 }),
+   383→    mkCheck(4, 5, "John Okafor", 9, 1, { mi: 30000, oi: 0, emi: 4500, age: 34, emp: "Salaried", pv: 1900000, bank: "FAB", rate: null, ten: 20 }),
+   384→  ];
+   385→
+   386→  return {
+   387→    version: 9, users, designations, cases, tasks, activities, stages, whyPending, waitingFor,
+   388→    banks, partners, slaRules, instructions, bulletin, affordabilityChecks,
+   389→  };
+   390→}
+   391→

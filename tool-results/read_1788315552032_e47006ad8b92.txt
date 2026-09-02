@@ -1,0 +1,1364 @@
+     1→import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+     2→import type { ReactNode } from "react";
+     3→import type {
+     4→  Activity, AffordabilityCheck, BankItem, BulletinItem, CasePartner, CaseSource, CaseState, DB, Designation, LoanCase, MasterItem,
+     5→  PartnerItem, PartnerKind, Route, SlaRule, StageItem, Task, User,
+     6→} from "./types";
+     7→import { seedDb } from "./data";
+     8→import { computeAffordability } from "./calc";
+     9→import type { CalcInput } from "./calc";
+    10→import { ageDays, daysBetween, primaryBank, toISODate, todayISO } from "./format";
+    11→import { fetchAppState, isSupabaseOn, saveAppState } from "./supabase";
+    12→
+    13→const DB_KEY = "meridian.casetracker.db.v6";
+    14→const SESSION_KEY = "meridian.casetracker.session.v6";
+    15→
+    16→export interface ToastMsg {
+    17→  id: number;
+    18→  kind: "success" | "error" | "info";
+    19→  msg: string;
+    20→}
+    21→
+    22→export interface NewCaseInput {
+    23→  customer: string;
+    24→  banks: string[];
+    25→  loanAmount: number;
+    26→  stage: string;
+    27→  ownerId: number;
+    28→  source: CaseSource;
+    29→  partner: CasePartner | null;
+    30→  whatsapp: string;
+    31→  waGroup: string | null;
+    32→  task?: { description: string; dueDate: string; waitingFor: string; whyPending: string; ownerId: number };
+    33→}
+    34→
+    35→export interface TaskInput {
+    36→  description: string;
+    37→  ownerId: number;
+    38→  waitingFor: string;
+    39→  whyPending: string;
+    40→  dueDate: string;
+    41→}
+    42→
+    43→/* ---------------- role model (designation-driven) ---------------- */
+    44→
+    45→export interface RoleFlags {
+    46→  scope: "all" | "team" | "own";
+    47→  issueTasks: boolean;
+    48→  admin: boolean;
+    49→  super: boolean;
+    50→}
+    51→
+    52→const SUPER_FLAGS: RoleFlags = { scope: "all", issueTasks: true, admin: true, super: true };
+    53→const DEFAULT_FLAGS: RoleFlags = { scope: "own", issueTasks: false, admin: false, super: false };
+    54→
+    55→export function flagsFor(designations: Designation[], role: string): RoleFlags {
+    56→  if (role === "Super Admin") return SUPER_FLAGS;
+    57→  const d = designations.find((x) => x.name === role);
+    58→  return d ? { scope: d.scope, issueTasks: d.issueTasks, admin: d.admin, super: d.super } : DEFAULT_FLAGS;
+    59→}
+    60→
+    61→/* who can see / act on a bulletin directive */
+    62→export function bulletinVisible(b: BulletinItem, me: User, db: DB): boolean {
+    63→  const f = flagsFor(db.designations, me.role);
+    64→  if (f.scope === "all") return true;
+    65→  if (b.issuedBy === me.id || b.targets.includes(me.id)) return true;
+    66→  if (f.scope === "team") {
+    67→    const issuer = db.users.find((u) => u.id === b.issuedBy);
+    68→    if (issuer?.team === me.team) return true;
+    69→    return b.targets.some((t) => db.users.find((u) => u.id === t)?.team === me.team);
+    70→  }
+    71→  return false;
+    72→}
+    73→
+    74→export function bulletinCanAct(b: BulletinItem, me: User, db: DB): boolean {
+    75→  const f = flagsFor(db.designations, me.role);
+    76→  return f.scope === "all" || b.issuedBy === me.id || b.targets.includes(me.id);
+    77→}
+    78→
+    79→/* carry / drop are manager moves: the issuer, or anyone with full scope */
+    80→export function bulletinCanManage(b: BulletinItem, me: User, db: DB): boolean {
+    81→  const f = flagsFor(db.designations, me.role);
+    82→  return f.scope === "all" || b.issuedBy === me.id;
+    83→}
+    84→
+    85→export function bulletinCanDelete(b: BulletinItem, me: User, db: DB): boolean {
+    86→  return bulletinCanManage(b, me, db);
+    87→}
+    88→
+    89→/* ---------------- bulletin lifecycle (spawn routines, resolve stale) ---------------- */
+    90→
+    91→const MS_DAY = 86400000;
+    92→const SPAWN_BACK_LIMIT = 3; // don't drown a returning user: at most 3 past instances per template
+    93→
+    94→function eligibleDays(fromISO: string, repeat: "daily" | "weekdays"): string[] {
+    95→  const out: string[] = [];
+    96→  const today = todayISO();
+    97→  const span = Math.min(daysBetween(fromISO, today), SPAWN_BACK_LIMIT + 1);
+    98→  for (let back = Math.max(0, span); back >= 0; back--) {
+    99→    const d = new Date(Date.now() - back * MS_DAY);
+   100→    const iso = toISODate(d);
+   101→    if (iso < fromISO) continue;
+   102→    if (repeat === "weekdays") {
+   103→      const dow = d.getDay();
+   104→      if (dow === 0 || dow === 6) continue; // UAE weekend: Sat–Sun
+   105→    }
+   106→    out.push(iso);
+   107→  }
+   108→  return out;
+   109→}
+   110→
+   111→export function spawnBulletinInstances(prev: DB): DB {
+   112→  const templates = prev.bulletin.filter((b) => b.isTemplate && b.repeat && b.repeat !== "none");
+   113→  if (templates.length === 0) return prev;
+   114→  let nid = prev.bulletin.reduce((m, b) => Math.max(m, b.id), 0) + 1;
+   115→  const added: BulletinItem[] = [];
+   116→  for (const t of templates) {
+   117→    for (const day of eligibleDays(t.date, t.repeat as "daily" | "weekdays")) {
+   118→      const exists = prev.bulletin.some((b) => b.templateId === t.id && b.date === day) || added.some((b) => b.templateId === t.id && b.date === day);
+   119→      if (exists) continue;
+   120→      added.push({
+   121→        ...t,
+   122→        id: nid++,
+   123→        date: day,
+   124→        templateId: t.id,
+   125→        isTemplate: false,
+   126→        repeat: "none",
+   127→        status: "Open",
+   128→        completedAt: null,
+   129→        completedBy: null,
+   130→        carriedFrom: null,
+   131→        dropped: false,
+   132→        createdAt: nowISO(),
+   133→        replies: [],
+   134→      });
+   135→    }
+   136→  }
+   137→  return added.length ? { ...prev, bulletin: [...prev.bulletin, ...added] } : prev;
+   138→}
+   139→
+   140→export function resolveStaleBulletins(prev: DB): DB {
+   141→  const casesById = new Map(prev.cases.map((c) => [c.id, c]));
+   142→  let rid = prev.bulletin.reduce((m, b) => Math.max(m, b.id, ...b.replies.map((r) => r.id)), 0) + 1;
+   143→  let changed = false;
+   144→  const bulletin = prev.bulletin.map((b) => {
+   145→    if (b.caseId != null && b.status === "Open" && !b.isTemplate) {
+   146→      const c = casesById.get(b.caseId);
+   147→      if (!c || c.caseStatus !== "Active") {
+   148→        changed = true;
+   149→        return {
+   150→          ...b,
+   151→          status: "Done" as const,
+   152→          completedAt: nowISO(),
+   153→          completedBy: null,
+   154→          replies: [...b.replies, { id: rid++, userId: b.issuedBy, text: "Case closed — directive resolved automatically, no action needed.", at: nowISO() }],
+   155→        };
+   156→      }
+   157→    }
+   158→    return b;
+   159→  });
+   160→  return changed ? { ...prev, bulletin } : prev;
+   161→}
+   162→
+   163→interface StoreShape {
+   164→  db: DB;
+   165→  session: User | null;
+   166→  route: Route;
+   167→  toasts: ToastMsg[];
+   168→  nav: (r: Route) => void;
+   169→  login: (email: string, password: string) => string | null;
+   170→  logout: () => void;
+   171→  toast: (kind: ToastMsg["kind"], msg: string) => void;
+   172→  dismissToast: (id: number) => void;
+   173→  createCase: (input: NewCaseInput) => LoanCase;
+   174→  updateCase: (id: number, patch: Partial<Omit<LoanCase, "id" | "createdAt">>) => void;
+   175→  deleteCase: (id: number) => void;
+   176→  setCaseState: (id: number, state: CaseState, wonBank?: string) => void;
+   177→  createTask: (caseId: number, input: TaskInput) => void;
+   178→  updateTask: (id: number, patch: Partial<Omit<Task, "id" | "caseId" | "createdAt" | "createdBy">>) => void;
+   179→  completeTask: (id: number, remarks: string) => void;
+   180→  addInstruction: (caseId: number, input: { instruction: string; assignedTo: number; dueDate: string }) => void;
+   181→  completeInstruction: (id: number) => void;
+   182→  replyToInstruction: (id: number, text: string) => void;
+   183→  issueBulletin: (input: { date: string; task: string; caseId: number | null; targets: number[]; repeat?: "none" | "daily" | "weekdays"; asTemplate?: boolean }) => void;
+   184→  completeBulletin: (id: number, opts?: { alsoTaskDone?: boolean }) => void;
+   185→  carryBulletin: (id: number) => void;
+   186→  dropBulletin: (id: number) => void;
+   187→  deleteBulletin: (id: number) => void;
+   188→  replyToBulletin: (id: number, text: string) => void;
+   189→  canInstruct: () => boolean;
+   190→  canAdmin: () => boolean;
+   191→  saveMortgageCheck: (name: string, whatsapp: string, payload: string, summary: { income: number; emi: number; final: number; rate: number; tenorMonths: number; ltv: number; eligible: boolean }) => number;
+   192→  addDesignation: (name: string) => string | null;
+   193→  updateDesignation: (id: number, patch: Partial<Omit<Designation, "id" | "builtIn" | "super">>) => void;
+   194→  deleteDesignation: (id: number) => string | null;
+   195→  runCheck: (input: CalcInput, customerName: string) => void;
+   196→  createCaseFromCheck: (checkId: number, submitToBank?: boolean, checkOverride?: AffordabilityCheck) => LoanCase | null;
+   197→  linkCheckToCase: (checkId: number, caseId: number) => void;
+   198→  saveUser: (u: User) => void;
+   199→  deleteUser: (id: number) => string | null;
+   200→  addMaster: (kind: "stages" | "whyPending" | "waitingFor", label: string) => string | null;
+   201→  toggleMaster: (kind: "stages" | "whyPending" | "waitingFor", id: number) => void;
+   202→  deleteMaster: (kind: "stages" | "whyPending" | "waitingFor", id: number) => string | null;
+   203→  moveStage: (id: number, dir: -1 | 1) => void;
+   204→  addBank: (name: string, ratePct: number) => string | null;
+   205→  updateBankRate: (id: number, ratePct: number) => void;
+   206→  toggleBank: (id: number) => void;
+   207→  deleteBank: (id: number) => string | null;
+   208→  addPartner: (kind: PartnerKind, name: string, sharePct: number) => string | null;
+   209→  updatePartnerShare: (id: number, sharePct: number) => void;
+   210→  togglePartner: (id: number) => void;
+   211→  deletePartner: (id: number) => string | null;
+   212→  saveSla: (rule: Omit<SlaRule, "id"> & { id?: number }) => void;
+   213→  toggleSla: (id: number) => void;
+   214→  deleteSla: (id: number) => void;
+   215→  userById: (id: number) => User | undefined;
+   216→  visibleCases: () => LoanCase[];
+   217→  visibleTasks: () => Task[];
+   218→  canEditCase: (c: LoanCase) => boolean;
+   219→  canEditTask: (t: Task) => boolean;
+   220→}
+   221→
+   222→const Ctx = createContext<StoreShape | null>(null);
+   223→
+   224→function parseHash(): Route {
+   225→  const h = window.location.hash.replace(/^#\/?/, "");
+   226→  const [a, b] = h.split("/");
+   227→  if (a === "case" && b && !Number.isNaN(parseInt(b, 10))) return { name: "case", id: parseInt(b, 10) };
+   228→  if (a === "tasks") return { name: "tasks" };
+   229→  if (a === "bulletin") return { name: "bulletin" };
+   230→  if (a === "calculator") return { name: "calculator" };
+   231→  if (a === "reports") return { name: "reports" };
+   232→  if (a === "admin") return { name: "admin" };
+   233→  return { name: "dashboard" };
+   234→}
+   235→
+   236→export function routeToHash(r: Route): string {
+   237→  switch (r.name) {
+   238→    case "case":
+   239→      return `#/case/${r.id}`;
+   240→    case "dashboard":
+   241→      return "#/";
+   242→    default:
+   243→      return `#/${r.name}`;
+   244→  }
+   245→}
+   246→
+   247→const nextId = (arr: { id: number }[]) => arr.reduce((m, x) => Math.max(m, x.id), 0) + 1;
+   248→const nowISO = () => new Date().toISOString();
+   249→
+   250→function loadDb(): DB {
+   251→  try {
+   252→    const raw = localStorage.getItem(DB_KEY);
+   253→    if (raw) {
+   254→      const parsed = JSON.parse(raw) as DB;
+   255→      if (parsed && parsed.version === 9 && Array.isArray(parsed.designations) && Array.isArray(parsed.bulletin)) return parsed;
+   256→    }
+   257→  } catch {
+   258→    /* fall through to seed */
+   259→  }
+   260→  return seedDb();
+   261→}
+   262→
+   263→export function StoreProvider({ children }: { children: ReactNode }) {
+   264→  const [db, setDb] = useState<DB>(loadDb);
+   265→  const [sessionId, setSessionId] = useState<number | null>(() => {
+   266→    const raw = localStorage.getItem(SESSION_KEY);
+   267→    return raw ? parseInt(raw, 10) : null;
+   268→  });
+   269→  const [route, setRoute] = useState<Route>(parseHash);
+   270→  const [toasts, setToasts] = useState<ToastMsg[]>([]);
+   271→  const toastId = useRef(0);
+   272→
+   273→  /* Boot: apply the bulletin lifecycle (spawn routines / resolve stale) to whatever
+   274→     state we start with. When Supabase is configured, hydrate from the shared database
+   275→     first, then apply the same lifecycle — so the whole team shares one source of truth. */
+   276→  useEffect(() => {
+   277→    let cancelled = false;
+   278→    if (isSupabaseOn) {
+   279→      fetchAppState().then((server) => {
+   280→        if (cancelled) return;
+   281→        setDb((prev) => resolveStaleBulletins(spawnBulletinInstances(server ?? prev)));
+   282→      });
+   283→    } else {
+   284→      setDb((prev) => resolveStaleBulletins(spawnBulletinInstances(prev)));
+   285→    }
+   286→    return () => {
+   287→      cancelled = true;
+   288→    };
+   289→    // eslint-disable-next-line react-hooks/exhaustive-deps
+   290→  }, []);
+   291→
+   292→  /* Persist on every change: always keep a local copy (so the no-Supabase build works
+   293→     and survives refresh), and when Supabase is configured, write the shared document
+   294→     too — debounced so rapid edits batch into one save. */
+   295→  useEffect(() => {
+   296→    try {
+   297→      localStorage.setItem(DB_KEY, JSON.stringify(db));
+   298→    } catch {
+   299→      /* storage full / private mode — non-fatal */
+   300→    }
+   301→    if (!isSupabaseOn) return;
+   302→    const t = window.setTimeout(() => {
+   303→      saveAppState(db).catch(() => undefined);
+   304→    }, 700);
+   305→    return () => window.clearTimeout(t);
+   306→  }, [db]);
+   307→
+   308→  useEffect(() => {
+   309→    const onHash = () => setRoute(parseHash());
+   310→    window.addEventListener("hashchange", onHash);
+   311→    return () => window.removeEventListener("hashchange", onHash);
+   312→  }, []);
+   313→
+   314→  const nav = useCallback((r: Route) => {
+   315→    const h = routeToHash(r);
+   316→    if (window.location.hash === h) setRoute(r);
+   317→    else window.location.hash = h;
+   318→  }, []);
+   319→
+   320→  const toast = useCallback((kind: ToastMsg["kind"], msg: string) => {
+   321→    toastId.current += 1;
+   322→    const id = toastId.current;
+   323→    setToasts((t) => [...t, { id, kind, msg }]);
+   324→    window.setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 4200);
+   325→  }, []);
+   326→
+   327→  const dismissToast = useCallback((id: number) => {
+   328→    setToasts((t) => t.filter((x) => x.id !== id));
+   329→  }, []);
+   330→
+   331→  const session = sessionId != null ? db.users.find((u) => u.id === sessionId) ?? null : null;
+   332→  const userById = useCallback((id: number) => db.users.find((u) => u.id === id), [db]);
+   333→
+   334→  const logAct = (list: Activity[], caseId: number, userId: number, action: string, oldValue?: string, newValue?: string): Activity[] => [
+   335→    ...list,
+   336→    { id: nextId(list), caseId, userId, at: nowISO(), action, oldValue, newValue },
+   337→  ];
+   338→
+   339→  /* ---------------- auth ---------------- */
+   340→
+   341→  const login = useCallback(
+   342→    (email: string, password: string): string | null => {
+   343→      const u = db.users.find((x) => x.email.toLowerCase() === email.trim().toLowerCase());
+   344→      if (!u) return "No account found with that email.";
+   345→      if (!u.active) return "This account has been deactivated. Contact the Head of Company.";
+   346→      if (u.password !== password) return "Incorrect password. Try again.";
+   347→      setSessionId(u.id);
+   348→      localStorage.setItem(SESSION_KEY, String(u.id));
+   349→      return null;
+   350→    },
+   351→    [db.users]
+   352→  );
+   353→
+   354→  const logout = useCallback(() => {
+   355→    setSessionId(null);
+   356→    localStorage.removeItem(SESSION_KEY);
+   357→  }, []);
+   358→
+   359→  /* ---------------- permissions ---------------- */
+   360→
+   361→  const canInstruct = useCallback(
+   362→    () => !!session && flagsFor(db.designations, session.role).issueTasks,
+   363→    [session, db.designations]
+   364→  );
+   365→
+   366→  const canAdmin = useCallback(
+   367→    () => !!session && flagsFor(db.designations, session.role).admin,
+   368→    [session, db.designations]
+   369→  );
+   370→
+   371→  const visibleCases = useCallback((): LoanCase[] => {
+   372→    if (!session) return [];
+   373→    const f = flagsFor(db.designations, session.role);
+   374→    if (f.scope === "all") return db.cases;
+   375→    if (f.scope === "team")
+   376→      return db.cases.filter((c) => {
+   377→        if (c.ownerId === session.id) return true;
+   378→        const owner = db.users.find((u) => u.id === c.ownerId);
+   379→        return owner?.team === session.team;
+   380→      });
+   381→    return db.cases.filter((c) => c.ownerId === session.id);
+   382→  }, [db, session]);
+   383→
+   384→  const visibleTasks = useCallback((): Task[] => {
+   385→    if (!session) return [];
+   386→    const f = flagsFor(db.designations, session.role);
+   387→    if (f.scope === "all") return db.tasks;
+   388→    if (f.scope === "team") {
+   389→      const teamIds = new Set(db.users.filter((u) => u.team === session.team).map((u) => u.id));
+   390→      const caseIds = new Set(visibleCases().map((c) => c.id));
+   391→      return db.tasks.filter((t) => caseIds.has(t.caseId) || teamIds.has(t.ownerId));
+   392→    }
+   393→    return db.tasks.filter((t) => t.ownerId === session.id);
+   394→  }, [db, session, visibleCases]);
+   395→
+   396→  const canEditCase = useCallback(
+   397→    (c: LoanCase): boolean => {
+   398→      if (!session) return false;
+   399→      const f = flagsFor(db.designations, session.role);
+   400→      if (f.scope === "all") return true;
+   401→      if (f.scope === "team") {
+   402→        if (c.ownerId === session.id) return true;
+   403→        const owner = db.users.find((u) => u.id === c.ownerId);
+   404→        return owner?.team === session.team;
+   405→      }
+   406→      return c.ownerId === session.id;
+   407→    },
+   408→    [db, session]
+   409→  );
+   410→
+   411→  const canEditTask = useCallback(
+   412→    (t: Task): boolean => {
+   413→      if (!session) return false;
+   414→      const f = flagsFor(db.designations, session.role);
+   415→      if (f.scope === "all") return true;
+   416→      if (f.scope === "team") {
+   417→        if (t.ownerId === session.id) return true;
+   418→        const owner = db.users.find((u) => u.id === t.ownerId);
+   419→        return owner?.team === session.team;
+   420→      }
+   421→      return t.ownerId === session.id;
+   422→    },
+   423→    [db.users, session]
+   424→  );
+   425→
+   426→  /* ---------------- cases ---------------- */
+   427→
+   428→  const createCase = useCallback(
+   429→    (input: NewCaseInput): LoanCase => {
+   430→      const me = session;
+   431→      const maxNum = db.cases.reduce((m, c) => Math.max(m, parseInt(c.caseNumber.split("-")[1] ?? "0", 10)), 0);
+   432→      const c: LoanCase = {
+   433→        id: nextId(db.cases),
+   434→        caseNumber: `CASE-${String(maxNum + 1).padStart(6, "0")}`,
+   435→        customer: input.customer.trim(),
+   436→        banks: input.banks,
+   437→        wonBank: null,
+   438→        loanAmount: input.loanAmount,
+   439→        stage: input.stage,
+   440→        caseStatus: "Active",
+   441→        closedDate: null,
+   442→        ownerId: input.ownerId,
+   443→        source: input.source,
+   444→        partner: input.partner,
+   445→        whatsapp: input.whatsapp.trim(),
+   446→        waGroup: input.waGroup?.trim() || null,
+   447→        createdAt: nowISO(),
+   448→        updatedAt: nowISO(),
+   449→      };
+   450→      setDb((prev) => {
+   451→        let tasks = prev.tasks;
+   452→        if (input.task && input.task.description.trim()) {
+   453→          tasks = [
+   454→            ...tasks,
+   455→            {
+   456→              id: nextId(tasks),
+   457→              caseId: c.id,
+   458→              description: input.task!.description.trim(),
+   459→              ownerId: input.task!.ownerId,
+   460→              createdBy: me?.id ?? 0,
+   461→              waitingFor: input.task!.waitingFor,
+   462→              whyPending: input.task!.whyPending,
+   463→              createdAt: nowISO(),
+   464→              dueDate: input.task!.dueDate,
+   465→              status: "Open",
+   466→              completedAt: null,
+   467→              remarks: "",
+   468→            },
+   469→          ];
+   470→        }
+   471→        let acts = logAct(prev.activities, c.id, me?.id ?? 0, "Case created", undefined, c.stage);
+   472→        if (c.partner)
+   473→          acts = logAct(acts, c.id, me?.id ?? 0, "Source logged", undefined, `${c.source} · ${c.partner.name} @ ${c.partner.sharePct}%`);
+   474→        return { ...prev, cases: [...prev.cases, c], tasks, activities: acts };
+   475→      });
+   476→      return c;
+   477→    },
+   478→    [db.cases, session]
+   479→  );
+   480→
+   481→  const updateCase = useCallback(
+   482→    (id: number, patch: Partial<Omit<LoanCase, "id" | "createdAt">>) => {
+   483→      const me = session;
+   484→      setDb((prev) => {
+   485→        const before = prev.cases.find((c) => c.id === id);
+   486→        if (!before) return prev;
+   487→        let acts = prev.activities;
+   488→        if (patch.stage !== undefined && patch.stage !== before.stage)
+   489→          acts = logAct(acts, id, me?.id ?? 0, "Stage moved", before.stage, patch.stage);
+   490→        if (patch.ownerId !== undefined && patch.ownerId !== before.ownerId)
+   491→          acts = logAct(acts, id, me?.id ?? 0, "Owner changed",
+   492→            prev.users.find((u) => u.id === before.ownerId)?.name ?? "—",
+   493→            prev.users.find((u) => u.id === patch.ownerId)?.name ?? "—");
+   494→        if (patch.customer !== undefined && patch.customer !== before.customer)
+   495→          acts = logAct(acts, id, me?.id ?? 0, "Customer updated", before.customer, patch.customer);
+   496→        if (patch.banks !== undefined && JSON.stringify(patch.banks) !== JSON.stringify(before.banks))
+   497→          acts = logAct(acts, id, me?.id ?? 0, "Bank submissions updated", before.banks.join(", ") || "TBC", patch.banks.join(", ") || "TBC");
+   498→        if (patch.loanAmount !== undefined && patch.loanAmount !== before.loanAmount)
+   499→          acts = logAct(acts, id, me?.id ?? 0, "Loan amount updated", String(before.loanAmount), String(patch.loanAmount));
+   500→        return {
+   501→          ...prev,
+   502→          cases: prev.cases.map((c) => (c.id === id ? { ...c, ...patch, updatedAt: nowISO() } : c)),
+   503→          activities: acts,
+   504→        };
+   505→      });
+   506→    },
+   507→    [session]
+   508→  );
+   509→
+   510→  const setCaseState = useCallback(
+   511→    (id: number, state: CaseState, wonBank?: string) => {
+   512→      const me = session;
+   513→      setDb((prev) => {
+   514→        const before = prev.cases.find((c) => c.id === id);
+   515→        if (!before) return prev;
+   516→        let acts = prev.activities;
+   517→        if (state === "Closed")
+   518→          acts = logAct(acts, id, me?.id ?? 0, "Case booked", undefined, wonBank ?? before.wonBank ?? "—");
+   519→        if (state === "Lost") acts = logAct(acts, id, me?.id ?? 0, "Case marked lost", before.stage);
+   520→        if (state === "Active") acts = logAct(acts, id, me?.id ?? 0, "Case reopened", before.caseStatus);
+   521→        const next: DB = {
+   522→          ...prev,
+   523→          cases: prev.cases.map((c) =>
+   524→            c.id === id
+   525→              ? {
+   526→                  ...c,
+   527→                  caseStatus: state,
+   528→                  wonBank: state === "Closed" ? wonBank ?? c.wonBank ?? c.banks[0] ?? null : state === "Active" ? null : c.wonBank,
+   529→                  closedDate: state === "Active" ? null : todayISO(),
+   530→                  stage: state === "Closed" ? "Closure" : c.stage,
+   531→                  updatedAt: nowISO(),
+   532→                }
+   533→              : c
+   534→          ),
+   535→          activities: acts,
+   536→        };
+   537→        /* the moment a case leaves the live pipeline, any open directives pinned to it
+   538→           resolve themselves — no stale "chase this" items linger on a closed file */
+   539→        return state === "Active" ? next : resolveStaleBulletins(next);
+   540→      });
+   541→    },
+   542→    [session]
+   543→  );
+   544→
+   545→  const deleteCase = useCallback((id: number) => {
+   546→    setDb((prev) => ({
+   547→      ...prev,
+   548→      cases: prev.cases.filter((c) => c.id !== id),
+   549→      tasks: prev.tasks.filter((t) => t.caseId !== id),
+   550→      instructions: prev.instructions.filter((i) => i.caseId !== id),
+   551→      activities: prev.activities.filter((a) => a.caseId !== id),
+   552→      affordabilityChecks: prev.affordabilityChecks.map((k) => (k.caseId === id ? { ...k, caseId: null } : k)),
+   553→    }));
+   554→  }, []);
+   555→
+   556→  /* ---------------- tasks ---------------- */
+   557→
+   558→  const createTask = useCallback(
+   559→    (caseId: number, input: TaskInput) => {
+   560→      const me = session;
+   561→      setDb((prev) => {
+   562→        const superseded = prev.tasks.filter((t) => t.caseId === caseId && t.status === "Open");
+   563→        let acts = prev.activities;
+   564→        const tasks = prev.tasks.map((t) =>
+   565→          t.caseId === caseId && t.status === "Open"
+   566→            ? { ...t, status: "Done" as const, completedAt: nowISO(), remarks: t.remarks || "Superseded by a newer task." }
+   567→            : t
+   568→        );
+   569→        for (const s of superseded) acts = logAct(acts, caseId, me?.id ?? 0, "Task superseded", s.description);
+   570→        const t: Task = {
+   571→          id: nextId(tasks),
+   572→          caseId,
+   573→          description: input.description.trim(),
+   574→          ownerId: input.ownerId,
+   575→          createdBy: me?.id ?? 0,
+   576→          waitingFor: input.waitingFor,
+   577→          whyPending: input.whyPending,
+   578→          createdAt: nowISO(),
+   579→          dueDate: input.dueDate,
+   580→          status: "Open",
+   581→          completedAt: null,
+   582→          remarks: "",
+   583→        };
+   584→        const byName = prev.users.find((u) => u.id === t.createdBy)?.name ?? "—";
+   585→        const toName = prev.users.find((u) => u.id === t.ownerId)?.name ?? "—";
+   586→        acts = logAct(acts, caseId, me?.id ?? 0, t.ownerId === t.createdBy ? "Task opened" : `Task assigned to ${toName} (by ${byName})`, undefined, `${t.description} · due ${t.dueDate}`);
+   587→        return { ...prev, tasks: [...tasks, t], activities: acts };
+   588→      });
+   589→    },
+   590→    [session]
+   591→  );
+   592→
+   593→  const updateTask = useCallback(
+   594→    (id: number, patch: Partial<Omit<Task, "id" | "caseId" | "createdAt" | "createdBy">>) => {
+   595→      const me = session;
+   596→      setDb((prev) => {
+   597→        const before = prev.tasks.find((t) => t.id === id);
+   598→        if (!before) return prev;
+   599→        let acts = prev.activities;
+   600→        if (patch.ownerId !== undefined && patch.ownerId !== before.ownerId)
+   601→          acts = logAct(acts, before.caseId, me?.id ?? 0, "Task owner changed",
+   602→            prev.users.find((u) => u.id === before.ownerId)?.name ?? "—",
+   603→            prev.users.find((u) => u.id === patch.ownerId)?.name ?? "—");
+   604→        if (patch.waitingFor !== undefined && patch.waitingFor !== before.waitingFor)
+   605→          acts = logAct(acts, before.caseId, me?.id ?? 0, "Waiting-for changed", before.waitingFor, patch.waitingFor);
+   606→        if (patch.whyPending !== undefined && patch.whyPending !== before.whyPending)
+   607→          acts = logAct(acts, before.caseId, me?.id ?? 0, "Why-pending changed", before.whyPending, patch.whyPending);
+   608→        if (patch.dueDate !== undefined && patch.dueDate !== before.dueDate)
+   609→          acts = logAct(acts, before.caseId, me?.id ?? 0, "Due date changed", before.dueDate, patch.dueDate);
+   610→        return {
+   611→          ...prev,
+   612→          tasks: prev.tasks.map((t) => (t.id === id ? { ...t, ...patch } : t)),
+   613→          activities: acts,
+   614→        };
+   615→      });
+   616→    },
+   617→    [session]
+   618→  );
+   619→
+   620→  const completeTask = useCallback(
+   621→    (id: number, remarks: string) => {
+   622→      const me = session;
+   623→      setDb((prev) => {
+   624→        const before = prev.tasks.find((t) => t.id === id);
+   625→        if (!before) return prev;
+   626→        return {
+   627→          ...prev,
+   628→          tasks: prev.tasks.map((t) =>
+   629→            t.id === id ? { ...t, status: "Done" as const, completedAt: nowISO(), remarks: remarks.trim() } : t
+   630→          ),
+   631→          activities: logAct(prev.activities, before.caseId, me?.id ?? 0, "Task completed", before.description, remarks.trim() || undefined),
+   632→        };
+   633→      });
+   634→    },
+   635→    [session]
+   636→  );
+   637→
+   638→  /* ---------------- instructions ---------------- */
+   639→
+   640→  const addInstruction = useCallback(
+   641→    (caseId: number, input: { instruction: string; assignedTo: number; dueDate: string }) => {
+   642→      const me = session;
+   643→      setDb((prev) => {
+   644→        const list = prev.instructions;
+   645→        const i = {
+   646→          id: nextId(list),
+   647→          caseId,
+   648→          issuedBy: me?.id ?? 0,
+   649→          instruction: input.instruction.trim(),
+   650→          assignedTo: input.assignedTo,
+   651→          dueDate: input.dueDate,
+   652→          status: "Open" as const,
+   653→          createdAt: nowISO(),
+   654→          completedAt: null,
+   655→          replies: [],
+   656→        };
+   657→        return {
+   658→          ...prev,
+   659→          instructions: [...list, i],
+   660→          activities: logAct(prev.activities, caseId, me?.id ?? 0, "Instruction issued", undefined, i.instruction),
+   661→        };
+   662→      });
+   663→    },
+   664→    [session]
+   665→  );
+   666→
+   667→  const completeInstruction = useCallback(
+   668→    (id: number) => {
+   669→      const me = session;
+   670→      setDb((prev) => {
+   671→        const before = prev.instructions.find((i) => i.id === id);
+   672→        if (!before) return prev;
+   673→        return {
+   674→          ...prev,
+   675→          instructions: prev.instructions.map((i) => (i.id === id ? { ...i, status: "Done" as const, completedAt: nowISO() } : i)),
+   676→          activities: logAct(prev.activities, before.caseId, me?.id ?? 0, "Instruction completed", before.instruction),
+   677→        };
+   678→      });
+   679→    },
+   680→    [session]
+   681→  );
+   682→
+   683→  const nextReplyId = (prev: DB): number =>
+   684→    Math.max(
+   685→      0,
+   686→      ...prev.instructions.flatMap((i) => i.replies.map((r) => r.id)),
+   687→      ...prev.bulletin.flatMap((b) => b.replies.map((r) => r.id))
+   688→    ) + 1;
+   689→
+   690→  const replyToInstruction = useCallback(
+   691→    (id: number, text: string) => {
+   692→      const me = session;
+   693→      const clean = text.trim();
+   694→      if (!clean || !me) return;
+   695→      setDb((prev) => ({
+   696→        ...prev,
+   697→        instructions: prev.instructions.map((i) =>
+   698→          i.id === id ? { ...i, replies: [...i.replies, { id: nextReplyId(prev), userId: me.id, text: clean, at: nowISO() }] } : i
+   699→        ),
+   700→      }));
+   701→    },
+   702→    [session]
+   703→  );
+   704→
+   705→  /* ---------------- morning bulletin ---------------- */
+   706→
+   707→  const issueBulletin = useCallback(
+   708→    (input: { date: string; task: string; caseId: number | null; targets: number[]; repeat?: "none" | "daily" | "weekdays"; asTemplate?: boolean }) => {
+   709→      const me = session;
+   710→      setDb((prev) => {
+   711→        let nid = nextId(prev.bulletin);
+   712→        const list = [...prev.bulletin];
+   713→        let acts = prev.activities;
+   714→
+   715→        if (input.asTemplate && input.repeat && input.repeat !== "none") {
+   716→          // save the routine: a hidden template + today's live instance
+   717→          const templateId = nid++;
+   718→          list.push({
+   719→            id: templateId,
+   720→            date: input.date,
+   721→            issuedBy: me?.id ?? 0,
+   722→            task: input.task.trim(),
+   723→            caseId: input.caseId,
+   724→            targets: input.targets,
+   725→            status: "Open",
+   726→            completedAt: null,
+   727→            completedBy: null,
+   728→            createdAt: nowISO(),
+   729→            replies: [],
+   730→            repeat: input.repeat,
+   731→            templateId: null,
+   732→            isTemplate: true,
+   733→          });
+   734→          const inst: BulletinItem = {
+   735→            id: nid++,
+   736→            date: todayISO(),
+   737→            issuedBy: me?.id ?? 0,
+   738→            task: input.task.trim(),
+   739→            caseId: input.caseId,
+   740→            targets: input.targets,
+   741→            status: "Open",
+   742→            completedAt: null,
+   743→            completedBy: null,
+   744→            createdAt: nowISO(),
+   745→            replies: [],
+   746→            templateId,
+   747→            isTemplate: false,
+   748→          };
+   749→          list.push(inst);
+   750→          if (input.caseId) acts = logAct(acts, input.caseId, me?.id ?? 0, "Directive issued (routine)", undefined, inst.task);
+   751→          return { ...prev, bulletin: list, activities: acts };
+   752→        }
+   753→
+   754→        const b: BulletinItem = {
+   755→          id: nid++,
+   756→          date: input.date,
+   757→          issuedBy: me?.id ?? 0,
+   758→          task: input.task.trim(),
+   759→          caseId: input.caseId,
+   760→          targets: input.targets,
+   761→          status: "Open",
+   762→          completedAt: null,
+   763→          completedBy: null,
+   764→          createdAt: nowISO(),
+   765→          replies: [],
+   766→        };
+   767→        if (input.caseId) acts = logAct(acts, input.caseId, me?.id ?? 0, "Directive issued", undefined, b.task);
+   768→        return { ...prev, bulletin: [...list, b], activities: acts };
+   769→      });
+   770→    },
+   771→    [session]
+   772→  );
+   773→
+   774→  const completeBulletin = useCallback(
+   775→    (id: number, opts?: { alsoTaskDone?: boolean }) => {
+   776→      const me = session;
+   777→      setDb((prev) => {
+   778→        const before = prev.bulletin.find((b) => b.id === id);
+   779→        if (!before) return prev;
+   780→        let acts = prev.activities;
+   781→        let tasks = prev.tasks;
+   782→        if (before.caseId)
+   783→          acts = logAct(acts, before.caseId, me?.id ?? 0, "Directive completed", before.task);
+   784→        // smart link: optionally close the case's current task in the same move
+   785→        if (opts?.alsoTaskDone && before.caseId) {
+   786→          const open = tasks.find((t) => t.caseId === before.caseId && t.status === "Open");
+   787→          if (open) {
+   788→            tasks = tasks.map((t) =>
+   789→              t.id === open.id
+   790→                ? { ...t, status: "Done" as const, completedAt: nowISO(), remarks: t.remarks || "Closed from morning-bulletin directive." }
+   791→                : t
+   792→            );
+   793→            acts = logAct(acts, before.caseId, me?.id ?? 0, "Task completed", open.description, "via directive");
+   794→          }
+   795→        }
+   796→        return {
+   797→          ...prev,
+   798→          tasks,
+   799→          bulletin: prev.bulletin.map((b) =>
+   800→            b.id === id ? { ...b, status: "Done" as const, completedAt: nowISO(), completedBy: me?.id ?? null } : b
+   801→          ),
+   802→          activities: acts,
+   803→        };
+   804→      });
+   805→    },
+   806→    [session]
+   807→  );
+   808→
+   809→  const carryBulletin = useCallback(
+   810→    (id: number) => {
+   811→      const me = session;
+   812→      setDb((prev) => {
+   813→        const before = prev.bulletin.find((b) => b.id === id);
+   814→        if (!before || before.status !== "Open" || before.dropped) return prev;
+   815→        const today = todayISO();
+   816→        let nid = nextId(prev.bulletin);
+   817→        const carried: BulletinItem = {
+   818→          ...before,
+   819→          id: nid++,
+   820→          date: today,
+   821→          carriedFrom: before.date,
+   822→          templateId: before.templateId ?? null,
+   823→          isTemplate: false,
+   824→          status: "Open",
+   825→          completedAt: null,
+   826→          completedBy: null,
+   827→          createdAt: nowISO(),
+   828→          replies: [],
+   829→          dropped: false,
+   830→        };
+   831→        let acts = prev.activities;
+   832→        if (before.caseId)
+   833→          acts = logAct(acts, before.caseId, me?.id ?? 0, "Directive carried forward", before.date, today);
+   834→        return {
+   835→          ...prev,
+   836→          bulletin: [
+   837→            ...prev.bulletin.map((b) => (b.id === id ? { ...b, dropped: true } : b)),
+   838→            carried,
+   839→          ],
+   840→          activities: acts,
+   841→        };
+   842→      });
+   843→    },
+   844→    [session]
+   845→  );
+   846→
+   847→  const dropBulletin = useCallback((id: number) => {
+   848→    setDb((prev) => ({
+   849→      ...prev,
+   850→      bulletin: prev.bulletin.map((b) => (b.id === id ? { ...b, dropped: true } : b)),
+   851→    }));
+   852→  }, []);
+   853→
+   854→  const deleteBulletin = useCallback((id: number) => {
+   855→    setDb((prev) => {
+   856→      const before = prev.bulletin.find((b) => b.id === id);
+   857→      if (!before) return prev;
+   858→      // deleting a template retires its future spawns; past instances stay as record
+   859→      return { ...prev, bulletin: prev.bulletin.filter((b) => b.id !== id) };
+   860→    });
+   861→  }, []);
+   862→
+   863→  const replyToBulletin = useCallback(
+   864→    (id: number, text: string) => {
+   865→      const me = session;
+   866→      const clean = text.trim();
+   867→      if (!clean || !me) return;
+   868→      setDb((prev) => ({
+   869→        ...prev,
+   870→        bulletin: prev.bulletin.map((b) =>
+   871→          b.id === id ? { ...b, replies: [...b.replies, { id: nextReplyId(prev), userId: me.id, text: clean, at: nowISO() }] } : b
+   872→        ),
+   873→      }));
+   874→    },
+   875→    [session]
+   876→  );
+   877→
+   878→  /* ---------------- affordability ---------------- */
+   879→
+   880→  const runCheck = useCallback(
+   881→    (input: CalcInput, customerName: string) => {
+   882→      const me = session;
+   883→      const r = computeAffordability(input);
+   884→      setDb((prev) => ({
+   885→        ...prev,
+   886→        affordabilityChecks: [
+   887→          ...prev.affordabilityChecks,
+   888→          {
+   889→            id: nextId(prev.affordabilityChecks),
+   890→            caseId: null,
+   891→            customerName: customerName.trim(),
+   892→            monthlyIncome: input.monthlyIncome,
+   893→            otherIncome: input.otherIncome,
+   894→            existingEmis: input.existingEmis,
+   895→            age: input.age,
+   896→            employmentType: input.employmentType,
+   897→            propertyValue: input.propertyValue,
+   898→            bank: input.bank,
+   899→            interestRate: r.rateUsed,
+   900→            tenureYears: r.tenureUsed,
+   901→            applicableLtv: r.applicableLtv,
+   902→            maxLoanByLtv: r.maxLoanByLtv,
+   903→            maxDbrPct: r.maxDbrPct,
+   904→            availableDbrEmi: r.availableDbrEmi,
+   905→            maxLoanByDbr: r.maxLoanByDbr,
+   906→            maxTenureByAge: r.maxTenureByAge,
+   907→            finalEligibleLoan: r.finalEligibleLoan,
+   908→            estimatedEmi: r.estimatedEmi,
+   909→            eligible: r.eligible,
+   910→            createdBy: me?.id ?? 0,
+   911→            createdAt: nowISO(),
+   912→          },
+   913→        ],
+   914→      }));
+   915→    },
+   916→    [session]
+   917→  );
+   918→
+   919→  const createCaseFromCheck = useCallback(
+   920→    (checkId: number, submitToBank = true, checkOverride?: AffordabilityCheck): LoanCase | null => {
+   921→      const me = session;
+   922→      const k = checkOverride ?? db.affordabilityChecks.find((x) => x.id === checkId);
+   923→      if (!k || !me) return null;
+   924→      const banks = submitToBank && k.bank ? [k.bank] : [];
+   925→      const maxNum = db.cases.reduce((m, c) => Math.max(m, parseInt(c.caseNumber.split("-")[1] ?? "0", 10)), 0);
+   926→      const c: LoanCase = {
+   927→        id: nextId(db.cases),
+   928→        caseNumber: `CASE-${String(maxNum + 1).padStart(6, "0")}`,
+   929→        customer: k.customerName,
+   930→        banks,
+   931→        wonBank: null,
+   932→        loanAmount: k.finalEligibleLoan,
+   933→        stage: "WhatsApp Group Creation",
+   934→        caseStatus: "Active",
+   935→        closedDate: null,
+   936→        ownerId: me.id,
+   937→        source: "Direct",
+   938→        partner: null,
+   939→        whatsapp: k.payload ? (JSON.parse(k.payload) as { input?: { whatsapp?: string } }).input?.whatsapp ?? "" : "",
+   940→        waGroup: null,
+   941→        createdAt: nowISO(),
+   942→        updatedAt: nowISO(),
+   943→      };
+   944→      setDb((prev) => {
+   945→        let tasks = prev.tasks;
+   946→        const first: Task = {
+   947→          id: nextId(tasks),
+   948→          caseId: c.id,
+   949→          description: `Collect income & property documents — file assessed for AED ${(k.finalEligibleLoan / 1000).toFixed(0)}K${k.bank ? ` at ${k.bank}` : ""}`,
+   950→          ownerId: me.id,
+   951→          createdBy: me.id,
+   952→          waitingFor: "Client",
+   953→          whyPending: "Awaiting client documents",
+   954→          createdAt: nowISO(),
+   955→          dueDate: new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10),
+   956→          status: "Open",
+   957→          completedAt: null,
+   958→          remarks: "",
+   959→        };
+   960→        tasks = [...tasks, first];
+   961→        return {
+   962→          ...prev,
+   963→          cases: [...prev.cases, c],
+   964→          tasks,
+   965→          affordabilityChecks: prev.affordabilityChecks.map((x) => (x.id === checkId ? { ...x, caseId: c.id } : x)),
+   966→          activities: logAct(logAct([], c.id, me.id, "Case created", undefined, c.stage), c.id, me.id, "Affordability check linked", `#${k.id}`),
+   967→        };
+   968→      });
+   969→      return c;
+   970→    },
+   971→    [db.affordabilityChecks, db.cases, session]
+   972→  );
+   973→
+   974→  const linkCheckToCase = useCallback((checkId: number, caseId: number) => {
+   975→    setDb((prev) => ({
+   976→      ...prev,
+   977→      affordabilityChecks: prev.affordabilityChecks.map((x) => (x.id === checkId ? { ...x, caseId } : x)),
+   978→      activities: logAct(prev.activities, caseId, prev.users[0]?.id ?? 0, "Affordability check linked", `#${checkId}`),
+   979→    }));
+   980→  }, []);
+   981→
+   982→  /* ---------------- admin: users ---------------- */
+   983→
+   984→  const saveUser = useCallback((u: User) => {
+   985→    setDb((prev) => {
+   986→      const exists = prev.users.some((x) => x.id === u.id);
+   987→      return {
+   988→        ...prev,
+   989→        users: exists ? prev.users.map((x) => (x.id === u.id ? u : x)) : [...prev.users, { ...u, id: nextId(prev.users), createdAt: nowISO() }],
+   990→      };
+   991→    });
+   992→  }, []);
+   993→
+   994→  const deleteUser = useCallback(
+   995→    (id: number): string | null => {
+   996→      const ownedCases = db.cases.filter((c) => c.ownerId === id).length;
+   997→      const openTasks = db.tasks.filter((t) => t.ownerId === id && t.status === "Open").length;
+   998→      if (ownedCases > 0 || openTasks > 0)
+   999→        return `Blocked: ${ownedCases} case(s) and ${openTasks} open task(s) still assigned. Reassign first.`;
+  1000→      setDb((prev) => ({ ...prev, users: prev.users.filter((u) => u.id !== id) }));
+  1001→      return null;
+  1002→    },
+  1003→    [db.cases, db.tasks]
+  1004→  );
+  1005→
+  1006→  /* ---------------- admin: master lists ---------------- */
+  1007→
+  1008→  type MasterKind = "stages" | "whyPending" | "waitingFor";
+  1009→
+  1010→  const addMaster = useCallback(
+  1011→    (kind: MasterKind, label: string): string | null => {
+  1012→      const clean = label.trim();
+  1013→      if (!clean) return "Label cannot be empty.";
+  1014→      if (db[kind].some((m) => m.label.toLowerCase() === clean.toLowerCase())) return "That label already exists.";
+  1015→      setDb((prev) => {
+  1016→        if (kind === "stages") {
+  1017→          const maxSort = (prev.stages as StageItem[]).reduce((m, s) => Math.max(m, s.sortOrder), 0);
+  1018→          return { ...prev, stages: [...prev.stages, { id: nextId(prev.stages), label: clean, active: true, sortOrder: maxSort + 1 }] };
+  1019→        }
+  1020→        const item: MasterItem = { id: nextId(prev[kind]), label: clean, active: true };
+  1021→        return { ...prev, [kind]: [...prev[kind], item] };
+  1022→      });
+  1023→      return null;
+  1024→    },
+  1025→    [db]
+  1026→  );
+  1027→
+  1028→  const toggleMaster = useCallback((kind: MasterKind, id: number) => {
+  1029→    setDb((prev) => ({
+  1030→      ...prev,
+  1031→      [kind]: (prev[kind] as MasterItem[]).map((m) => (m.id === id ? { ...m, active: !m.active } : m)),
+  1032→    }));
+  1033→  }, []);
+  1034→
+  1035→  const deleteMaster = useCallback(
+  1036→    (kind: MasterKind, id: number): string | null => {
+  1037→      const list = db[kind];
+  1038→      const item = list.find((m) => m.id === id);
+  1039→      if (!item) return "Item not found.";
+  1040→      let used = 0;
+  1041→      if (kind === "stages") used = db.cases.filter((c) => c.stage === item.label).length;
+  1042→      if (kind === "whyPending") used = db.tasks.filter((t) => t.status === "Open" && t.whyPending === item.label).length;
+  1043→      if (kind === "waitingFor") used = db.tasks.filter((t) => t.status === "Open" && t.waitingFor === item.label).length;
+  1044→      if (used > 0) return `Blocked: "${item.label}" is in use by ${used} record(s). Deactivate it instead.`;
+  1045→      setDb((prev) => ({ ...prev, [kind]: (prev[kind] as MasterItem[]).filter((m) => m.id !== id) }));
+  1046→      return null;
+  1047→    },
+  1048→    [db]
+  1049→  );
+  1050→
+  1051→  const moveStage = useCallback((id: number, dir: -1 | 1) => {
+  1052→    setDb((prev) => {
+  1053→      const sorted = [...prev.stages].sort((a, b) => a.sortOrder - b.sortOrder);
+  1054→      const idx = sorted.findIndex((s) => s.id === id);
+  1055→      const swap = idx + dir;
+  1056→      if (idx < 0 || swap < 0 || swap >= sorted.length) return prev;
+  1057→      const a = sorted[idx];
+  1058→      const b = sorted[swap];
+  1059→      return {
+  1060→        ...prev,
+  1061→        stages: prev.stages.map((s) => (s.id === a.id ? { ...s, sortOrder: b.sortOrder } : s.id === b.id ? { ...s, sortOrder: a.sortOrder } : s)),
+  1062→      };
+  1063→    });
+  1064→  }, []);
+  1065→
+  1066→  /* ---------------- admin: banks ---------------- */
+  1067→
+  1068→  const addBank = useCallback(
+  1069→    (name: string, ratePct: number): string | null => {
+  1070→      const clean = name.trim();
+  1071→      if (!clean) return "Bank name cannot be empty.";
+  1072→      if (db.banks.some((b) => b.name.toLowerCase() === clean.toLowerCase())) return "That bank already exists.";
+  1073→      if (Number.isNaN(ratePct) || ratePct < 0 || ratePct > 10) return "Rate must be between 0 and 10%.";
+  1074→      setDb((prev) => ({ ...prev, banks: [...prev.banks, { id: nextId(prev.banks), name: clean, ratePct, active: true }] }));
+  1075→      return null;
+  1076→    },
+  1077→    [db.banks]
+  1078→  );
+  1079→
+  1080→  const updateBankRate = useCallback((id: number, ratePct: number) => {
+  1081→    setDb((prev) => ({ ...prev, banks: prev.banks.map((b) => (b.id === id ? { ...b, ratePct } : b)) }));
+  1082→  }, []);
+  1083→
+  1084→  const toggleBank = useCallback((id: number) => {
+  1085→    setDb((prev) => ({ ...prev, banks: prev.banks.map((b) => (b.id === id ? { ...b, active: !b.active } : b)) }));
+  1086→  }, []);
+  1087→
+  1088→  const deleteBank = useCallback(
+  1089→    (id: number): string | null => {
+  1090→      const item = db.banks.find((b) => b.id === id);
+  1091→      if (!item) return "Bank not found.";
+  1092→      const used = db.cases.filter((c) => c.banks.includes(item.name) || c.wonBank === item.name).length;
+  1093→      if (used > 0) return `Blocked: "${item.name}" is referenced by ${used} case(s). Deactivate it instead.`;
+  1094→      setDb((prev) => ({ ...prev, banks: prev.banks.filter((b) => b.id !== id) }));
+  1095→      return null;
+  1096→    },
+  1097→    [db.banks, db.cases]
+  1098→  );
+  1099→
+  1100→  /* ---------------- admin: partners ---------------- */
+  1101→
+  1102→  const addPartner = useCallback(
+  1103→    (kind: PartnerKind, name: string, sharePct: number): string | null => {
+  1104→      const clean = name.trim();
+  1105→      if (!clean) return "Name cannot be empty.";
+  1106→      if (db.partners.some((p) => p.name.toLowerCase() === clean.toLowerCase())) return "That partner already exists.";
+  1107→      if (Number.isNaN(sharePct) || sharePct <= 0 || sharePct > 100) return "Share must be between 1 and 100%.";
+  1108→      setDb((prev) => ({ ...prev, partners: [...prev.partners, { id: nextId(prev.partners), kind, name: clean, defaultSharePct: sharePct, active: true }] }));
+  1109→      return null;
+  1110→    },
+  1111→    [db.partners]
+  1112→  );
+  1113→
+  1114→  const updatePartnerShare = useCallback((id: number, sharePct: number) => {
+  1115→    setDb((prev) => ({ ...prev, partners: prev.partners.map((p) => (p.id === id ? { ...p, defaultSharePct: sharePct } : p)) }));
+  1116→  }, []);
+  1117→
+  1118→  const togglePartner = useCallback((id: number) => {
+  1119→    setDb((prev) => ({ ...prev, partners: prev.partners.map((p) => (p.id === id ? { ...p, active: !p.active } : p)) }));
+  1120→  }, []);
+  1121→
+  1122→  const deletePartner = useCallback(
+  1123→    (id: number): string | null => {
+  1124→      const item = db.partners.find((p) => p.id === id);
+  1125→      if (!item) return "Partner not found.";
+  1126→      const used = db.cases.filter((c) => c.partner?.name === item.name).length;
+  1127→      if (used > 0) return `Blocked: "${item.name}" is on ${used} case(s). Deactivate instead.`;
+  1128→      setDb((prev) => ({ ...prev, partners: prev.partners.filter((p) => p.id !== id) }));
+  1129→      return null;
+  1130→    },
+  1131→    [db.partners, db.cases]
+  1132→  );
+  1133→
+  1134→  /* ---------------- admin: SLA rules ---------------- */
+  1135→
+  1136→  const saveSla = useCallback((rule: Omit<SlaRule, "id"> & { id?: number }) => {
+  1137→    setDb((prev) => {
+  1138→      if (rule.id != null)
+  1139→        return { ...prev, slaRules: prev.slaRules.map((r) => (r.id === rule.id ? { ...rule, id: rule.id! } : r)) };
+  1140→      return { ...prev, slaRules: [...prev.slaRules, { ...rule, id: nextId(prev.slaRules) }] };
+  1141→    });
+  1142→  }, []);
+  1143→
+  1144→  const toggleSla = useCallback((id: number) => {
+  1145→    setDb((prev) => ({ ...prev, slaRules: prev.slaRules.map((r) => (r.id === id ? { ...r, active: !r.active } : r)) }));
+  1146→  }, []);
+  1147→
+  1148→  const deleteSla = useCallback((id: number) => {
+  1149→    setDb((prev) => ({ ...prev, slaRules: prev.slaRules.filter((r) => r.id !== id) }));
+  1150→  }, []);
+  1151→
+  1152→  /* ---------------- mortgage checks ---------------- */
+  1153→
+  1154→  const saveMortgageCheck = useCallback(
+  1155→    (
+  1156→      name: string,
+  1157→      whatsapp: string,
+  1158→      payload: string,
+  1159→      summary: { income: number; emi: number; final: number; rate: number; tenorMonths: number; ltv: number; eligible: boolean }
+  1160→    ): number => {
+  1161→      const me = session;
+  1162→      const newId = nextId(db.affordabilityChecks);
+  1163→      setDb((prev) => {
+  1164→        return {
+  1165→          ...prev,
+  1166→          affordabilityChecks: [
+  1167→            ...prev.affordabilityChecks.filter((k) => k.id !== newId),
+  1168→            {
+  1169→              id: newId,
+  1170→              caseId: null,
+  1171→              customerName: name.trim(),
+  1172→              monthlyIncome: summary.income,
+  1173→              otherIncome: 0,
+  1174→              existingEmis: summary.emi,
+  1175→              age: 0,
+  1176→              employmentType: "Salaried",
+  1177→              propertyValue: 0,
+  1178→              bank: "",
+  1179→              interestRate: summary.rate,
+  1180→              tenureYears: Math.round(summary.tenorMonths / 12),
+  1181→              applicableLtv: summary.ltv,
+  1182→              maxLoanByLtv: 0,
+  1183→              maxDbrPct: 50,
+  1184→              availableDbrEmi: 0,
+  1185→              maxLoanByDbr: 0,
+  1186→              maxTenureByAge: Math.round(summary.tenorMonths / 12),
+  1187→              finalEligibleLoan: summary.final,
+  1188→              estimatedEmi: summary.emi,
+  1189→              eligible: summary.eligible,
+  1190→              createdBy: me?.id ?? 0,
+  1191→              createdAt: nowISO(),
+  1192→              payload,
+  1193→            },
+  1194→          ],
+  1195→        };
+  1196→      });
+  1197→      // whatsapp piggybacks on payload; keep param for future use
+  1198→      void whatsapp;
+  1199→      return newId;
+  1200→    },
+  1201→    [session, db.affordabilityChecks]
+  1202→  );
+  1203→
+  1204→  /* ---------------- admin: designations ---------------- */
+  1205→
+  1206→  const addDesignation = useCallback(
+  1207→    (name: string): string | null => {
+  1208→      const clean = name.trim();
+  1209→      if (!clean) return "Designation name cannot be empty.";
+  1210→      if (db.designations.some((d) => d.name.toLowerCase() === clean.toLowerCase())) return "That designation already exists.";
+  1211→      setDb((prev) => ({
+  1212→        ...prev,
+  1213→        designations: [
+  1214→          ...prev.designations,
+  1215→          { id: nextId(prev.designations), name: clean, scope: "own", issueTasks: false, admin: false, super: false, builtIn: false },
+  1216→        ],
+  1217→      }));
+  1218→      return null;
+  1219→    },
+  1220→    [db.designations]
+  1221→  );
+  1222→
+  1223→  const updateDesignation = useCallback((id: number, patch: Partial<Omit<Designation, "id" | "builtIn" | "super">>) => {
+  1224→    setDb((prev) => {
+  1225→      const before = prev.designations.find((d) => d.id === id);
+  1226→      if (!before) return prev;
+  1227→      const users =
+  1228→        patch.name !== undefined && patch.name !== before.name
+  1229→          ? prev.users.map((u) => (u.role === before.name ? { ...u, role: patch.name as string } : u))
+  1230→          : prev.users;
+  1231→      return {
+  1232→        ...prev,
+  1233→        users,
+  1234→        designations: prev.designations.map((d) => (d.id === id ? { ...d, ...patch } : d)),
+  1235→      };
+  1236→    });
+  1237→  }, []);
+  1238→
+  1239→  const deleteDesignation = useCallback(
+  1240→    (id: number): string | null => {
+  1241→      const item = db.designations.find((d) => d.id === id);
+  1242→      if (!item) return "Designation not found.";
+  1243→      if (item.builtIn) return "Built-in designations cannot be deleted — deactivate isn't needed; just stop using it.";
+  1244→      const used = db.users.filter((u) => u.role === item.name).length;
+  1245→      if (used > 0) return `Blocked: ${used} user(s) still hold "${item.name}". Change their designation first.`;
+  1246→      setDb((prev) => ({ ...prev, designations: prev.designations.filter((d) => d.id !== id) }));
+  1247→      return null;
+  1248→    },
+  1249→    [db.designations, db.users]
+  1250→  );
+  1251→
+  1252→  const value: StoreShape = {
+  1253→    db, session, route, toasts, nav, login, logout, toast, dismissToast,
+  1254→    createCase, updateCase, deleteCase, setCaseState, createTask, updateTask, completeTask,
+  1255→    addInstruction, completeInstruction, replyToInstruction,
+  1256→    issueBulletin, completeBulletin, carryBulletin, dropBulletin, deleteBulletin, replyToBulletin,
+  1257→    canInstruct, canAdmin,
+  1258→    saveMortgageCheck, addDesignation, updateDesignation, deleteDesignation,
+  1259→    runCheck, createCaseFromCheck, linkCheckToCase,
+  1260→    saveUser, deleteUser, addMaster, toggleMaster, deleteMaster, moveStage,
+  1261→    addBank, updateBankRate, toggleBank, deleteBank,
+  1262→    addPartner, updatePartnerShare, togglePartner, deletePartner,
+  1263→    saveSla, toggleSla, deleteSla,
+  1264→    userById, visibleCases, visibleTasks, canEditCase, canEditTask,
+  1265→  };
+  1266→
+  1267→  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  1268→}
+  1269→
+  1270→export function useStore(): StoreShape {
+  1271→  const v = useContext(Ctx);
+  1272→  if (!v) throw new Error("useStore must be used within StoreProvider");
+  1273→  return v;
+  1274→}
+  1275→
+  1276→/* ---------------- shared derived data ---------------- */
+  1277→
+  1278→export interface Kpis {
+  1279→  openCases: number;
+  1280→  overdue: number;
+  1281→  atRisk: number;
+  1282→  noAction: number;
+  1283→  openTasks: number;
+  1284→  dueToday: number;
+  1285→  pipelineValue: number;
+  1286→  estCommission: number;
+  1287→  escalations: number;
+  1288→}
+  1289→
+  1290→export function computeKpis(
+  1291→  cases: LoanCase[],
+  1292→  tasks: Task[],
+  1293→  statusOf: (c: LoanCase) => "On Track" | "At Risk" | "Overdue" | "No Action",
+  1294→  banks: BankItem[],
+  1295→  escalations: number
+  1296→): Kpis {
+  1297→  const open = cases.filter((c) => c.caseStatus === "Active");
+  1298→  let overdue = 0, atRisk = 0, noAction = 0, estCommission = 0;
+  1299→  for (const c of open) {
+  1300→    const s = statusOf(c);
+  1301→    if (s === "Overdue") overdue += 1;
+  1302→    else if (s === "At Risk") atRisk += 1;
+  1303→    else if (s === "No Action") noAction += 1;
+  1304→    const b = banks.find((x) => x.name === primaryBank(c));
+  1305→    estCommission += b ? (c.loanAmount * b.ratePct) / 100 : 0;
+  1306→  }
+  1307→  const openTasks = tasks.filter((t) => t.status === "Open");
+  1308→  return {
+  1309→    openCases: open.length,
+  1310→    overdue,
+  1311→    atRisk,
+  1312→    noAction,
+  1313→    openTasks: openTasks.length,
+  1314→    dueToday: openTasks.filter((t) => t.dueDate === todayISO()).length,
+  1315→    pipelineValue: open.reduce((s, c) => s + c.loanAmount, 0),
+  1316→    estCommission: Math.round(estCommission),
+  1317→    escalations,
+  1318→  };
+  1319→}
+  1320→
+  1321→export function activityPerDay(activities: Activity[], days: number): number[] {
+  1322→  const out = new Array(days).fill(0) as number[];
+  1323→  const today = new Date();
+  1324→  for (const a of activities) {
+  1325→    const d = new Date(a.at);
+  1326→    const diff = Math.floor((today.setHours(0, 0, 0, 0) - d.setHours(0, 0, 0, 0)) / 86400000);
+  1327→    if (diff >= 0 && diff < days) out[days - 1 - diff] += 1;
+  1328→  }
+  1329→  return out;
+  1330→}
+  1331→
+  1332→export function stageEnteredAt(c: LoanCase, activities: Activity[]): string {
+  1333→  const moves = activities
+  1334→    .filter((a) => a.caseId === c.id && a.action === "Stage moved" && a.newValue === c.stage)
+  1335→    .sort((a, b) => b.at.localeCompare(a.at));
+  1336→  return moves[0]?.at ?? c.createdAt;
+  1337→}
+  1338→
+  1339→export function slaFor(rules: SlaRule[], stage: string, bank: string | null): SlaRule | null {
+  1340→  const candidates = rules.filter((r) => r.active && r.stage === stage);
+  1341→  return candidates.find((r) => r.bank === bank) ?? candidates.find((r) => r.bank === null) ?? null;
+  1342→}
+  1343→
+  1344→export interface Escalation {
+  1345→  c: LoanCase;
+  1346→  rule: SlaRule;
+  1347→  days: number;
+  1348→}
+  1349→
+  1350→export function computeEscalations(db: DB, cases: LoanCase[]): Escalation[] {
+  1351→  const out: Escalation[] = [];
+  1352→  for (const c of cases) {
+  1353→    if (c.caseStatus !== "Active") continue;
+  1354→    const bank = primaryBank(c);
+  1355→    const rule = slaFor(db.slaRules, c.stage, bank);
+  1356→    if (!rule) continue;
+  1357→    const days = Math.max(0, daysBetween(stageEnteredAt(c, db.activities).slice(0, 10), todayISO()));
+  1358→    if (days > rule.maxDays) out.push({ c, rule, days });
+  1359→  }
+  1360→  return out.sort((a, b) => b.days - a.days);
+  1361→}
+  1362→
+  1363→export { ageDays };
+  1364→
