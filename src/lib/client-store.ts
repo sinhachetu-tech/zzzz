@@ -119,18 +119,26 @@ export const useHfmcStore = create<HfmcState>((set, get) => ({
     window.location.reload();
   },
   hydrate: async () => {
-    if (get().loading) return;
+    // No loading guard — login needs to re-hydrate even if a mount-time hydrate
+    // is still in flight. Multiple concurrent hydrates are safe: 401s never
+    // clobber data/me, and 200s always win.
     set({ loading: true });
     try {
       const res = await fetch("/api/state", { cache: "no-store" });
       if (res.status === 401) {
-        set({ ...empty, loaded: true, loading: false });
+        // Do NOT touch `me` or the workspace data. A 401 here almost always
+        // means the request was dispatched before the session cookie settled
+        // (the mount-time hydrate, or a retry fired milliseconds after login).
+        // If we cleared data, a late-resolving 401 would wipe a 200 that had
+        // just loaded the workspace. `me` stays as the caller set it; data
+        // stays as it was (empty on first load, populated after a 200).
+        set({ loaded: true, loading: false });
         return;
       }
       const data = await res.json();
       set({ ...data, loaded: true, loading: false });
     } catch {
-      set({ ...empty, loaded: true, loading: false });
+      set({ loaded: true, loading: false });
     }
   },
 

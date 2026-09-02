@@ -58,8 +58,12 @@ export default function Login() {
       setShake(true); window.setTimeout(() => setShake(false), 550);
       return;
     }
+    // Login succeeded — the session cookie is now in the jar. Do a full page
+    // reload so the app bootstraps cleanly with the cookie, avoiding any race
+    // between the mount-time hydrate (sent pre-cookie) and the post-login
+    // hydrate. A reload is ~200ms and guarantees the workspace loads.
     toast("success", "Signed in. The pipeline is live.");
-    await hydrate();
+    window.location.reload();
   };
 
   return (
