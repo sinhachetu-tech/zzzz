@@ -53,6 +53,18 @@ export interface LoanCase {
   waGroup: string | null;
   createdAt: string;
   updatedAt: string;
+  // Two-way commission
+  submissionType: "direct" | "channel";
+  channelId: number | null;
+  channelName: string | null;
+  channelRatePct: number;
+}
+
+export interface ChannelItem {
+  id: number;
+  name: string;
+  commissionPct: number;
+  active: boolean;
 }
 
 export interface Task {

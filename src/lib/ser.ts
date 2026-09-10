@@ -37,7 +37,16 @@ export function serCase(c: PrismaCase): LoanCase {
     closedDate: c.closedDate, ownerId: c.ownerId, source: c.source as LoanCase["source"],
     partner, whatsapp: c.whatsapp, waGroup: c.waGroup,
     createdAt: c.createdAt.toISOString(), updatedAt: c.updatedAt.toISOString(),
+    submissionType: (c as { submissionType?: string }).submissionType === "channel" ? "channel" : "direct",
+    channelId: (c as { channelId?: number | null }).channelId ?? null,
+    channelName: (c as { channelName?: string | null }).channelName ?? null,
+    channelRatePct: (c as { channelRatePct?: number }).channelRatePct ?? 0,
   };
+}
+
+type PrismaChannel = { id: number; name: string; commissionPct: number; active: boolean };
+export function serChannel(ch: PrismaChannel) {
+  return { id: ch.id, name: ch.name, commissionPct: ch.commissionPct, active: ch.active };
 }
 
 type PrismaTask = {

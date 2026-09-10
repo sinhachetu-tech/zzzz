@@ -53,17 +53,31 @@ export function CommissionPanel({ c, compact = false }: { c: LoanCase; compact?:
       </div>
       <div className="space-y-2">
         <div className="flex justify-between text-[13px]">
-          <span className="text-[var(--ink-dim)]">Bank pays us</span>
+          <span className="text-[var(--ink-dim)]">Bank pays (gross)</span>
           <span className="mono font-semibold">{fmtMoney(m.gross)}</span>
         </div>
+        {/* Submission commission loss — channel cut */}
+        {m.submissionType === "channel" && m.channelCut > 0 && (
+          <div className="flex justify-between text-[13px]">
+            <span className="text-[var(--ink-dim)]">Channel · {m.channelName} @ {m.channelRatePct}% of loan</span>
+            <span className="mono font-semibold" style={{ color: "var(--coral)" }}>− {fmtMoney(m.channelCut)}</span>
+          </div>
+        )}
+        {m.submissionType === "direct" && (
+          <div className="flex justify-between text-[13px]">
+            <span className="text-[var(--ink-dim)]">Submission</span>
+            <span className="mono text-[var(--ink-faint)]">direct to bank — no channel cut</span>
+          </div>
+        )}
+        {/* Lead commission loss — partner cut */}
         {c.partner ? (
           <div className="flex justify-between text-[13px]">
-            <span className="text-[var(--ink-dim)]">{c.partner.kind} · {c.partner.name} @ {c.partner.sharePct}%</span>
+            <span className="text-[var(--ink-dim)]">{c.partner.kind} · {c.partner.name} @ {c.partner.sharePct}% of commission</span>
             <span className="mono font-semibold" style={{ color: "var(--coral)" }}>− {fmtMoney(m.partnerCut)}</span>
           </div>
         ) : (
           <div className="flex justify-between text-[13px]">
-            <span className="text-[var(--ink-dim)]">Partner payout</span>
+            <span className="text-[var(--ink-dim)]">Lead partner</span>
             <span className="mono text-[var(--ink-faint)]">none · {c.source}</span>
           </div>
         )}
@@ -74,7 +88,8 @@ export function CommissionPanel({ c, compact = false }: { c: LoanCase; compact?:
       </div>
       {!compact && (
         <p className="text-[10.5px] text-[var(--ink-faint)] mt-2 mb-0">
-          Live figures — change rates or partner share in Admin and this recalculates.
+          Two-way commission: {m.submissionType === "channel" ? `channel takes ${m.channelRatePct}% of loan amount` : "direct to bank, no submission loss"}
+          {c.partner ? `, lead partner takes ${c.partner.sharePct}% of commission` : ", no lead partner"}.
         </p>
       )}
     </div>

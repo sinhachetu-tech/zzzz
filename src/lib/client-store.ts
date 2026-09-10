@@ -2,11 +2,10 @@
 
 import { create } from "zustand";
 import type {
-  Activity, BankItem, BulletinItem, CasePartner, CaseSource, Designation, Instruction,
+  Activity, BankItem, BulletinItem, CasePartner, CaseSource, ChannelItem, Designation, Instruction,
   LoanCase, MasterItem, PartnerItem, SlaRule, StageItem, Task, User,
 } from "./types";
 import type { RoleFlags } from "./domain";
-import type { EmailLogDto, UnmatchedEmailDto } from "./ser";
 
 interface Me {
   id: number;
@@ -31,11 +30,10 @@ interface StateSnapshot {
   waitingFor: MasterItem[];
   banks: BankItem[];
   partners: PartnerItem[];
+  channels: ChannelItem[];
   slaRules: SlaRule[];
   instructions: Instruction[];
   bulletin: BulletinItem[];
-  emails: EmailLogDto[];
-  unmatchedEmails: UnmatchedEmailDto[];
   escalations: number;
 }
 
@@ -52,7 +50,6 @@ export type Route =
   | { name: "bulletin" }
   | { name: "calculator" }
   | { name: "reports" }
-  | { name: "emails" }
   | { name: "admin" };
 
 interface HfmcState extends StateSnapshot {
@@ -75,6 +72,7 @@ interface HfmcState extends StateSnapshot {
     customer: string; banks: string[]; loanAmount: number; stage: string; ownerId: number;
     source: CaseSource; partner: CasePartner | null; whatsapp: string; waGroup: string | null;
     task?: { description: string; dueDate: string; waitingFor: string; whyPending: string; ownerId: number };
+    submissionType?: "direct" | "channel"; channelId?: number | null; channelName?: string | null; channelRatePct?: number;
   }) => Promise<LoanCase>;
   updateCase: (id: number, patch: Record<string, unknown>) => Promise<void>;
   addTask: (caseId: number, input: { description: string; ownerId: number; waitingFor: string; whyPending: string; dueDate: string }) => Promise<void>;
@@ -105,8 +103,8 @@ interface HfmcState extends StateSnapshot {
 const empty: StateSnapshot = {
   me: null, flags: null, users: [], designations: [], cases: [], visibleCaseIds: [], tasks: [],
   visibleTaskIds: [], activities: [], stages: [], whyPending: [], waitingFor: [], banks: [],
-  partners: [], slaRules: [], instructions: [], bulletin: [],
-  emails: [], unmatchedEmails: [], escalations: 0,
+  partners: [], channels: [], slaRules: [], instructions: [], bulletin: [],
+  escalations: 0,
 };
 
 let toastSeq = 1;

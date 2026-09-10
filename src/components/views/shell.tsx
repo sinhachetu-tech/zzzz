@@ -29,12 +29,14 @@ function Clock() {
 }
 
 function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { stages, banks, partners, users, me, createCase, toast, nav } = useHfmcStore();
+  const { stages, banks, partners, channels, users, me, createCase, toast, nav } = useHfmcStore();
   const activeStages = [...stages].filter((s) => s.active).sort((a, b) => a.sortOrder - b.sortOrder);
   const [customer, setCustomer] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
   const [waGroup, setWaGroup] = useState("");
   const [bankList, setBankList] = useState<string[]>([]);
+  const [submissionType, setSubmissionType] = useState<"direct" | "channel">("direct");
+  const [channelId, setChannelId] = useState<number | null>(null);
   const [amount, setAmount] = useState("1500000");
   const [stage, setStage] = useState(activeStages[0]?.label ?? "WhatsApp Group Creation");
   const [ownerId, setOwnerId] = useState(me?.id ?? 0);
@@ -61,9 +63,11 @@ function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void })
     if (needsPartner && !partnerName) return setErr(`Pick the ${source.toLowerCase()} who sourced this case.`);
     const sharePct = share === 0 ? Number(customShare) : share;
     if (needsPartner && (!sharePct || sharePct <= 0 || sharePct > 100)) return setErr("Enter a valid partner share %.");
+    if (submissionType === "channel" && !channelId) return setErr("Pick a channel partner.");
     const partner: CasePartner | null = needsPartner
       ? { kind: source as "Agent" | "Broker" | "Referral", name: partnerName, sharePct }
       : null;
+    const selectedChannel = submissionType === "channel" ? channels.find((ch) => ch.id === channelId) : null;
     try {
       const c = await createCase({
         customer, banks: bankList, loanAmount: amt, stage, ownerId,
@@ -71,6 +75,10 @@ function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void })
         task: taskDesc.trim()
           ? { description: taskDesc, dueDate: taskDue, waitingFor: "Internal", whyPending: "Internal review", ownerId }
           : undefined,
+        submissionType,
+        channelId: selectedChannel?.id ?? null,
+        channelName: selectedChannel?.name ?? null,
+        channelRatePct: selectedChannel?.commissionPct ?? 0,
       });
       toast("success", `${c.caseNumber} opened for ${c.customer}.`);
       setCustomer(""); setWhatsapp(""); setWaGroup(""); setBankList([]); setTaskDesc(""); setErr("");
@@ -119,6 +127,35 @@ function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void })
           <p className="text-[11px] text-[var(--ink-faint)] mt-1.5 mb-0">
             Multiple banks can be in play — the winning bank is recorded when the case books. Percentages shown are our commission rate.
           </p>
+        </div>
+
+        <div>
+          <label className="label">Submission type</label>
+          <div className="flex gap-1.5">
+            <button type="button" className="chip transition-all flex-1 justify-center"
+              style={submissionType === "direct" ? { background: "rgba(67,214,155,0.12)", borderColor: "var(--mint)", color: "var(--mint)" } : { background: "var(--bg2)", borderColor: "var(--line)", color: "var(--ink-faint)" }}
+              onClick={() => { setSubmissionType("direct"); setChannelId(null); }}>
+              Direct to bank
+            </button>
+            <button type="button" className="chip transition-all flex-1 justify-center"
+              style={submissionType === "channel" ? { background: "rgba(242,176,76,0.14)", borderColor: "var(--amber)", color: "var(--amber)" } : { background: "var(--bg2)", borderColor: "var(--line)", color: "var(--ink-faint)" }}
+              onClick={() => setSubmissionType("channel")}>
+              Through channel
+            </button>
+          </div>
+          {submissionType === "channel" && (
+            <select className="select mt-2" value={channelId ?? ""} onChange={(e) => setChannelId(e.target.value ? parseInt(e.target.value, 10) : null)}>
+              <option value="">Select channel…</option>
+              {channels.filter((ch) => ch.active).map((ch) => (
+                <option key={ch.id} value={ch.id}>{ch.name} — {ch.commissionPct}% of loan</option>
+              ))}
+            </select>
+          )}
+          {submissionType === "channel" && channelId && (
+            <p className="text-[10.5px] text-[var(--ink-faint)] mt-1 mb-0">
+              Channel takes {channels.find((ch) => ch.id === channelId)?.commissionPct}% of the loan amount from the gross commission.
+            </p>
+          )}
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -203,7 +240,7 @@ function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void })
 }
 
 export default function Shell({ children }: { children: ReactNode }) {
-  const { me, route, nav, logout, escalations, instructions, bulletin, visibleCases, unmatchedEmails, newCaseOpen, openNewCase, closeNewCase } = useHfmcStore();
+  const { me, route, nav, logout, escalations, instructions, bulletin, visibleCases, newCaseOpen, openNewCase, closeNewCase } = useHfmcStore();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const flags = useHfmcStore((s) => s.flags);
 
@@ -225,7 +262,6 @@ export default function Shell({ children }: { children: ReactNode }) {
     { label: "Morning Bulletin", route: { name: "bulletin" }, icon: IFlag, badge: myOpenDirectives },
     { label: "Calculator", route: { name: "calculator" }, icon: ICalc },
     { label: "Task Queue", route: { name: "tasks" }, icon: ITasks },
-    { label: "Emails", route: { name: "emails" }, icon: IInbox, badge: unmatchedEmails.length },
     { label: "Reports", route: { name: "reports" }, icon: IChart },
     ...(isAdmin ? [{ label: "Admin", route: { name: "admin" as const }, icon: IShield }] : []),
   ];
@@ -237,7 +273,7 @@ export default function Shell({ children }: { children: ReactNode }) {
     route.name === "bulletin" ? "Morning Bulletin" :
     route.name === "calculator" ? "Calculator" :
     route.name === "reports" ? "Reports" :
-    route.name === "emails" ? "Emails" : "Admin";
+    "Admin";
 
   return (
     <div className="flex h-screen overflow-hidden">

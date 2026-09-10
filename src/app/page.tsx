@@ -10,7 +10,6 @@ import Tasks from "@/components/views/tasks";
 import Bulletin from "@/components/views/bulletin";
 import Calculator from "@/components/views/calculator";
 import Reports from "@/components/views/reports";
-import Emails from "@/components/views/emails";
 import Admin from "@/components/views/admin";
 
 export default function Page() {
@@ -47,7 +46,6 @@ function renderRoute(route: Route) {
     case "bulletin": return <Bulletin />;
     case "calculator": return <Calculator />;
     case "reports": return <Reports />;
-    case "emails": return <Emails />;
     case "admin": return <Admin />;
     default: return <Dashboard />;
   }

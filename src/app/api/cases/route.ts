@@ -14,6 +14,7 @@ export async function POST(req: NextRequest) {
   const {
     customer, banks, loanAmount, stage, ownerId, source, partner,
     whatsapp, waGroup, task,
+    submissionType, channelId, channelName, channelRatePct,
   } = body as {
     customer: string;
     banks: string[];
@@ -25,6 +26,10 @@ export async function POST(req: NextRequest) {
     whatsapp: string;
     waGroup: string | null;
     task?: { description: string; dueDate: string; waitingFor: string; whyPending: string; ownerId: number };
+    submissionType?: "direct" | "channel";
+    channelId?: number | null;
+    channelName?: string | null;
+    channelRatePct?: number;
   };
 
   if (!customer?.trim()) return NextResponse.json({ error: "Customer name is required." }, { status: 400 });
@@ -49,6 +54,10 @@ export async function POST(req: NextRequest) {
       partnerSharePct: partner?.sharePct ?? null,
       whatsapp: whatsapp ?? "",
       waGroup: waGroup ?? null,
+      submissionType: submissionType ?? "direct",
+      channelId: channelId ?? null,
+      channelName: channelName ?? null,
+      channelRatePct: channelRatePct ?? 0,
     },
   });
 

@@ -3,7 +3,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { currentUser, flagsFor } from "@/lib/auth";
-import { serBank, serPartner, serStage, serMaster, serUser } from "@/lib/ser";
+import { serBank, serPartner, serStage, serMaster, serUser, serChannel } from "@/lib/ser";
 
 async function guard() {
   const me = await currentUser();
@@ -31,6 +31,7 @@ export async function GET(req: NextRequest) {
   }
   if (kind === "users") return NextResponse.json({ items: (await db.user.findMany({ orderBy: { id: "asc" } })).map(serUser) });
   if (kind === "designations") return NextResponse.json({ items: await db.designation.findMany({ orderBy: { id: "asc" } }) });
+  if (kind === "channels") return NextResponse.json({ items: (await db.channelItem.findMany({ orderBy: { id: "asc" } })).map(serChannel) });
   if (kind === "sla") return NextResponse.json({ items: await db.slaRule.findMany({ orderBy: { id: "asc" } }) });
   return NextResponse.json({ error: "kind required" }, { status: 400 });
 }
@@ -48,6 +49,10 @@ export async function POST(req: NextRequest) {
     if (kind === "partner") {
       const item = await db.partnerItem.create({ data: { kind: body.partnerKind, name: body.name, defaultSharePct: body.defaultSharePct ?? 20, active: body.active ?? true } });
       return NextResponse.json({ item: serPartner(item) });
+    }
+    if (kind === "channel") {
+      const item = await db.channelItem.create({ data: { name: body.name, commissionPct: body.commissionPct ?? 0.4, active: body.active ?? true } });
+      return NextResponse.json({ item: serChannel(item) });
     }
     if (kind === "stage") {
       const max = await db.stageItem.aggregate({ _max: { sortOrder: true } });
@@ -91,6 +96,10 @@ export async function PATCH(req: NextRequest) {
       const item = await db.partnerItem.update({ where: { id: numId }, data: { name: body.name, kind: body.partnerKind, defaultSharePct: body.defaultSharePct, active: body.active } });
       return NextResponse.json({ item: serPartner(item) });
     }
+    if (kind === "channel") {
+      const item = await db.channelItem.update({ where: { id: numId }, data: { name: body.name, commissionPct: body.commissionPct, active: body.active } });
+      return NextResponse.json({ item: serChannel(item) });
+    }
     if (kind === "stage") {
       const item = await db.stageItem.update({ where: { id: numId }, data: { label: body.label, active: body.active, sortOrder: body.sortOrder } });
       return NextResponse.json({ item: serStage(item) });
@@ -130,6 +139,7 @@ export async function DELETE(req: NextRequest) {
   try {
     if (kind === "bank") await db.bankItem.delete({ where: { id: numId } });
     else if (kind === "partner") await db.partnerItem.delete({ where: { id: numId } });
+    else if (kind === "channel") await db.channelItem.delete({ where: { id: numId } });
     else if (kind === "stage") await db.stageItem.delete({ where: { id: numId } });
     else if (kind === "master") await db.masterItem.delete({ where: { id: numId } });
     else if (kind === "user") await db.user.delete({ where: { id: numId } });

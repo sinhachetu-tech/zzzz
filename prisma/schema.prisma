@@ -59,6 +59,11 @@ model LoanCase {
   partnerKind String?  // Agent | Broker | Referral
   partnerName String?
   partnerSharePct Int?
+  // Two-way commission: submission type (direct to bank vs through channel)
+  submissionType String  @default("direct") // direct | channel
+  channelId      Int?
+  channelName    String?   // denormalized for history
+  channelRatePct Float   @default(0)  // channel's cut as % of loan amount (e.g. 0.4)
   whatsapp    String   @default("")
   waGroup     String?
   createdAt   DateTime @default(now())
@@ -282,3 +287,12 @@ model UnmatchedEmail {
   resolvedAt      DateTime?
 }
 
+
+// Channel partners (Huspy, Prypco, etc.) — platforms that submit deals
+// to banks on your behalf and take a cut of the loan amount.
+model ChannelItem {
+  id            Int      @id @default(autoincrement())
+  name          String   @unique
+  commissionPct Float    @default(0.4) // % of loan amount the channel takes
+  active        Boolean  @default(true)
+}

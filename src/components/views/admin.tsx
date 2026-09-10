@@ -25,6 +25,7 @@ const TAB_OPTIONS: { value: Tab; label: string }[] = [
   { value: "designations", label: "Designations" },
   { value: "banks", label: "Banks & rates" },
   { value: "partners", label: "Partners" },
+  { value: "channels", label: "Channels" },
   { value: "stages", label: "Stages" },
   { value: "masters", label: "Masters" },
   { value: "sla", label: "SLA rules" },
@@ -184,6 +185,7 @@ export default function Admin() {
       {tab === "designations" && <DesignationsTab />}
       {tab === "banks" && <BanksTab />}
       {tab === "partners" && <PartnersTab />}
+      {tab === "channels" && <ChannelsTab />}
       {tab === "stages" && <StagesTab />}
       {tab === "masters" && <MastersTab />}
       {tab === "sla" && <SlaTab />}
@@ -1048,6 +1050,93 @@ interface StageDraft {
 
 function blankStage(nextOrder: number): StageDraft {
   return { id: 0, label: "", active: true, sortOrder: nextOrder };
+}
+
+function ChannelsTab() {
+  const { channels, hydrate, toast } = useHfmcStore();
+  const [draft, setDraft] = useState({ name: "", commissionPct: 0.4 });
+  const [edit, setEdit] = useState<{ id: number; name: string; commissionPct: number; active: boolean } | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    if (!draft.name.trim()) return toast("error", "Name is required.");
+    setBusy(true);
+    try {
+      const res = await fetch("/api/admin", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind: "channel", name: draft.name.trim(), commissionPct: draft.commissionPct }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Create failed");
+      toast("success", `Channel ${draft.name} added.`);
+      setDraft({ name: "", commissionPct: 0.4 });
+      await hydrate();
+    } catch (e) { toast("error", e instanceof Error ? e.message : "Create failed"); }
+    setBusy(false);
+  };
+
+  const saveEdit = async () => {
+    if (!edit) return;
+    setBusy(true);
+    try {
+      const res = await fetch("/api/admin", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind: "channel", id: edit.id, name: edit.name, commissionPct: edit.commissionPct, active: edit.active }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Update failed");
+      toast("success", "Channel updated.");
+      setEdit(null);
+      await hydrate();
+    } catch (e) { toast("error", e instanceof Error ? e.message : "Update failed"); }
+    setBusy(false);
+  };
+
+  const del = async (id: number, name: string) => {
+    if (!confirm(`Delete channel "${name}"?`)) return;
+    try {
+      await fetch(`/api/admin?kind=channel&id=${id}`, { method: "DELETE" });
+      toast("success", "Channel deleted.");
+      await hydrate();
+    } catch { toast("error", "Delete failed."); }
+  };
+
+  return (
+    <CardHeader title="Channels" sub="Platforms (Huspy, Prypco, etc.) that submit deals and take a cut of the loan amount">
+      <div className="flex flex-wrap gap-2 mb-4">
+        <input className="input !w-auto" style={{ minWidth: 200 }} placeholder="Channel name (e.g. Huspy)" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
+        <input className="input mono !w-24" type="number" step={0.05} min={0} max={2} placeholder="0.40" value={draft.commissionPct} onChange={(e) => setDraft({ ...draft, commissionPct: Number(e.target.value) || 0 })} />
+        <span className="text-[11px] text-[var(--ink-faint)] self-center">% of loan amount</span>
+        <button className="btn btn-primary" onClick={submit} disabled={busy}>Add channel</button>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="tbl min-w-[500px]">
+          <thead><tr><th>Name</th><th>Commission %</th><th>Active</th><th className="text-right">Actions</th></tr></thead>
+          <tbody>
+            {channels.map((ch) => (
+              <tr key={ch.id}>
+                <td className="font-medium">{ch.name}</td>
+                <td className="mono">{ch.commissionPct}%</td>
+                <td>{ch.active ? <span style={{ color: "var(--mint)" }}>●</span> : <span style={{ color: "var(--ink-faint)" }}>○</span>}</td>
+                <td className="text-right">
+                  <button className="btn btn-ghost btn-sm" onClick={() => setEdit({ id: ch.id, name: ch.name, commissionPct: ch.commissionPct, active: ch.active })}>Edit</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => del(ch.id, ch.name)}>Delete</button>
+                </td>
+              </tr>
+            ))}
+            {channels.length === 0 && <tr><td colSpan={4} className="text-center text-[var(--ink-faint)] py-4">No channels yet.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      {edit && (
+        <Modal title="Edit channel" onClose={() => setEdit(null)} footer={<><button className="btn btn-ghost" onClick={() => setEdit(null)}>Cancel</button><button className="btn btn-primary" onClick={saveEdit} disabled={busy}>Save</button></>}>
+          <div className="space-y-3">
+            <div><label className="label">Name</label><input className="input" value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} /></div>
+            <div><label className="label">Commission % (of loan amount)</label><input className="input mono" type="number" step={0.05} min={0} max={2} value={edit.commissionPct} onChange={(e) => setEdit({ ...edit, commissionPct: Number(e.target.value) || 0 })} /></div>
+            <div><label className="label">Active</label><button className="btn btn-ghost btn-sm" onClick={() => setEdit({ ...edit, active: !edit.active })}>{edit.active ? "● Active" : "○ Inactive"}</button></div>
+          </div>
+        </Modal>
+      )}
+    </CardHeader>
+  );
 }
 
 function StagesTab() {

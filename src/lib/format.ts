@@ -113,19 +113,38 @@ export const commissionOf = (ratePct: number, loanAmount: number) => (loanAmount
 export interface CommissionBreakdown {
   bank: string | null;
   ratePct: number;
-  gross: number;
+  gross: number;               // what the bank pays (loanAmount × bank rate %)
+  // Two-way commission loss:
+  submissionType: "direct" | "channel";
+  channelName: string | null;
+  channelRatePct: number;     // channel's % of loan amount (e.g. 0.4)
+  channelCut: number;         // channel takes this from the gross (loanAmount × channelRatePct)
+  afterChannel: number;       // what's left after channel takes their cut
+  // Lead partner cut (from what's left after channel):
   partnerSharePct: number;
   partnerCut: number;
-  net: number;
+  net: number;                 // what HFMC keeps
 }
 
 export function commissionFor(c: LoanCase, banks: BankItem[]): CommissionBreakdown {
   const bank = c.wonBank ?? c.banks[0] ?? null;
   const ratePct = rateFor(banks, bank);
   const gross = commissionOf(ratePct, c.loanAmount);
+  // Submission commission loss: channel takes a % of the loan amount
+  const channelRatePct = c.channelRatePct ?? 0;
+  const channelCut = (c.loanAmount * channelRatePct) / 100;
+  const afterChannel = gross - channelCut;
+  // Lead commission loss: partner takes a % of the remaining commission
   const partnerSharePct = c.partner?.sharePct ?? 0;
-  const partnerCut = (gross * partnerSharePct) / 100;
-  return { bank, ratePct, gross, partnerCut, net: gross - partnerCut };
+  const partnerCut = (afterChannel * partnerSharePct) / 100;
+  const net = afterChannel - partnerCut;
+  return {
+    bank, ratePct, gross,
+    submissionType: (c as { submissionType?: string }).submissionType === "channel" ? "channel" : "direct",
+    channelName: (c as { channelName?: string | null }).channelName ?? null,
+    channelRatePct, channelCut, afterChannel,
+    partnerSharePct, partnerCut, net,
+  };
 }
 
 export function primaryBank(c: LoanCase): string | null {
