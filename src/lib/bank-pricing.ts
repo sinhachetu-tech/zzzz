@@ -70,8 +70,8 @@ export function resolveQuote(pricing: ProductPricing | null, req: QuoteMatchInpu
  * client at. Fixed quotes use follow-on (variable) rate; variable quotes use
  * margin + current EIBOR. This is what keeps stress tests alive when EIBOR moves.
  */
-export function assessmentRate(q: RateQuote, eibor: EiborCurve): number | null {
-  return rateSchedule(q, eibor).stressRatePct;
+export function assessmentRate(q: RateQuote, eibor: EiborCurve, stressBufferPct: number | null = 0): number | null {
+  return rateSchedule(q, eibor, stressBufferPct).stressRatePct;
 }
 
 /** Parse "pricingJson" safely. */
@@ -95,7 +95,7 @@ export interface RateSchedule {
 }
 
 /** The complete rate story for one quote at today's EIBOR. */
-export function rateSchedule(q: RateQuote, eibor: EiborCurve): RateSchedule {
+export function rateSchedule(q: RateQuote, eibor: EiborCurve, stressBufferPct: number | null = 0): RateSchedule {
   const eiborFor = (tenor: EiborTenor) => eibor[tenor] ?? null;
   const varRate = (basis: EiborTenor, margin: number | null | undefined, floor: number | null | undefined): number | null => {
     const base = eiborFor(basis);
@@ -106,15 +106,17 @@ export function rateSchedule(q: RateQuote, eibor: EiborCurve): RateSchedule {
   if (q.rateType === "FIXED") {
     const va = q.variableAfter;
     const followOn = va ? varRate(va.basis.replace("_EIBOR", "") as EiborTenor, va.marginPct, va.floorPct) : (q.ratePct ?? null);
+    const stress = followOn != null && stressBufferPct ? followOn + stressBufferPct : followOn;
     return {
       introRatePct: q.ratePct ?? null,
       introTermYears: q.termYears ?? null,
       followOnRatePct: followOn,
-      stressRatePct: followOn, // banks qualify at the follow-on rate
+      stressRatePct: stress, // banks qualify at follow-on + their stress buffer (CBD +2 etc.)
     };
   }
   // day-1 variable: intro == follow-on == stress
   const tenor = q.rateType.replace("_EIBOR", "") as EiborTenor;
   const rate = varRate(tenor, q.marginPct, q.floorPct);
-  return { introRatePct: rate, introTermYears: 0, followOnRatePct: rate, stressRatePct: rate };
+  const stress = rate != null && stressBufferPct ? rate + stressBufferPct : rate;
+  return { introRatePct: rate, introTermYears: 0, followOnRatePct: rate, stressRatePct: stress };
 }

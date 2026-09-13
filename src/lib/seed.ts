@@ -18,6 +18,7 @@ import tasksJson from "@/data/seed/tasks.json";
 import bulletinsJson from "@/data/seed/bulletins.json";
 import bankProductsJson from "@/data/seed/bankProducts.json";
 import bankIntelJson from "@/data/seed/bankIntel.json";
+import bankProductsAllJson from "@/data/seed/bankProductsAll.json";
 import eiborJson from "@/data/seed/eibor.json";
 
 const DAY = 86400000;
@@ -54,6 +55,7 @@ const TASK_SEED = tasksJson as Array<{
 const BULLETIN_TODAY = bulletinsJson as Array<{ issuedBy: number; task: string; caseId: number | null; targets: number[] }>;
 const BANK_PRODUCTS_SEED = bankProductsJson as Array<Record<string, unknown> & { bankName: string }>;
 const BANK_INTEL = bankIntelJson as Record<string, { pos: string; neg: string }>;
+const BANK_PRODUCTS_ALL = bankProductsAllJson as Array<Record<string, unknown> & { bankName: string; stressBufferPct?: number | null }>;
 const EIBOR = eiborJson as Array<{ tenor: string; ratePct: number; updatedOn: string; note: string }>;
 
 export async function seedDatabase() {
@@ -227,6 +229,32 @@ async function ensureMasterData() {
       });
     }
   }
+  // Full bank universe — decode-all drafts (create-if-missing by bank+name)
+  for (const p of BANK_PRODUCTS_ALL) {
+    let bank = await db.bankItem.findFirst({ where: { name: p.bankName } });
+    if (!bank) bank = await db.bankItem.create({ data: { name: p.bankName, ratePct: 0, active: true } });
+    const exists = await db.bankProduct.findFirst({ where: { bankId: bank.id, name: p.name } });
+    if (!exists) {
+      await db.bankProduct.create({
+        data: {
+          bankId: bank.id, name: p.name, sheet: p.sheet as string, employment: p.employment as string,
+          residency: p.residency as string, financeType: p.financeType as string, program: p.program as string, loanKind: p.loanKind as string,
+          maxLtvNational: p.maxLtvNational as number | null, maxLtvExpatriate: p.maxLtvExpatriate as number | null,
+          minLoan: p.minLoan as number | null, maxLoan: p.maxLoan as number | null,
+          tenorYears: p.tenorYears as number | null, minSalary: p.minSalary as number | null,
+          totalTatDays: p.totalTatDays as number | null, paTatDays: p.paTatDays as number | null,
+          paValidityDays: p.paValidityDays as number | null, folValidityDays: p.folValidityDays as number | null,
+          valuationValidityDays: p.valuationValidityDays as number | null,
+          rateTable: p.rateTable as string, stressTest: p.stressTest as string, fees: p.fees as string,
+          insurance: p.insurance as string, eligibility: p.eligibility as string, documents: p.documents as string,
+          axesJson: p.axesJson as string, sourceFiles: p.sourceFiles as string,
+          stressBufferPct: p.stressBufferPct as number | null,
+          status: "draft", notes: "Draft decode — structured pricing quotes pending review",
+        },
+      });
+    }
+  }
+
   // EIBOR benchmark curve — upsert by tenor
   for (const e of EIBOR) {
     await db.eiborRate.upsert({ where: { tenor: e.tenor }, create: e, update: { ratePct: e.ratePct, updatedOn: e.updatedOn, note: e.note } });

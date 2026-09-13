@@ -277,6 +277,7 @@ model BankProduct {
   rentalIncomePct   Float? // % of rental income considered (DIB 83, ENBD 60)
   rentalCapPctOfSalary Float? // rental credit capped at this % of primary salary (DIB 50)
   dbrPct            Float? // bank DBR ceiling override (default 50)
+  stressBufferPct   Float? // extra cushion on top of the follow-on rate for DSR (CBD +2; default 0)
   totalTatDays      Int?
   paTatDays         Int?
   paValidityDays    Int?

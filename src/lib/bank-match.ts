@@ -109,7 +109,7 @@ export async function runBankMatch(input: MatchInput): Promise<MatchResult[]> {
       continue;
     }
 
-    const rate = assessmentRate(quote, eibor);
+    const rate = assessmentRate(quote, eibor, (p as unknown as { stressBufferPct?: number | null }).stressBufferPct ?? 0);
     const ltvCap = input.residency === "UAE National" ? p.maxLtvNational : p.maxLtvExpatriate;
     const maxLoanByLtv = input.propertyValue > 0 && ltvCap != null ? Math.round((input.propertyValue * ltvCap) / 100) : null;
     const ltvPct = input.propertyValue > 0 ? Math.round((input.loanAmount / input.propertyValue) * 1000) / 10 : null;
@@ -130,7 +130,7 @@ export async function runBankMatch(input: MatchInput): Promise<MatchResult[]> {
     let introEmi: number | null = null;
     let followOnEmi: number | null = null;
     let stressEmi: number | null = null;
-    const schedule: RateSchedule | null = rateSchedule(quote, eibor);
+    const schedule: RateSchedule | null = rateSchedule(quote, eibor, (p as unknown as { stressBufferPct?: number | null }).stressBufferPct ?? 0);
     if (rate != null && p.tenorYears) {
       const availableEmi = Math.round((eligibleIncome * dbrPct) / 100 - input.existingEmis - cardObligation);
       if (availableEmi <= 0) {
