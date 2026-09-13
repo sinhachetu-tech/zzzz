@@ -37,6 +37,7 @@ interface StateSnapshot {
   escalations: number;
   docRules: DocRule[];
   feeRules: FeeRule[];
+  eibor: { tenor: string; ratePct: number; updatedOn: string; note: string }[];
   stageTransitions: StageTransitionDto[];
   caseDocuments: CaseDocument[];
   bankProducts: BankProduct[];
@@ -121,7 +122,7 @@ const empty: StateSnapshot = {
   me: null, flags: null, users: [], designations: [], cases: [], visibleCaseIds: [], tasks: [],
   visibleTaskIds: [], activities: [], stages: [], whyPending: [], waitingFor: [], banks: [],
   partners: [], channels: [], slaRules: [], instructions: [], bulletin: [],
-  escalations: 0, docRules: [], feeRules: [], stageTransitions: [], caseDocuments: [], bankProducts: [],
+  escalations: 0, docRules: [], feeRules: [], eibor: [], stageTransitions: [], caseDocuments: [], bankProducts: [],
 };
 
 let toastSeq = 1;

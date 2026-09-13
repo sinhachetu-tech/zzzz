@@ -276,6 +276,7 @@ model BankProduct {
   paValidityDays    Int?
   folValidityDays   Int?
   valuationValidityDays Int?
+  pricingJson       String @default("{}") // structured rate quotes (see lib/bank-pricing.ts)
   rateTable         String @default("") // segmented pricing text (fixed/variable/buyout/equity)
   stressTest        String @default("")
   fees              String @default("")
@@ -296,6 +297,15 @@ model BankProduct {
   updatedAt    DateTime @updatedAt
 
   bank BankItem @relation(fields: [bankId], references: [id], onDelete: Cascade)
+}
+
+// Current EIBOR benchmark rates — variable/stress formulas reference these live,
+// so a quarterly update here reprices every bank correctly.
+model EiborRate {
+  tenor    String @id // 1M | 3M | 6M | 1Y
+  ratePct  Float
+  updatedOn String @default("")
+  note     String @default("")
 }
 
 model PartnerItem {

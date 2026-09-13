@@ -18,6 +18,7 @@ import tasksJson from "@/data/seed/tasks.json";
 import bulletinsJson from "@/data/seed/bulletins.json";
 import bankProductsJson from "@/data/seed/bankProducts.json";
 import bankIntelJson from "@/data/seed/bankIntel.json";
+import eiborJson from "@/data/seed/eibor.json";
 
 const DAY = 86400000;
 const ts = (daysBack: number, hourJitter = 0) =>
@@ -53,6 +54,7 @@ const TASK_SEED = tasksJson as Array<{
 const BULLETIN_TODAY = bulletinsJson as Array<{ issuedBy: number; task: string; caseId: number | null; targets: number[] }>;
 const BANK_PRODUCTS_SEED = bankProductsJson as Array<Record<string, unknown> & { bankName: string }>;
 const BANK_INTEL = bankIntelJson as Record<string, { pos: string; neg: string }>;
+const EIBOR = eiborJson as Array<{ tenor: string; ratePct: number; updatedOn: string; note: string }>;
 
 export async function seedDatabase() {
   const userCount = await db.user.count();
@@ -199,11 +201,27 @@ async function ensureMasterData() {
           rateTable: p.rateTable as string, stressTest: p.stressTest as string, fees: p.fees as string,
           insurance: p.insurance as string, eligibility: p.eligibility as string, documents: p.documents as string,
           axesJson: p.axesJson as string, sourceFiles: p.sourceFiles as string,
+          pricingJson: (p.pricing as string) ?? "{}",
           status: "approved", approvedBy: "Excel import (Sep 2026)", effectiveDate: "2026-09-01",
         },
       });
     }
     bankProducts = BANK_PRODUCTS_SEED.length;
+  } else {
+    // backfill structured pricing for products imported before pricingJson existed
+    for (const p of BANK_PRODUCTS_SEED) {
+      if (!p.pricing || p.pricing === "{}") continue;
+      const bank = await db.bankItem.findFirst({ where: { name: p.bankName } });
+      if (!bank) continue;
+      await db.bankProduct.updateMany({
+        where: { bankId: bank.id, name: p.name as string, pricingJson: "{}" },
+        data: { pricingJson: p.pricing as string },
+      });
+    }
+  }
+  // EIBOR benchmark curve — upsert by tenor
+  for (const e of EIBOR) {
+    await db.eiborRate.upsert({ where: { tenor: e.tenor }, create: e, update: { ratePct: e.ratePct, updatedOn: e.updatedOn, note: e.note } });
   }
   // negotiating intel onto the bank profile
   for (const [bankName, it] of Object.entries(BANK_INTEL)) {

@@ -20,7 +20,7 @@ export async function GET() {
 
   const [
     users, designations, cases, tasks, activities, stages, masters, banks,
-    partners, slaRules, instructions, bulletinsRaw, channels, docRules, feeRules, stageTransitions, allDocs, bankProducts,
+    partners, slaRules, instructions, bulletinsRaw, channels, docRules, feeRules, stageTransitions, allDocs, bankProducts, eiborRates,
   ] = await Promise.all([
     db.user.findMany({ orderBy: { id: "asc" } }),
     db.designation.findMany({ orderBy: { id: "asc" } }),
@@ -40,6 +40,7 @@ export async function GET() {
     db.stageTransition.findMany({ orderBy: { at: "desc" }, take: 400, include: { user: { select: { name: true } } } }),
     db.caseDocument.findMany({ orderBy: [{ caseId: "asc" }, { sortOrder: "asc" }] }),
     db.bankProduct.findMany({ orderBy: [{ bankId: "asc" }, { id: "asc" }], include: { bank: { select: { name: true } } } }),
+    db.eiborRate.findMany(),
   ]);
 
   const usersDto = users.map(serUser);
@@ -92,6 +93,7 @@ export async function GET() {
     escalations: escalations.length,
     docRules: docRules.map(serDocRule),
     bankProducts: bankProducts.map(serBankProduct),
+    eibor: eiborRates,
     feeRules: feeRules.map(serFeeRule),
     stageTransitions: stageTransitions.map(serStageTransitionDto),
     caseDocuments: vaultDocs,

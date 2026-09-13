@@ -144,7 +144,7 @@ type PrismaBankProduct = {
   minLoan: number | null; maxLoan: number | null; tenorYears: number | null; minSalary: number | null;
   totalTatDays: number | null; paTatDays: number | null; paValidityDays: number | null;
   folValidityDays: number | null; valuationValidityDays: number | null;
-  rateTable: string; stressTest: string; fees: string; insurance: string;
+  rateTable: string; stressTest: string; fees: string; insurance: string; pricingJson: string;
   eligibility: string; documents: string; notes: string; axesJson: string;
   version: number; status: string; effectiveDate: string | null; approvedBy: string | null;
   sourceFiles: string; active: boolean;
@@ -160,7 +160,7 @@ export function serBankProduct(p: PrismaBankProduct): BankProduct {
     minLoan: p.minLoan, maxLoan: p.maxLoan, tenorYears: p.tenorYears, minSalary: p.minSalary,
     totalTatDays: p.totalTatDays, paTatDays: p.paTatDays, paValidityDays: p.paValidityDays,
     folValidityDays: p.folValidityDays, valuationValidityDays: p.valuationValidityDays,
-    rateTable: p.rateTable, stressTest: p.stressTest, fees: p.fees, insurance: p.insurance,
+    rateTable: p.rateTable, stressTest: p.stressTest, fees: p.fees, insurance: p.insurance, pricingJson: (p as unknown as { pricingJson?: string }).pricingJson ?? "{}",
     eligibility: p.eligibility, documents: p.documents, notes: p.notes, axes,
     version: p.version, status: p.status as BankProduct["status"], effectiveDate: p.effectiveDate,
     approvedBy: p.approvedBy, sourceFiles: p.sourceFiles, active: p.active,

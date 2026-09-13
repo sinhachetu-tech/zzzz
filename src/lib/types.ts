@@ -233,6 +233,7 @@ export interface BankProduct {
   paValidityDays: number | null;
   folValidityDays: number | null;
   valuationValidityDays: number | null;
+  pricingJson: string;
   rateTable: string;
   stressTest: string;
   fees: string;
