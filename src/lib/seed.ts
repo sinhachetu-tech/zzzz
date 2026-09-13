@@ -201,6 +201,9 @@ async function ensureMasterData() {
           rateTable: p.rateTable as string, stressTest: p.stressTest as string, fees: p.fees as string,
           insurance: p.insurance as string, eligibility: p.eligibility as string, documents: p.documents as string,
           axesJson: p.axesJson as string, sourceFiles: p.sourceFiles as string,
+          cardRulePct: p.cardRulePct as number | null, bonusPct: p.bonusPct as number | null,
+          rentalIncomePct: p.rentalIncomePct as number | null, rentalCapPctOfSalary: p.rentalCapPctOfSalary as number | null,
+          dbrPct: p.dbrPct as number | null,
           pricingJson: (p.pricing as string) ?? "{}",
           status: "approved", approvedBy: "Excel import (Sep 2026)", effectiveDate: "2026-09-01",
         },
@@ -214,8 +217,13 @@ async function ensureMasterData() {
       const bank = await db.bankItem.findFirst({ where: { name: p.bankName } });
       if (!bank) continue;
       await db.bankProduct.updateMany({
-        where: { bankId: bank.id, name: p.name as string, pricingJson: "{}" },
-        data: { pricingJson: p.pricing as string },
+        where: { bankId: bank.id, name: p.name as string },
+        data: {
+          pricingJson: p.pricing as string,
+          cardRulePct: p.cardRulePct as number | null, bonusPct: p.bonusPct as number | null,
+          rentalIncomePct: p.rentalIncomePct as number | null, rentalCapPctOfSalary: p.rentalCapPctOfSalary as number | null,
+          dbrPct: p.dbrPct as number | null,
+        },
       });
     }
   }

@@ -145,6 +145,7 @@ type PrismaBankProduct = {
   totalTatDays: number | null; paTatDays: number | null; paValidityDays: number | null;
   folValidityDays: number | null; valuationValidityDays: number | null;
   rateTable: string; stressTest: string; fees: string; insurance: string; pricingJson: string;
+  cardRulePct?: number | null; bonusPct?: number | null; rentalIncomePct?: number | null; rentalCapPctOfSalary?: number | null; dbrPct?: number | null;
   eligibility: string; documents: string; notes: string; axesJson: string;
   version: number; status: string; effectiveDate: string | null; approvedBy: string | null;
   sourceFiles: string; active: boolean;
@@ -158,6 +159,8 @@ export function serBankProduct(p: PrismaBankProduct): BankProduct {
     residency: p.residency, financeType: p.financeType, program: p.program, loanKind: p.loanKind,
     maxLtvNational: p.maxLtvNational, maxLtvExpatriate: p.maxLtvExpatriate,
     minLoan: p.minLoan, maxLoan: p.maxLoan, tenorYears: p.tenorYears, minSalary: p.minSalary,
+    cardRulePct: p.cardRulePct ?? null, bonusPct: p.bonusPct ?? null, rentalIncomePct: p.rentalIncomePct ?? null,
+    rentalCapPctOfSalary: p.rentalCapPctOfSalary ?? null, dbrPct: p.dbrPct ?? null,
     totalTatDays: p.totalTatDays, paTatDays: p.paTatDays, paValidityDays: p.paValidityDays,
     folValidityDays: p.folValidityDays, valuationValidityDays: p.valuationValidityDays,
     rateTable: p.rateTable, stressTest: p.stressTest, fees: p.fees, insurance: p.insurance, pricingJson: (p as unknown as { pricingJson?: string }).pricingJson ?? "{}",

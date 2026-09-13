@@ -271,6 +271,12 @@ model BankProduct {
   maxLoan           Int?
   tenorYears        Int?
   minSalary         Int?
+  // bank-specific affordability rules (default to CBUAE norms when null)
+  cardRulePct       Float? // % of credit-card limit counted in DBR (DIB 2, most 5)
+  bonusPct          Float? // % of bonus income considered (ENBD 50)
+  rentalIncomePct   Float? // % of rental income considered (DIB 83, ENBD 60)
+  rentalCapPctOfSalary Float? // rental credit capped at this % of primary salary (DIB 50)
+  dbrPct            Float? // bank DBR ceiling override (default 50)
   totalTatDays      Int?
   paTatDays         Int?
   paValidityDays    Int?

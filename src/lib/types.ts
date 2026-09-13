@@ -228,6 +228,11 @@ export interface BankProduct {
   maxLoan: number | null;
   tenorYears: number | null;
   minSalary: number | null;
+  cardRulePct: number | null;
+  bonusPct: number | null;
+  rentalIncomePct: number | null;
+  rentalCapPctOfSalary: number | null;
+  dbrPct: number | null;
   totalTatDays: number | null;
   paTatDays: number | null;
   paValidityDays: number | null;

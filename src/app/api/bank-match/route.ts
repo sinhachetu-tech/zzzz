@@ -18,8 +18,11 @@ export async function POST(req: NextRequest) {
     propertyValue: Number(body.propertyValue) || 0,
     monthlyIncome: Number(body.monthlyIncome) || 0,
     existingEmis: Number(body.existingEmis) || 0,
+    cardLimitsTotal: Number(body.cardLimitsTotal) || 0,
+    rentalIncome: Number(body.rentalIncome) || 0,
+    bonusIncome: Number(body.bonusIncome) || 0,
     stl: body.stl ?? true,
-    termYears: Number(body.termYears) || 3,
+    termYears: body.termYears === 0 || body.termYears === "0" ? 0 : Number(body.termYears) || 3,
   };
 
   if (body.caseId) {
@@ -33,8 +36,11 @@ export async function POST(req: NextRequest) {
       propertyValue: Number(body.propertyValue) || 0,
       monthlyIncome: Number(body.monthlyIncome) || 0,
       existingEmis: Number(body.existingEmis) || 0,
+      cardLimitsTotal: Number(body.cardLimitsTotal) || 0,
+      rentalIncome: Number(body.rentalIncome) || 0,
+      bonusIncome: Number(body.bonusIncome) || 0,
       stl: body.stl ?? true,
-      termYears: Number(body.termYears) || 3,
+      termYears: body.termYears === 0 || body.termYears === "0" ? 0 : Number(body.termYears) || 3,
     };
   }
 

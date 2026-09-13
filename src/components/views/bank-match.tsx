@@ -22,6 +22,9 @@ interface MatchResult {
   maxLoanByLtv: number | null;
   eligibleLoan: number | null;
   ltvPct: number | null;
+  cardObligation: number | null;
+  dbrPctUsed: number | null;
+  eligibleIncome: number | null;
 }
 
 const VERDICT: Record<string, { tone: "mint" | "amber" | "coral"; label: string }> = {
@@ -38,6 +41,9 @@ export function BankMatchPanel({ c }: { c: LoanCase }) {
   const [emis, setEmis] = useState("");
   const [propertyValue, setPropertyValue] = useState("");
   const [stl, setStl] = useState(true);
+  const [cardLimits, setCardLimits] = useState("");
+  const [rental, setRental] = useState("");
+  const [bonus, setBonus] = useState("");
   const [term, setTerm] = useState(3);
   const [results, setResults] = useState<MatchResult[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -55,6 +61,9 @@ export function BankMatchPanel({ c }: { c: LoanCase }) {
           caseId: c.id,
           monthlyIncome: Number(income),
           existingEmis: Number(emis) || 0,
+          cardLimitsTotal: Number(cardLimits) || 0,
+          rentalIncome: Number(rental) || 0,
+          bonusIncome: Number(bonus) || 0,
           propertyValue: Number(propertyValue),
           stl, termYears: term,
         }),
@@ -86,7 +95,7 @@ export function BankMatchPanel({ c }: { c: LoanCase }) {
         <p className="text-[11.5px] text-[var(--ink-faint)] m-0 mb-3">
           Case profile: {c.employmentProfile} · {c.residency} · {c.propertyType} · {c.transactionType || "Resale"} · requested {fmt(c.loanAmount)}
         </p>
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
           <div>
             <label className="label">Monthly income</label>
             <input className="input mono" type="number" min={0} placeholder="20000" value={income} onChange={(e) => setIncome(e.target.value)} />
@@ -98,6 +107,18 @@ export function BankMatchPanel({ c }: { c: LoanCase }) {
           <div>
             <label className="label">Property value</label>
             <input className="input mono" type="number" min={0} placeholder="1800000" value={propertyValue} onChange={(e) => setPropertyValue(e.target.value)} />
+          </div>
+          <div>
+            <label className="label">Card limits</label>
+            <input className="input mono" type="number" min={0} placeholder="0" value={cardLimits} onChange={(e) => setCardLimits(e.target.value)} />
+          </div>
+          <div>
+            <label className="label">Rental income</label>
+            <input className="input mono" type="number" min={0} placeholder="0" value={rental} onChange={(e) => setRental(e.target.value)} />
+          </div>
+          <div>
+            <label className="label">Bonus income</label>
+            <input className="input mono" type="number" min={0} placeholder="0" value={bonus} onChange={(e) => setBonus(e.target.value)} />
           </div>
           <div>
             <label className="label">Salary transfer</label>
@@ -141,7 +162,8 @@ export function BankMatchPanel({ c }: { c: LoanCase }) {
                       <span>rate: <strong style={{ color: "var(--amber)" }}>{r.assessmentRatePct.toFixed(2)}%</strong> stressed</span>
                       {r.quote?.ratePct != null && <span>fixed: {r.quote.ratePct}% / {r.quote.term}y</span>}
                       <span>EMI @ requested: {fmt(r.monthlyEmi)}</span>
-                      {r.maxLoanByDbr != null && <span>DBR cap: {fmt(r.maxLoanByDbr)}</span>}
+                      {r.maxLoanByDbr != null && <span>DBR cap: {fmt(r.maxLoanByDbr)} @ {r.dbrPctUsed}%</span>}
+                      {r.cardObligation != null && <span>card @ {r.cardObligation.toLocaleString()}/mo</span>}
                       {r.maxLoanByLtv != null && <span>LTV cap: {fmt(r.maxLoanByLtv)}</span>}
                     </div>
                   )}

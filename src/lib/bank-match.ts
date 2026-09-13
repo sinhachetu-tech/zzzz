@@ -12,8 +12,11 @@ export interface MatchInput {
   transactionType: string; // free text from the case
   loanAmount: number; // requested finance
   propertyValue: number;
-  monthlyIncome: number; // eligible fixed income
-  existingEmis: number; // total monthly obligations (incl. card 5% rule)
+  monthlyIncome: number; // fixed salary + fixed allowances
+  existingEmis: number; // loan EMIs only — card obligations are computed per bank
+  cardLimitsTotal: number; // total credit-card limits across banks
+  rentalIncome: number; // monthly rental income
+  bonusIncome: number; // monthly-averaged bonus/incentive income
   stl: boolean; // salary transfer
   termYears: number; // preferred fixed term (3 default)
 }
@@ -31,6 +34,9 @@ export interface MatchResult {
   maxLoanByLtv: number | null;
   eligibleLoan: number | null;
   ltvPct: number | null;
+  cardObligation: number | null;
+  dbrPctUsed: number | null;
+  eligibleIncome: number | null;
 }
 
 const MAX_DBR = 0.5; // CBUAE ceiling; bank-specific DBR overrides come later
@@ -64,6 +70,10 @@ function productApplies(p: BankProduct, input: MatchInput): string | null {
   return null;
 }
 
+function baseResult(p: { id: number }, bankName: string, productName: string): MatchResult {
+  return { bankProductId: p.id, bankName, productName, verdict: "not_eligible", reasons: [], quote: null, assessmentRatePct: null, monthlyEmi: null, maxLoanByDbr: null, maxLoanByLtv: null, eligibleLoan: null, ltvPct: null, cardObligation: null, dbrPctUsed: null, eligibleIncome: null };
+}
+
 export async function runBankMatch(input: MatchInput): Promise<MatchResult[]> {
   const [products, eiborRows] = await Promise.all([
     db.bankProduct.findMany({ where: { status: "approved", active: true }, include: { bank: { select: { name: true } } } }),
@@ -78,14 +88,14 @@ export async function runBankMatch(input: MatchInput): Promise<MatchResult[]> {
     const reasons: string[] = [];
     const applicability = productApplies(dto, input);
     if (applicability) {
-      results.push({ bankProductId: p.id, bankName: dto.bankName, productName: p.name, verdict: "not_eligible", reasons: [applicability], quote: null, assessmentRatePct: null, monthlyEmi: null, maxLoanByDbr: null, maxLoanByLtv: null, eligibleLoan: null, ltvPct: null });
+      results.push({ ...baseResult(p, dto.bankName, p.name), reasons: [applicability] });
       continue;
     }
 
     const pricing = parsePricing(p.pricingJson);
     const quote = resolveQuote(pricing, { stl: input.stl, termYears: input.termYears, ftv: p.maxLtvExpatriate ?? 80, txn });
     if (!quote) {
-      results.push({ bankProductId: p.id, bankName: dto.bankName, productName: p.name, verdict: "not_eligible", reasons: ["no pricing quote for this salary-transfer / term / transaction combination"], quote: null, assessmentRatePct: null, monthlyEmi: null, maxLoanByDbr: null, maxLoanByLtv: null, eligibleLoan: null, ltvPct: null });
+      results.push({ ...baseResult(p, dto.bankName, p.name), reasons: ["no pricing quote for this salary-transfer / term / transaction combination"] });
       continue;
     }
 
@@ -94,10 +104,21 @@ export async function runBankMatch(input: MatchInput): Promise<MatchResult[]> {
     const maxLoanByLtv = input.propertyValue > 0 && ltvCap != null ? Math.round((input.propertyValue * ltvCap) / 100) : null;
     const ltvPct = input.propertyValue > 0 ? Math.round((input.loanAmount / input.propertyValue) * 1000) / 10 : null;
 
+    // bank-specific affordability: card rule, bonus/rental haircuts, DBR ceiling
+    const cardPct = p.cardRulePct ?? 5;
+    const cardObligation = Math.round((input.cardLimitsTotal * cardPct) / 100);
+    const bonusCredit = Math.round((input.bonusIncome * (p.bonusPct ?? 0)) / 100);
+    let rentalCredit = Math.round((input.rentalIncome * (p.rentalIncomePct ?? 0)) / 100);
+    if (p.rentalCapPctOfSalary != null) {
+      rentalCredit = Math.min(rentalCredit, Math.round((input.monthlyIncome * p.rentalCapPctOfSalary) / 100));
+    }
+    const eligibleIncome = input.monthlyIncome + bonusCredit + rentalCredit;
+    const dbrPct = p.dbrPct ?? 50;
+
     let maxLoanByDbr: number | null = null;
     let monthlyEmi: number | null = null;
     if (rate != null && p.tenorYears) {
-      const availableEmi = input.monthlyIncome * MAX_DBR - input.existingEmis;
+      const availableEmi = Math.round((eligibleIncome * dbrPct) / 100 - input.existingEmis - cardObligation);
       if (availableEmi <= 0) {
         reasons.push("income below obligations — no DBR headroom");
       } else {
@@ -121,8 +142,11 @@ export async function runBankMatch(input: MatchInput): Promise<MatchResult[]> {
       reasons.push(`requested amount above the AED ${hardCap.toLocaleString()} maximum (exception approval needed)`);
     }
 
+    if (rate == null && !reasons.some((r) => r.includes("DBR headroom"))) {
+      reasons.push("benchmark EIBOR tenor for this quote is missing — add it in Admin so the stressed rate can be computed");
+    }
     let verdict: MatchResult["verdict"];
-    if (eligibleLoan == null) {
+    if (eligibleLoan == null || rate == null) {
       verdict = "not_eligible";
       if (reasons.length === 0) reasons.push("not priceable on current data");
     } else if (input.loanAmount <= eligibleLoan) {
@@ -132,7 +156,7 @@ export async function runBankMatch(input: MatchInput): Promise<MatchResult[]> {
       reasons.push(`max eligible finance is AED ${eligibleLoan.toLocaleString()} — AED ${(input.loanAmount - eligibleLoan).toLocaleString()} short of request`);
     }
 
-    results.push({ bankProductId: p.id, bankName: dto.bankName, productName: p.name, verdict, reasons, quote, assessmentRatePct: rate, monthlyEmi, maxLoanByDbr, maxLoanByLtv, eligibleLoan, ltvPct });
+    results.push({ bankProductId: p.id, bankName: dto.bankName, productName: p.name, verdict, reasons, quote, assessmentRatePct: rate, monthlyEmi, maxLoanByDbr, maxLoanByLtv, eligibleLoan, ltvPct, cardObligation, dbrPctUsed: dbrPct, eligibleIncome });
   }
 
   const rank = { eligible: 0, conditions: 1, not_eligible: 2 };
