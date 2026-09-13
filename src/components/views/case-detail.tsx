@@ -11,6 +11,7 @@ import {
 import { Avatar, Chip, DueChip, Modal, SectionLabel, StatusChip } from "@/components/hfmc/ui";
 import { BankChips, CaseStateChip, CommissionPanel, ConfirmModal, SourceChip, WaButtons } from "@/components/hfmc/bits";
 import { DocVault } from "@/components/views/doc-vault";
+import { BankMatchPanel } from "@/components/views/bank-match";
 import {
   IArrowR, IBank, ICalc, ICheck, IChevronL, IClock, IFlag, IHistory, IPlus, IRobot, ISparkles, ITrash, IZap,
 } from "@/components/icons";
@@ -763,6 +764,9 @@ export default function CaseDetail({ id }: { id: number }) {
 
           {/* document vault */}
           <DocVault c={c} />
+
+          {/* bank match — ranked eligible products */}
+          <BankMatchPanel c={c} />
 
           {/* stage transition log */}
           <StageHistoryPanel caseId={c.id} />
