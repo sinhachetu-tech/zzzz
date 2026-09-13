@@ -576,6 +576,12 @@ function FolPanel({ c }: { c: LoanCase }) {
 export default function CaseDetail({ id }: { id: number }) {
   const { cases, tasks, activities, stages, banks, users, instructions, me, nav, userById, caseById, updateCase, completeTask, deleteTask, toast, flags, canInstruct } = useHfmcStore();
   const c = caseById(id);
+  const [caseTab, setCaseTab] = useState<"tasks" | "documents" | "banks" | "activity">(() => {
+    // stage-aware default: the work of the current stage leads the page
+    if (["Document Collection", "Valuation", "MOU / FARD", "Final Approval", "Disbursement"].includes(c?.stage ?? "")) return "documents";
+    if (["Pre-Approval", "Property Identification", "Bank Submission"].includes(c?.stage ?? "")) return "banks";
+    return "tasks";
+  });
   const [showAddTask, setShowAddTask] = useState(false);
   const [showStage, setShowStage] = useState(false);
   const [showOutcome, setShowOutcome] = useState(false);
@@ -677,10 +683,19 @@ export default function CaseDetail({ id }: { id: number }) {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-[1.4fr_1fr] gap-4 items-start">
-        {/* left: tasks + instructions + activity */}
+        {/* left: stage-aware tabs */}
         <div className="space-y-4">
+          <div className="card p-2 flex gap-1.5 overflow-x-auto">
+            {([["tasks", "Tasks"], ["documents", "Documents"], ["banks", "Banks & proposal"], ["activity", "Activity"]] as const).map(([k, label]) => (
+              <button key={k} onClick={() => setCaseTab(k)}
+                className="chip transition-all whitespace-nowrap"
+                style={caseTab === k ? { background: "rgba(242,176,76,0.14)", borderColor: "var(--amber)", color: "var(--amber)" } : { background: "var(--bg2)", borderColor: "var(--line)", color: "var(--ink-faint)" }}>
+                {label}
+              </button>
+            ))}
+          </div>
           {/* tasks */}
-          <div className="card anim-fade-up">
+          {(caseTab === "tasks") && (<><div className="card anim-fade-up">
             <div className="flex items-center justify-between p-4 border-b" style={{ borderColor: "var(--line-soft)" }}>
               <div className="flex items-center gap-2">
                 <h3 className="font-disp font-semibold text-[14px] m-0">Tasks</h3>
@@ -762,12 +777,17 @@ export default function CaseDetail({ id }: { id: number }) {
             </div>
           )}
 
-          {/* document vault */}
-          <DocVault c={c} />
+          </>)}
 
-          {/* bank match — ranked eligible products */}
-          <BankMatchPanel c={c} />
+          {/* documents */}
+          {(caseTab === "documents") && <DocVault c={c} />}
 
+          {/* banks */}
+          {(caseTab === "banks") && <BankMatchPanel c={c} />}
+
+          {/* activity: stage history + activity log */}
+          {(caseTab === "activity") && (
+          <>
           {/* stage transition log */}
           <StageHistoryPanel caseId={c.id} />
 
@@ -793,6 +813,7 @@ export default function CaseDetail({ id }: { id: number }) {
               ))}
             </div>
           </div>
+          </>)}
         </div>
 
         {/* right: MIS + pre-approval/FOL + commission + copilot + client */}
