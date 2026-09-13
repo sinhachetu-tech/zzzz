@@ -7,14 +7,14 @@ const ts = (daysBack: number, hourJitter = 0) =>
   new Date(Date.now() - daysBack * DAY - hourJitter * 3600000).toISOString();
 
 const DESIGNATIONS = [
-  { name: "Super Admin", scope: "all", issueTasks: true, admin: true, super: true, builtIn: true },
-  { name: "Head of Company", scope: "all", issueTasks: true, admin: true, super: false, builtIn: true },
-  { name: "PA to HoC", scope: "all", issueTasks: true, admin: false, super: false, builtIn: true },
-  { name: "Mortgage Head", scope: "all", issueTasks: true, admin: true, super: false, builtIn: true },
-  { name: "Team Leader SPO", scope: "team", issueTasks: true, admin: false, super: false, builtIn: true },
-  { name: "Team Leader VRM", scope: "team", issueTasks: true, admin: false, super: false, builtIn: true },
-  { name: "SPO", scope: "own", issueTasks: false, admin: false, super: false, builtIn: true },
-  { name: "VRM", scope: "own", issueTasks: false, admin: false, super: false, builtIn: true },
+  { name: "Super Admin", scope: "all", issueTasks: true, admin: true, super: true, viewRevenue: true, builtIn: true },
+  { name: "Head of Company", scope: "all", issueTasks: true, admin: true, super: false, viewRevenue: true, builtIn: true },
+  { name: "PA to HoC", scope: "all", issueTasks: true, admin: false, super: false, viewRevenue: false, builtIn: true },
+  { name: "Mortgage Head", scope: "all", issueTasks: true, admin: true, super: false, viewRevenue: true, builtIn: true },
+  { name: "Team Leader SPO", scope: "team", issueTasks: true, admin: false, super: false, viewRevenue: false, builtIn: true },
+  { name: "Team Leader VRM", scope: "team", issueTasks: true, admin: false, super: false, viewRevenue: false, builtIn: true },
+  { name: "SPO", scope: "own", issueTasks: false, admin: false, super: false, viewRevenue: false, builtIn: true },
+  { name: "VRM", scope: "own", issueTasks: false, admin: false, super: false, viewRevenue: false, builtIn: true },
 ];
 
 const USERS = [
@@ -31,6 +31,7 @@ const USERS = [
 ];
 
 const STAGES = [
+  { label: "Lead", sortOrder: 0 },
   { label: "WhatsApp Group Creation", sortOrder: 1 },
   { label: "Document Collection", sortOrder: 2 },
   { label: "Pre-Approval", sortOrder: 3 },
@@ -69,14 +70,131 @@ const PARTNERS = [
 const WHY_PENDING = ["Documents awaited", "Bank query raised", "Valuation pending", "Internal review", "Client decision", "Title deed pending", "NOC pending", "Salary transfer pending"];
 const WAITING_FOR = ["Client", "Bank", "Internal", "Partner", "Developer", "Valuer"];
 
+// SOP Guidebook HFMC-SOP-MASTER-2026 §8.1 — End-to-End TAT matrix.
+// Same-day stages get 1d; "escalate if >5 days" stages get 5d.
 const SLA_RULES = [
+  { stage: "WhatsApp Group Creation", bank: null, maxDays: 1, active: true },
   { stage: "Document Collection", bank: null, maxDays: 5, active: true },
-  { stage: "Pre-Approval", bank: null, maxDays: 3, active: true },
-  { stage: "Bank Submission", bank: null, maxDays: 7, active: true },
-  { stage: "Valuation", bank: null, maxDays: 4, active: true },
-  { stage: "Final Approval", bank: "ENBD", maxDays: 5, active: true },
-  { stage: "Final Approval", bank: null, maxDays: 6, active: true },
+  { stage: "Pre-Approval", bank: null, maxDays: 5, active: true },
+  { stage: "Property Identification", bank: null, maxDays: 7, active: true }, // client-dependent — soft cap
+  { stage: "MOU / FARD", bank: null, maxDays: 10, active: true },
+  { stage: "Bank Submission", bank: null, maxDays: 1, active: true }, // same-day, 4:30 PM UAE deadline
+  { stage: "Valuation", bank: null, maxDays: 5, active: true },
+  { stage: "Final Approval", bank: null, maxDays: 3, active: true },
   { stage: "Disbursement", bank: null, maxDays: 3, active: true },
+];
+
+// Document Vault master catalog — conditional templates (Admin → Doc Rules).
+// Vectors: employment / property / transaction / residency; "all"/"any" = always applies.
+type DbDocRule = {
+  code: string; name: string; category: string; validityDays: number; warnDays: number;
+  verifyNotes: string; employment: string[]; property: string[]; txn: string[]; residency: string[];
+  mandatory: boolean; visibleToClient: boolean; clientCanUpload: boolean;
+};
+const A_ALL = ["all"];
+const DOC_RULES: DbDocRule[] = [
+  // --- KYC ---
+  { code: "DOC-EID", name: "Emirates ID (front & back)", category: "KYC", validityDays: 60, warnDays: 30, verifyNotes: "Valid 2+ months; employer & occupation must match Salary Certificate; name must match Passport/Visa.", employment: A_ALL, property: ["any"], txn: A_ALL, residency: ["UAE National", "Resident Expatriate"], mandatory: true, visibleToClient: true, clientCanUpload: true },
+  { code: "DOC-PASSPORT", name: "Passport copy", category: "KYC", validityDays: 60, warnDays: 30, verifyNotes: "Valid 2+ months; name & signature must match EID/Visa. Non-resident (CBD): all pages required. Old passport copy if visa stamped there.", employment: A_ALL, property: ["any"], txn: A_ALL, residency: A_ALL, mandatory: true, visibleToClient: true, clientCanUpload: true },
+  { code: "DOC-VISA", name: "Residency Visa", category: "KYC", validityDays: 60, warnDays: 30, verifyNotes: "EID/UID + visa number cross-checked; profession & employer match SC.", employment: A_ALL, property: ["any"], txn: A_ALL, residency: ["Resident Expatriate"], mandatory: true, visibleToClient: true, clientCanUpload: true },
+  { code: "DOC-FAMILYBOOK", name: "Family Book", category: "KYC", validityDays: 0, warnDays: 0, verifyNotes: "UAE Nationals only — no visa/EID requirements apply.", employment: A_ALL, property: ["any"], txn: A_ALL, residency: ["UAE National"], mandatory: true, visibleToClient: true, clientCanUpload: true },
+  { code: "DOC-NR-GOVID", name: "Home-country government ID", category: "KYC", validityDays: 0, warnDays: 0, verifyNotes: "Non-resident clients — national ID or equivalent.", employment: A_ALL, property: ["any"], txn: A_ALL, residency: ["Non-Resident"], mandatory: true, visibleToClient: true, clientCanUpload: true },
+  // --- Income · Salaried ---
+  { code: "DOC-SAL-CERT", name: "Salary Certificate", category: "Income", validityDays: 30, warnDays: 7, verifyNotes: "Addressed to the specific bank; company stamp + PO Box; issued within 1 month; date of joining present.", employment: ["Salaried"], property: ["any"], txn: A_ALL, residency: A_ALL, mandatory: true, visibleToClient: true, clientCanUpload: true },
+  { code: "DOC-SAL-STMT", name: "6-month personal bank statements", category: "Income", validityDays: 0, warnDays: 0, verifyNotes: "Salary credits must match SC; flag gambling, bounced cheques, high cash. 6-month merged period (ADIB accepts 3).", employment: ["Salaried"], property: ["any"], txn: A_ALL, residency: A_ALL, mandatory: true, visibleToClient: true, clientCanUpload: true },
+  { code: "DOC-SAL-PAYSLIP", name: "Payslips (latest 3-6 months)", category: "Income", validityDays: 30, warnDays: 7, verifyNotes: "Company stamped or system generated; net pay must match bank statement.", employment: ["Salaried"], property: ["any"], txn: A_ALL, residency: A_ALL, mandatory: true, visibleToClient: true, clientCanUpload: true },
+  // --- Income · Self-Employed ---
+  { code: "DOC-SE-TRADELIC", name: "Valid Trade License", category: "Income", validityDays: 365, warnDays: 30, verifyNotes: "Must be valid at submission; expiry tracking on.", employment: ["Self-Employed"], property: ["any"], txn: A_ALL, residency: A_ALL, mandatory: true, visibleToClient: true, clientCanUpload: true },
+  { code: "DOC-SE-MOA", name: "MOA / AOA (with amendments)", category: "Income", validityDays: 0, warnDays: 0, verifyNotes: "From beginning till date with all amendments; POA copy if any; Freezone share certificate if Freezone.", employment: ["Self-Employed"], property: ["any"], txn: A_ALL, residency: A_ALL, mandatory: true, visibleToClient: true, clientCanUpload: true },
+  { code: "DOC-SE-COMPSTMT", name: "12-month company bank statements", category: "Income", validityDays: 0, warnDays: 0, verifyNotes: "Business account flows; Al Hilal requires quarterly VAT statement; audit report mandatory for turnover > AED 5M.", employment: ["Self-Employed"], property: ["any"], txn: A_ALL, residency: A_ALL, mandatory: true, visibleToClient: true, clientCanUpload: true },
+  { code: "DOC-SE-FIN", name: "Audited financials (2-3 years)", category: "Income", validityDays: 0, warnDays: 0, verifyNotes: "Audited for latest 2-3 years + current-year in-house financials.", employment: ["Self-Employed"], property: ["any"], txn: A_ALL, residency: A_ALL, mandatory: true, visibleToClient: true, clientCanUpload: true },
+  // --- Income · Non-Resident ---
+  { code: "DOC-NR-STMT", name: "6-month home-country bank statements", category: "Income", validityDays: 0, warnDays: 0, verifyNotes: "Salary credited or balances maintained.", employment: A_ALL, property: ["any"], txn: A_ALL, residency: ["Non-Resident"], mandatory: true, visibleToClient: true, clientCanUpload: true },
+  { code: "DOC-NR-TAX", name: "Income tax returns (2 years)", category: "Income", validityDays: 0, warnDays: 0, verifyNotes: "Required for >50% LTV non-resident requests; self if salaried, self & company if self-employed.", employment: A_ALL, property: ["any"], txn: A_ALL, residency: ["Non-Resident"], mandatory: false, visibleToClient: true, clientCanUpload: true },
+  // --- Property · Ready (resale / completed) ---
+  { code: "DOC-TITLEDEED", name: "Title Deed / Reg Deed", category: "Property", validityDays: 0, warnDays: 0, verifyNotes: "Match unit details with MOU/Form F; AUH: SPA copy to match addresses.", employment: A_ALL, property: ["Ready"], txn: A_ALL, residency: A_ALL, mandatory: true, visibleToClient: true, clientCanUpload: false },
+  { code: "DOC-FORMF", name: "Form F (DXB) / MOU (AUH)", category: "Property", validityDays: 45, warnDays: 7, verifyNotes: "Signed by buyer & seller; 30 working days + 15 via addendum; must remain valid until Loan Booking.", employment: A_ALL, property: ["Ready"], txn: A_ALL, residency: A_ALL, mandatory: true, visibleToClient: true, clientCanUpload: true },
+  { code: "DOC-SELLERKYC", name: "Seller passport / visa / EID", category: "Property", validityDays: 0, warnDays: 0, verifyNotes: "Seller KYC; trade license if seller is a company; payment proof.", employment: A_ALL, property: ["Ready"], txn: A_ALL, residency: A_ALL, mandatory: true, visibleToClient: false, clientCanUpload: false },
+  { code: "DOC-SERVICECHG", name: "Service fee clearance / DEWA", category: "Property", validityDays: 0, warnDays: 0, verifyNotes: "Service charge clearance from building management.", employment: A_ALL, property: ["Ready"], txn: A_ALL, residency: A_ALL, mandatory: false, visibleToClient: true, clientCanUpload: true },
+  // --- Property · Off-Plan ---
+  { code: "DOC-OQOOD", name: "Oqood / Initial Title Deed", category: "Property", validityDays: 0, warnDays: 0, verifyNotes: "DXB: Oqood certificate; AUH: registration deed.", employment: A_ALL, property: ["Off-Plan"], txn: A_ALL, residency: A_ALL, mandatory: true, visibleToClient: true, clientCanUpload: true },
+  { code: "DOC-SPA", name: "SPA (Sale & Purchase Agreement)", category: "Property", validityDays: 0, warnDays: 0, verifyNotes: "All pages signed; clear late-payment fees on developer SOA first — banks won't finance them.", employment: A_ALL, property: ["Off-Plan"], txn: A_ALL, residency: A_ALL, mandatory: true, visibleToClient: true, clientCanUpload: true },
+  { code: "DOC-DEVSCHED", name: "Developer payment schedule", category: "Property", validityDays: 0, warnDays: 0, verifyNotes: "Current dated; construction-linked plan.", employment: A_ALL, property: ["Off-Plan"], txn: A_ALL, residency: A_ALL, mandatory: true, visibleToClient: true, clientCanUpload: false },
+  // --- Bank & Liabilities ---
+  { code: "DOC-LIAB-LETTER", name: "Liability letter / settlement proof", category: "Bank & Liabilities", validityDays: 0, warnDays: 3, verifyNotes: "Expires fastest of all documents — monitor 3 days out; must remain valid through settlement.", employment: A_ALL, property: ["any"], txn: ["Buyout / Equity Release"], residency: A_ALL, mandatory: true, visibleToClient: true, clientCanUpload: true },
+  { code: "DOC-MORTTRACK", name: "12-month mortgage repayment track", category: "Bank & Liabilities", validityDays: 0, warnDays: 0, verifyNotes: "From existing bank — on-time payment history for buyout.", employment: A_ALL, property: ["any"], txn: ["Buyout / Equity Release"], residency: A_ALL, mandatory: true, visibleToClient: true, clientCanUpload: true },
+  { code: "DOC-DEPCHEQUES", name: "Deposit cheque copies (10%)", category: "Bank & Liabilities", validityDays: 0, warnDays: 0, verifyNotes: "Security cheques for the deposit per MOU/Form F.", employment: A_ALL, property: ["any"], txn: ["New Purchase"], residency: A_ALL, mandatory: false, visibleToClient: true, clientCanUpload: true },
+  { code: "DOC-CC-STMT", name: "Credit card statements (all banks)", category: "Bank & Liabilities", validityDays: 0, warnDays: 0, verifyNotes: "Confirms limits for the 5% rule; even fully-paid cards count.", employment: A_ALL, property: ["any"], txn: A_ALL, residency: A_ALL, mandatory: false, visibleToClient: true, clientCanUpload: true },
+  // --- Internal underwriting (staff-only) ---
+  { code: "DOC-AECB", name: "AECB credit bureau report", category: "Internal Underwriting", validityDays: 30, warnDays: 7, verifyNotes: "Score + liabilities cross-check before submission. NEVER client-visible.", employment: A_ALL, property: ["any"], txn: A_ALL, residency: A_ALL, mandatory: true, visibleToClient: false, clientCanUpload: false },
+  { code: "DOC-CREDIT-MEMO", name: "Credit committee memo", category: "Internal Underwriting", validityDays: 0, warnDays: 0, verifyNotes: "Internal sign-off for exceptions (DBR/LTV overrides).", employment: A_ALL, property: ["any"], txn: A_ALL, residency: A_ALL, mandatory: false, visibleToClient: false, clientCanUpload: false },
+  { code: "DOC-NET-MARGIN", name: "Net margin calculation sheet", category: "Internal Underwriting", validityDays: 0, warnDays: 0, verifyNotes: "Commission vs payout working — revenue-restricted.", employment: A_ALL, property: ["any"], txn: A_ALL, residency: A_ALL, mandatory: false, visibleToClient: false, clientCanUpload: false },
+  // --- Transfer / stage validity documents ---
+  { code: "DOC-NOC", name: "Developer NOC", category: "Transfer", validityDays: 30, warnDays: 7, verifyNotes: "General 1 month · Manazel/Aldar 30d · Emaar 15d · Nakheel 5d.", employment: A_ALL, property: ["any"], txn: A_ALL, residency: A_ALL, mandatory: true, visibleToClient: true, clientCanUpload: false },
+  { code: "DOC-SOA", name: "SOA (Statement of Account)", category: "Transfer", validityDays: 0, warnDays: 0, verifyNotes: "Must be valid at handover; ADCB needs 7 days validity for booking.", employment: A_ALL, property: ["any"], txn: A_ALL, residency: A_ALL, mandatory: true, visibleToClient: true, clientCanUpload: false },
+  { code: "DOC-MORTSEARCH", name: "Mortgage search certificate (AUH)", category: "Transfer", validityDays: 15, warnDays: 3, verifyNotes: "15 days only — cannot be requested early. Abu Dhabi transactions.", employment: A_ALL, property: ["any"], txn: A_ALL, residency: A_ALL, mandatory: false, visibleToClient: false, clientCanUpload: false },
+  { code: "DOC-FOL", name: "Final Offer Letter (FOL)", category: "Bank & Liabilities", validityDays: 30, warnDays: 7, verifyNotes: "Validity 30/60/90 days — check the date on the letter (CBD: 60 calendar days). Verify amount, tenor & rate vs pre-approval.", employment: A_ALL, property: ["any"], txn: A_ALL, residency: A_ALL, mandatory: true, visibleToClient: false, clientCanUpload: false },
+  { code: "DOC-VALUATION", name: "Valuation report", category: "Valuation", validityDays: 30, warnDays: 15, verifyNotes: "Share with Real Estate Team on receipt (13 Aug 2026 protocol) — report or amount + property details; log in G-Drive.", employment: A_ALL, property: ["any"], txn: A_ALL, residency: A_ALL, mandatory: true, visibleToClient: false, clientCanUpload: false },
+];
+
+// SOP §6.9 fee matrices (Dubai & Abu Dhabi; primary / resale / buyout).
+// Source rows only — self-contribution is derived from property value − finance.
+type DBFeeRule = {
+  emirate: string; txnType: string; label: string; amountType: string;
+  amount: number; paidBy: string; note: string; active: boolean;
+};
+const FEE_RULES: Omit<DBFeeRule, "sortOrder">[] = [
+  // --- Dubai · Primary ---
+  { emirate: "Dubai", txnType: "Primary", label: "Real Estate Agency Fee", amountType: "pct_property", amount: 2, paidBy: "Client", note: "2% + VAT", active: true },
+  { emirate: "Dubai", txnType: "Primary", label: "DLD Transfer Fee", amountType: "pct_property", amount: 4, paidBy: "Client", note: "4% of property value", active: true },
+  { emirate: "Dubai", txnType: "Primary", label: "DLD Trustee Fee", amountType: "fixed", amount: 4200, paidBy: "Client", note: "Incl. VAT", active: true },
+  { emirate: "Dubai", txnType: "Primary", label: "Mortgage Registration Fee", amountType: "pct_loan", amount: 0.25, paidBy: "Client", note: "0.25% of finance amount", active: true },
+  { emirate: "Dubai", txnType: "Primary", label: "Title Deed / Knowledge & Innovation", amountType: "fixed", amount: 870, paidBy: "Client", note: "", active: true },
+  { emirate: "Dubai", txnType: "Primary", label: "Bank Processing Fee", amountType: "pct_loan", amount: 0.525, paidBy: "Client", note: "0–0.525% + VAT, bank-dependent", active: true },
+  { emirate: "Dubai", txnType: "Primary", label: "Valuation Fee", amountType: "fixed", amount: 3150, paidBy: "Client", note: "AED 2,500–3,150", active: true },
+  { emirate: "Dubai", txnType: "Primary", label: "Brokerage Consultancy", amountType: "fixed", amount: 2625, paidBy: "Client", note: "Nil if max LTV + extra finance taken", active: true },
+  // --- Dubai · Resale ---
+  { emirate: "Dubai", txnType: "Resale", label: "Real Estate Agency Fee", amountType: "pct_property", amount: 2, paidBy: "Client", note: "2% + VAT", active: true },
+  { emirate: "Dubai", txnType: "Resale", label: "DLD Transfer Fee", amountType: "pct_property", amount: 4, paidBy: "Client", note: "4% of property value", active: true },
+  { emirate: "Dubai", txnType: "Resale", label: "DLD Trustee Fee", amountType: "fixed", amount: 4200, paidBy: "Client", note: "Incl. VAT", active: true },
+  { emirate: "Dubai", txnType: "Resale", label: "Mortgage Registration Fee", amountType: "pct_loan", amount: 0.25, paidBy: "Client", note: "0.25% of finance amount", active: true },
+  { emirate: "Dubai", txnType: "Resale", label: "Title Deed / Knowledge & Innovation", amountType: "fixed", amount: 870, paidBy: "Client", note: "", active: true },
+  { emirate: "Dubai", txnType: "Resale", label: "Bank Processing Fee", amountType: "pct_loan", amount: 0.525, paidBy: "Client", note: "0–0.525% + VAT, bank-dependent", active: true },
+  { emirate: "Dubai", txnType: "Resale", label: "Valuation Fee", amountType: "fixed", amount: 3150, paidBy: "Client", note: "AED 2,500–3,150", active: true },
+  { emirate: "Dubai", txnType: "Resale", label: "DLD Blocking Fee", amountType: "fixed", amount: 1545, paidBy: "Client", note: "Resale-specific", active: true },
+  { emirate: "Dubai", txnType: "Resale", label: "Mortgage Release Fee", amountType: "fixed", amount: 1605, paidBy: "Seller", note: "1,605 / 1,875 Islamic — paid by seller", active: true },
+  // --- Dubai · Buyout / Equity Release ---
+  { emirate: "Dubai", txnType: "Buyout", label: "Mortgage Registration Fee", amountType: "pct_loan", amount: 0.25, paidBy: "Client", note: "0.25% of finance amount", active: true },
+  { emirate: "Dubai", txnType: "Buyout", label: "Mortgage Release Fee", amountType: "fixed", amount: 1605, paidBy: "Client", note: "Fixed", active: true },
+  { emirate: "Dubai", txnType: "Buyout", label: "Trustee / Electronic Registration", amountType: "fixed", amount: 4200, paidBy: "Client", note: "Incl. 5% VAT", active: true },
+  { emirate: "Dubai", txnType: "Buyout", label: "Title Deed Fees", amountType: "fixed", amount: 870, paidBy: "Client", note: "", active: true },
+  { emirate: "Dubai", txnType: "Buyout", label: "Bank Processing Fee", amountType: "pct_loan", amount: 1.05, paidBy: "Client", note: "Up to 1.05% + VAT", active: true },
+  { emirate: "Dubai", txnType: "Buyout", label: "Valuation Fee", amountType: "fixed", amount: 3150, paidBy: "Client", note: "AED 2,625–3,150", active: true },
+  // --- Abu Dhabi · Primary ---
+  { emirate: "Abu Dhabi", txnType: "Primary", label: "Real Estate Agency Fee", amountType: "pct_property", amount: 2.1, paidBy: "Client", note: "2.1% incl. VAT", active: true },
+  { emirate: "Abu Dhabi", txnType: "Primary", label: "ADM Transfer Fee", amountType: "pct_property", amount: 2, paidBy: "Client", note: "2% of property value (1% for Al Reef)", active: true },
+  { emirate: "Abu Dhabi", txnType: "Primary", label: "Mortgage Registration Fee", amountType: "pct_loan", amount: 0.1, paidBy: "Client", note: "0.1% of finance amount", active: true },
+  { emirate: "Abu Dhabi", txnType: "Primary", label: "Electronic Registration Fee", amountType: "fixed", amount: 1391.25, paidBy: "Client", note: "", active: true },
+  { emirate: "Abu Dhabi", txnType: "Primary", label: "NOC / Admin Fee", amountType: "fixed", amount: 5250, paidBy: "Client", note: "Manazel standard — varies by developer", active: true },
+  { emirate: "Abu Dhabi", txnType: "Primary", label: "DARI Transfer Fee", amountType: "fixed", amount: 1575, paidBy: "Client", note: "1,575 mortgage / 1,050 cash", active: true },
+  { emirate: "Abu Dhabi", txnType: "Primary", label: "Bank Processing Fee", amountType: "pct_loan", amount: 1.05, paidBy: "Client", note: "0–1.05% of finance", active: true },
+  { emirate: "Abu Dhabi", txnType: "Primary", label: "Valuation Fee", amountType: "fixed", amount: 3150, paidBy: "Client", note: "AED 2,625–3,150", active: true },
+  // --- Abu Dhabi · Resale ---
+  { emirate: "Abu Dhabi", txnType: "Resale", label: "Real Estate Agency Fee", amountType: "pct_property", amount: 2.1, paidBy: "Client", note: "2.1% incl. VAT", active: true },
+  { emirate: "Abu Dhabi", txnType: "Resale", label: "ADM Transfer Fee", amountType: "pct_property", amount: 2, paidBy: "Client", note: "2% of property value (1% for Al Reef)", active: true },
+  { emirate: "Abu Dhabi", txnType: "Resale", label: "Mortgage Registration Fee", amountType: "pct_loan", amount: 0.1, paidBy: "Client", note: "0.1% of finance amount", active: true },
+  { emirate: "Abu Dhabi", txnType: "Resale", label: "Electronic Registration Fee", amountType: "fixed", amount: 1391.25, paidBy: "Client", note: "", active: true },
+  { emirate: "Abu Dhabi", txnType: "Resale", label: "NOC / Admin Fee", amountType: "fixed", amount: 5250, paidBy: "Client", note: "Manazel standard — varies by developer", active: true },
+  { emirate: "Abu Dhabi", txnType: "Resale", label: "DARI Transfer Fee", amountType: "fixed", amount: 1575, paidBy: "Client", note: "1,575 mortgage / 1,050 cash", active: true },
+  { emirate: "Abu Dhabi", txnType: "Resale", label: "Bank Processing Fee", amountType: "pct_loan", amount: 1.05, paidBy: "Client", note: "0–1.05% of finance", active: true },
+  { emirate: "Abu Dhabi", txnType: "Resale", label: "Valuation Fee", amountType: "fixed", amount: 3150, paidBy: "Client", note: "AED 2,625–3,150", active: true },
+  { emirate: "Abu Dhabi", txnType: "Resale", label: "Mortgage Release Fee", amountType: "fixed", amount: 900, paidBy: "Seller", note: "Fixed — paid by seller", active: true },
+  // --- Abu Dhabi · Buyout / Equity Release ---
+  { emirate: "Abu Dhabi", txnType: "Buyout", label: "Mortgage Registration Fee", amountType: "pct_loan", amount: 0.1, paidBy: "Client", note: "0.10% of finance amount", active: true },
+  { emirate: "Abu Dhabi", txnType: "Buyout", label: "Mortgage Release Fee", amountType: "fixed", amount: 900, paidBy: "Client", note: "Fixed", active: true },
+  { emirate: "Abu Dhabi", txnType: "Buyout", label: "Electronic Registration Fee", amountType: "fixed", amount: 1391.25, paidBy: "Client", note: "", active: true },
+  { emirate: "Abu Dhabi", txnType: "Buyout", label: "Bank Processing Fee", amountType: "pct_loan", amount: 1.05, paidBy: "Client", note: "Up to 1.05% + VAT", active: true },
+  { emirate: "Abu Dhabi", txnType: "Buyout", label: "Valuation Fee", amountType: "fixed", amount: 3150, paidBy: "Client", note: "AED 2,625–3,150", active: true },
 ];
 
 const CASES = [
@@ -123,7 +241,8 @@ export async function seedDatabase() {
   // Only seed if empty
   const userCount = await db.user.count();
   if (userCount > 0) {
-    return { skipped: true, reason: "database already has data" };
+    const ensured = await ensureSopMasterData();
+    return { skipped: true, reason: "database already has data", ...ensured };
   }
 
   for (const d of DESIGNATIONS) {
@@ -228,7 +347,58 @@ export async function seedDatabase() {
     });
   }
 
-  return { seeded: true, counts: { users: USERS.length, cases: CASES.length, tasks: TASK_SEED.length } };
+  const ensured = await ensureSopMasterData();
+  return { seeded: true, counts: { users: USERS.length, cases: CASES.length, tasks: TASK_SEED.length }, ...ensured };
+}
+
+// Idempotent top-up for SOP master data — runs on every seed call (even on a
+// database that already has users/cases) so existing installs pick up the
+// document validity rules, transfer fee matrices and stage TATs without a
+// wipe. Create-if-missing only: never overwrites admin edits.
+async function ensureSopMasterData() {
+  let docRules = 0, feeRules = 0, slaRules = 0;
+
+  if ((await db.docRule.count()) === 0) {
+    for (const d of DOC_RULES) await db.docRule.create({ data: docRuleData(d) });
+    docRules = DOC_RULES.length;
+  } else {
+    // Migration: pre-conditional rows have no code — replace once with the catalog
+    const coded = await db.docRule.count({ where: { code: { not: "" } } });
+    if (coded === 0) {
+      await db.docRule.deleteMany({});
+      for (const d of DOC_RULES) await db.docRule.create({ data: docRuleData(d) });
+      docRules = DOC_RULES.length;
+    }
+  }
+  if ((await db.feeRule.count()) === 0) {
+    for (const [i, f] of FEE_RULES.entries()) await db.feeRule.create({ data: { ...f, sortOrder: i } });
+    feeRules = FEE_RULES.length;
+  }
+  for (const s of SLA_RULES) {
+    const exists = await db.slaRule.findFirst({ where: { stage: s.stage, bank: null } });
+    if (!exists) {
+      await db.slaRule.create({ data: s });
+      slaRules++;
+    }
+  }
+  // "Lead" stage — self-registrations from the client portal land here
+  const lead = await db.stageItem.findFirst({ where: { label: "Lead" } });
+  if (!lead) await db.stageItem.create({ data: { label: "Lead", active: true, sortOrder: 0 } });
+  return { ensured: { docRules, feeRules, slaRules } };
+}
+
+function docRuleData(d: DbDocRule) {
+  return {
+    code: d.code, name: d.name, category: d.category, validityDays: d.validityDays, warnDays: d.warnDays,
+    verifyNotes: d.verifyNotes,
+    applicableEmployment: JSON.stringify(d.employment),
+    applicablePropertyType: JSON.stringify(d.property),
+    applicableTransaction: JSON.stringify(d.txn),
+    applicableResidency: JSON.stringify(d.residency),
+    mandatory: d.mandatory, visibleToClient: d.visibleToClient, clientCanUpload: d.clientCanUpload,
+    expiryTrackingRequired: d.validityDays > 0 || d.warnDays > 0,
+    active: true,
+  };
 }
 
 function toISODate(d: Date): string {

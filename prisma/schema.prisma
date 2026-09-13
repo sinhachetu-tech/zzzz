@@ -32,6 +32,8 @@ model User {
   instructionReplies InstrReply[]  @relation("InstrReplyUser")
   affordabilityChecks AffordabilityCheck[]
   sessions         Session[]
+  stageTransitions StageTransition[]
+  vrmCases         LoanCase[] @relation("CaseVrm")
 }
 
 model Designation {
@@ -41,6 +43,7 @@ model Designation {
   issueTasks Boolean @default(false)
   admin     Boolean  @default(false)
   super     Boolean  @default(false)
+  viewRevenue Boolean @default(false) // commission rates & earnings are restricted
   builtIn  Boolean  @default(false)
 }
 
@@ -69,12 +72,48 @@ model LoanCase {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  // --- Document Vault profile vectors — drive the conditional checklist ---
+  employmentProfile String @default("Salaried") // Salaried | Self-Employed | Non-Resident
+  propertyType      String @default("Ready")    // Ready | Off-Plan
+  residency         String @default("Resident Expatriate") // UAE National | Resident Expatriate | Non-Resident
+
+  // --- MIS operational fields (feed the client portal + daily updates) ---
+  statusNote       String  @default("") // daily free-text status narrative shown to the client
+  bankRm           String? // bank relationship manager name
+  vrmId            Int?    // internal VRM handling the file (maker), distinct from the owner
+  transactionType  String  @default("") // Buyout, Primary Handover, Resale, Equity Release…
+  propertyLocation String? // Dubai, Abu Dhabi, ADGM…
+  coApplicantName  String?
+  onHold           Boolean @default(false)
+  holdReason       String?
+  holdUntil        String? // ISO date
+  // --- Bank submission tracking ---
+  loanType          String? // NSTL | STL (non-salary vs salary transfer)
+  fileSubmittedDate String? // when the file was submitted to the bank
+  bankRate          Float?  // rate the bank quoted
+  bankTenor         Int?    // tenor the bank approved (months)
+  // --- Pre-approval stage capture ---
+  preApprovalDate   String?
+  preApprovalAmount Int?
+  preApprovalTenure Int?
+  preApprovalRoi    Float?
+  // --- Final Offer Letter capture ---
+  folDate   String?
+  folAmount Int?
+  folTenure Int?
+  folRoi    Float?
+
   owner      User      @relation("CaseOwner", fields: [ownerId], references: [id])
+  vrm        User?     @relation("CaseVrm", fields: [vrmId], references: [id])
   tasks      Task[]
   activities Activity[]
   instructions Instruction[]
   bulletins  BulletinItem[]
   emails     EmailLog[]
+  stageTransitions StageTransition[]
+  clientDocuments  ClientDocument[]
+  clientSessions   ClientSession[]
+  vaultDocuments   CaseDocument[]
 }
 
 model Task {
@@ -207,6 +246,7 @@ model PartnerItem {
   kind              String   // Agent | Broker | Referral
   name              String
   defaultSharePct   Int      @default(20)
+  password          String   @default("agent123") // agent portal login
   active            Boolean  @default(true)
 
   @@unique([kind, name])
@@ -295,4 +335,111 @@ model ChannelItem {
   name          String   @unique
   commissionPct Float    @default(0.4) // % of loan amount the channel takes
   active        Boolean  @default(true)
+}
+
+// Stage change log — powers the client portal timeline and the Case 360 history.
+model StageTransition {
+  id        Int      @id @default(autoincrement())
+  caseId    Int
+  fromStage String
+  toStage   String
+  comment   String   @default("")
+  userId    Int
+  at        DateTime @default(now())
+
+  case LoanCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  user User     @relation(fields: [userId], references: [id])
+}
+
+// Client portal session — separate from team sessions.
+// Clients log in with case number + last 4 digits of their phone, not a password.
+model ClientSession {
+  id        String   @id @default(cuid())
+  caseId    Int
+  phone     String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  case      LoanCase @relation(fields: [caseId], references: [id])
+}
+
+// Client-uploaded documents — metadata only; files live in storage/G-Drive.
+model ClientDocument {
+  id         Int      @id @default(autoincrement())
+  caseId     Int
+  fileName   String
+  fileType   String
+  fileSize   Int
+  uploadedAt DateTime @default(now())
+  case       LoanCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+}
+
+// Document rule template — the master catalog behind the conditional Document
+// Vault. Admin CRUD (Admin → Doc Rules). Conditions are JSON string arrays of
+// allowed profile values; "all"/"any" match everything. Feeds per-case checklists.
+model DocRule {
+  id            Int     @id @default(autoincrement())
+  code          String  @default("") // e.g. DOC-SAL-CERT
+  name          String
+  category      String  @default("KYC") // KYC | Income | Property | Bank & Liabilities | Internal Underwriting | Valuation | Transfer
+  validityDays  Int     @default(0) // 0 = no fixed validity — rely on the note
+  warnDays      Int     @default(7) // flag this many days before expiry
+  verifyNotes   String  @default("") // what to check / rejection triggers
+  // condition vectors (JSON arrays): "all"/"any" or specific values
+  applicableEmployment   String @default("[\"all\"]")  // Salaried | Self-Employed | Non-Resident | all
+  applicablePropertyType String @default("[\"any\"]")  // Ready | Off-Plan | any
+  applicableTransaction  String @default("[\"any\"]")  // New Purchase | Buyout / Equity Release | any
+  applicableResidency    String @default("[\"all\"]")  // UAE National | Resident Expatriate | Non-Resident | all
+  // access rules
+  mandatory           Boolean @default(true)  // blocks case progression when missing
+  visibleToClient     Boolean @default(true)  // false = staff-internal only (AECB, memos…)
+  clientCanUpload     Boolean @default(true)
+  expiryTrackingRequired Boolean @default(true)
+  active       Boolean @default(true)
+}
+
+// Per-case document instance — the living vault. Auto-populated from templates
+// by the condition engine, plus ad-hoc additions; full CRUD on the case.
+model CaseDocument {
+  id              Int      @id @default(autoincrement())
+  caseId          Int
+  templateId      Int?     // null = ad-hoc document
+  title           String
+  category        String   @default("KYC")
+  status          String   @default("Pending upload") // Pending upload | Uploaded | Verified | Rejected | Waived
+  mandatory       Boolean  @default(true)
+  visibleToClient Boolean  @default(true)
+  clientCanUpload Boolean  @default(true)
+  rejectionReason String   @default("")
+  notes           String   @default("")
+  fileName        String?
+  fileType        String?
+  fileSize        Int?
+  fileData        Bytes?
+  expiryDate      String?
+  uploadedByKind  String   @default("") // client | staff
+  uploadedById    Int?
+  uploadedAt      DateTime?
+  verifiedById    Int?
+  verifiedAt      DateTime?
+  createdAt       DateTime @default(now())
+  sortOrder       Int      @default(0)
+
+  case LoanCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+}
+
+// SOP §6.9 — Government & bank transfer fee matrices (Dubai / Abu Dhabi).
+// Admin-managed (Admin → Fee rules); feeds the Calculator's Transfer Fees tab.
+model FeeRule {
+  id         Int     @id @default(autoincrement())
+  emirate    String  // Dubai | Abu Dhabi
+  txnType    String  // Primary | Resale | Buyout
+  label      String
+  amountType String  // pct_property | pct_loan | fixed
+  amount     Float
+  paidBy     String  @default("Client") // Client | Seller
+  note       String  @default("")
+  sortOrder  Int     @default(0)
+  active     Boolean @default(true)
+
+  @@index([emirate, txnType])
 }

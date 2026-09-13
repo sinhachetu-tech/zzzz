@@ -34,9 +34,11 @@ export function BankChips({ c, max = 2 }: { c: LoanCase; max?: number }) {
   );
 }
 
-/** Live money panel: our commission, partner cut, net — recomputed from master data */
+/** Live money panel: our commission, partner cut, net — recomputed from master data.
+ *  Revenue-restricted designations get the rates zeroed server-side AND the panel hidden. */
 export function CommissionPanel({ c, compact = false }: { c: LoanCase; compact?: boolean }) {
-  const { banks } = useHfmcStore();
+  const { banks, flags } = useHfmcStore();
+  if (!flags?.viewRevenue) return null;
   const m = commissionFor(c, banks);
   if (!m.bank)
     return (

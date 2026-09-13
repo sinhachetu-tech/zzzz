@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import type { CasePartner, CaseSource, Route } from "@/lib/types";
-import { PARTNER_SHARES, SOURCES } from "@/lib/types";
+import type { CasePartner, CaseSource } from "@/lib/types";
+import type { Route } from "@/lib/client-store";
+import { EMPLOYMENT_PROFILES, PARTNER_SHARES, PROPERTY_LOCATIONS, PROPERTY_TYPES, RESIDENCIES, SOURCES, TRANSACTION_TYPES } from "@/lib/types";
 import { useHfmcStore } from "@/lib/client-store";
 import { computeEscalations } from "@/lib/domain";
 import { fmtMoney, inDaysISO, todayISO } from "@/lib/format";
@@ -29,7 +30,7 @@ function Clock() {
 }
 
 function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { stages, banks, partners, channels, users, me, createCase, toast, nav } = useHfmcStore();
+  const { stages, banks, partners, channels, users, me, flags, createCase, toast, nav } = useHfmcStore();
   const activeStages = [...stages].filter((s) => s.active).sort((a, b) => a.sortOrder - b.sortOrder);
   const [customer, setCustomer] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
@@ -46,6 +47,14 @@ function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void })
   const [customShare, setCustomShare] = useState("");
   const [taskDesc, setTaskDesc] = useState("");
   const [taskDue, setTaskDue] = useState(inDaysISO(3));
+  // --- MIS operational (optional, fill later on Case 360) ---
+  const [transactionType, setTransactionType] = useState("");
+  const [propertyLocation, setPropertyLocation] = useState("");
+  const [coApplicantName, setCoApplicantName] = useState("");
+  const [bankRm, setBankRm] = useState("");
+  const [employmentProfile, setEmploymentProfile] = useState<(typeof EMPLOYMENT_PROFILES)[number]>("Salaried");
+  const [propertyType, setPropertyType] = useState<(typeof PROPERTY_TYPES)[number]>("Ready");
+  const [residency, setResidency] = useState<(typeof RESIDENCIES)[number]>("Resident Expatriate");
   const [err, setErr] = useState("");
 
   if (!open) return null;
@@ -79,9 +88,16 @@ function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void })
         channelId: selectedChannel?.id ?? null,
         channelName: selectedChannel?.name ?? null,
         channelRatePct: selectedChannel?.commissionPct ?? 0,
+        transactionType: transactionType || undefined,
+        propertyLocation: propertyLocation || null,
+        coApplicantName: coApplicantName.trim() || null,
+        employmentProfile, propertyType, residency,
+        bankRm: bankRm.trim() || null,
       });
       toast("success", `${c.caseNumber} opened for ${c.customer}.`);
-      setCustomer(""); setWhatsapp(""); setWaGroup(""); setBankList([]); setTaskDesc(""); setErr("");
+      setCustomer(""); setWhatsapp(""); setWaGroup(""); setBankList([]); setTaskDesc("");
+      setTransactionType(""); setPropertyLocation(""); setCoApplicantName(""); setBankRm("");
+      setErr("");
       onClose();
       nav({ name: "case", id: c.id });
     } catch (e) {
@@ -119,7 +135,7 @@ function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void })
               return (
                 <button key={b.id} type="button" onClick={() => toggleBank(b.name)} className="chip transition-all"
                   style={on ? { background: "rgba(242,176,76,0.14)", borderColor: "var(--amber)", color: "var(--amber)" } : { background: "var(--bg2)", borderColor: "var(--line)", color: "var(--ink-faint)" }}>
-                  {b.name} <span className="opacity-70">{b.ratePct}%</span>
+                  {b.name} {flags?.viewRevenue && <span className="opacity-70">{b.ratePct}%</span>}
                 </button>
               );
             })}
@@ -147,11 +163,11 @@ function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void })
             <select className="select mt-2" value={channelId ?? ""} onChange={(e) => setChannelId(e.target.value ? parseInt(e.target.value, 10) : null)}>
               <option value="">Select channel…</option>
               {channels.filter((ch) => ch.active).map((ch) => (
-                <option key={ch.id} value={ch.id}>{ch.name} — {ch.commissionPct}% of loan</option>
+                <option key={ch.id} value={ch.id}>{ch.name}{flags?.viewRevenue ? ` — ${ch.commissionPct}% of loan` : ""}</option>
               ))}
             </select>
           )}
-          {submissionType === "channel" && channelId && (
+          {submissionType === "channel" && channelId && flags?.viewRevenue && (
             <p className="text-[10.5px] text-[var(--ink-faint)] mt-1 mb-0">
               Channel takes {channels.find((ch) => ch.id === channelId)?.commissionPct}% of the loan amount from the gross commission.
             </p>
@@ -181,6 +197,55 @@ function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void })
           </div>
         </div>
 
+        {/* --- MIS operational (collapsible — keeps modal compact on mobile) --- */}
+        <details className="rounded-lg" style={{ background: "var(--tint)", border: "1px solid var(--line-soft)" }}>
+          <summary className="px-3 py-2 cursor-pointer font-disp text-[12px] font-semibold text-[var(--ink-faint)] uppercase tracking-[0.08em]">
+            More details (optional) — profile, transaction, location, co-applicant, bank RM
+          </summary>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 pt-0">
+            <div>
+              <label className="label">Employment profile · <span style={{ color: "var(--amber)" }}>drives document checklist</span></label>
+              <select className="select" value={employmentProfile} onChange={(e) => setEmploymentProfile(e.target.value as (typeof EMPLOYMENT_PROFILES)[number])}>
+                {EMPLOYMENT_PROFILES.map((v) => <option key={v} value={v}>{v}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label">Residency</label>
+              <select className="select" value={residency} onChange={(e) => setResidency(e.target.value as (typeof RESIDENCIES)[number])}>
+                {RESIDENCIES.map((v) => <option key={v} value={v}>{v}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label">Property type · <span style={{ color: "var(--amber)" }}>drives document checklist</span></label>
+              <select className="select" value={propertyType} onChange={(e) => setPropertyType(e.target.value as (typeof PROPERTY_TYPES)[number])}>
+                {PROPERTY_TYPES.map((v) => <option key={v} value={v}>{v}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label">Transaction type</label>
+              <select className="select" value={transactionType} onChange={(e) => setTransactionType(e.target.value)}>
+                <option value="">— select —</option>
+                {TRANSACTION_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label">Property location</label>
+              <select className="select" value={propertyLocation} onChange={(e) => setPropertyLocation(e.target.value)}>
+                <option value="">— select —</option>
+                {PROPERTY_LOCATIONS.map((p) => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label">Co-applicant</label>
+              <input className="input" value={coApplicantName} onChange={(e) => setCoApplicantName(e.target.value)} placeholder="e.g. Fatima Al Mansoori" />
+            </div>
+            <div>
+              <label className="label">Bank RM</label>
+              <input className="input" value={bankRm} onChange={(e) => setBankRm(e.target.value)} placeholder="e.g. Ahmed (ENBD)" />
+            </div>
+          </div>
+        </details>
+
         {needsPartner && (
           <div className="rounded-lg p-3 anim-fade-up" style={{ background: "rgba(242,176,76,0.05)", border: "1px solid rgba(242,176,76,0.2)" }}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -191,7 +256,7 @@ function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void })
                 ) : (
                   <select className="select" value={partnerName} onChange={(e) => setPartnerName(e.target.value)}>
                     <option value="">Select…</option>
-                    {partnerOptions.map((p) => <option key={p.id} value={p.name}>{p.name} (default {p.defaultSharePct}%)</option>)}
+                    {partnerOptions.map((p) => <option key={p.id} value={p.name}>{p.name}{flags?.viewRevenue ? ` (default ${p.defaultSharePct}%)` : ""}</option>)}
                   </select>
                 )}
               </div>
@@ -251,7 +316,7 @@ export default function Shell({ children }: { children: ReactNode }) {
   const openInstr = instructions.filter((i) => i.status === "Open").length;
   const pipeline = visibleCases().filter((c) => c.caseStatus === "Active").reduce((s, c) => s + c.loanAmount, 0);
   const isAdmin = flags?.admin || flags?.super;
-  const canInstruct = flags?.issueTasks || flags?.super;
+  const canInstruct = !!(flags?.issueTasks || flags?.super);
 
   const myOpenDirectives = me
     ? bulletin.filter((b) => !b.isTemplate && !b.dropped && b.date === todayISO() && b.status === "Open" && b.targets.includes(me.id)).length

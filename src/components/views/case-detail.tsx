@@ -1,13 +1,16 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import { useHfmcStore } from "@/lib/client-store";
-import type { Reply, Task } from "@/lib/types";
+import type { LoanCase, Reply, Task } from "@/lib/types";
+import { EMPLOYMENT_PROFILES, LOAN_TYPES, PROPERTY_LOCATIONS, PROPERTY_TYPES, RESIDENCIES, TRANSACTION_TYPES } from "@/lib/types";
 import {
   ageDays, caseStatusOf, fmtDate, fmtDateTime, fmtMoney, inDaysISO, primaryBank, relTime, todayISO,
 } from "@/lib/format";
 import { Avatar, Chip, DueChip, Modal, SectionLabel, StatusChip } from "@/components/hfmc/ui";
 import { BankChips, CaseStateChip, CommissionPanel, ConfirmModal, SourceChip, WaButtons } from "@/components/hfmc/bits";
+import { DocVault } from "@/components/views/doc-vault";
 import {
   IArrowR, IBank, ICalc, ICheck, IChevronL, IClock, IFlag, IHistory, IPlus, IRobot, ISparkles, ITrash, IZap,
 } from "@/components/icons";
@@ -102,26 +105,44 @@ function StageUpdateModal({ open, onClose, caseId }: { open: boolean; onClose: (
   const { cases, stages, updateCase, toast } = useHfmcStore();
   const c = cases.find((x) => x.id === caseId);
   const [stage, setStage] = useState(c?.stage ?? "");
+  const [comment, setComment] = useState("");
   const activeStages = [...stages].filter((s) => s.active).sort((a, b) => a.sortOrder - b.sortOrder);
   if (!open || !c) return null;
   const submit = async () => {
-    await updateCase(caseId, { stage });
+    if (stage === c.stage) { onClose(); return; }
+    await updateCase(caseId, { stage, stageComment: comment.trim() });
     toast("success", `Stage moved to ${stage}.`);
+    setComment("");
     onClose();
   };
   return (
-    <Modal title="Move stage" sub={c.caseNumber} onClose={onClose} width={420}
+    <Modal title="Move stage" sub={c.caseNumber} onClose={onClose} width={480}
       footer={<><button className="btn btn-ghost" onClick={onClose}>Cancel</button><button className="btn btn-primary" onClick={submit}>Move</button></>}>
-      <div className="space-y-2">
-        {activeStages.map((s) => (
-          <button key={s.id} className="w-full text-left rowlink rounded-lg px-3 py-2.5 flex items-center gap-3"
-            style={{ border: "1px solid", borderColor: stage === s.label ? "var(--amber)" : "var(--line-soft)", background: stage === s.label ? "rgba(242,176,76,0.06)" : "transparent" }}
-            onClick={() => setStage(s.label)}>
-            <span className="font-disp font-semibold text-[13px]">{s.label}</span>
-            {c.stage === s.label && <Chip tone="amber">current</Chip>}
-            {stage === s.label && c.stage !== s.label && <span className="ml-auto mono text-[11px] text-[var(--amber)]">→ moving</span>}
-          </button>
-        ))}
+      <div className="space-y-3">
+        <div className="space-y-2">
+          {activeStages.map((s) => (
+            <button key={s.id} className="w-full text-left rowlink rounded-lg px-3 py-2.5 flex items-center gap-3"
+              style={{ border: "1px solid", borderColor: stage === s.label ? "var(--amber)" : "var(--line-soft)", background: stage === s.label ? "rgba(242,176,76,0.06)" : "transparent" }}
+              onClick={() => setStage(s.label)}>
+              <span className="font-disp font-semibold text-[13px]">{s.label}</span>
+              {c.stage === s.label && <Chip tone="amber">current</Chip>}
+              {stage === s.label && c.stage !== s.label && <span className="ml-auto mono text-[11px] text-[var(--amber)]">→ moving</span>}
+            </button>
+          ))}
+        </div>
+        {stage !== c.stage && (
+          <div className="anim-fade-up">
+            <label className="label">Why are you moving the stage? <span className="normal-case tracking-normal" style={{ color: "var(--ink-faint)" }}>— logged in stage history</span></label>
+            <textarea
+              className="textarea"
+              rows={3}
+              placeholder="e.g. Client confirmed property, submitting to ADCB today."
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              autoFocus
+            />
+          </div>
+        )}
       </div>
     </Modal>
   );
@@ -278,6 +299,277 @@ function inline(s: string): string {
     .replace(/\*([^*]+)\*/g, '<em>$1</em>');
 }
 
+/* ---------------- MIS operational fields ---------------- */
+
+function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
+  return (
+    <div>
+      <label className="label">{label}{hint && <span className="normal-case tracking-normal" style={{ color: "var(--ink-faint)" }}> — {hint}</span>}</label>
+      {children}
+    </div>
+  );
+}
+
+/** Auto-save text input — uncontrolled, remounts when the saved value changes so
+ *  the field always reflects the latest server value after hydrate. */
+function SaveText({
+  value, onSave, placeholder, mono, type = "text",
+}: {
+  value: string; onSave: (v: string) => void; placeholder?: string; mono?: boolean; type?: "text" | "date" | "number";
+}) {
+  return (
+    <input
+      key={`v-${value}`}
+      className={`input ${mono ? "mono" : ""}`}
+      type={type}
+      defaultValue={value}
+      placeholder={placeholder}
+      onBlur={(e) => {
+        const v = e.target.value.trim();
+        if (v !== value) onSave(v);
+      }}
+    />
+  );
+}
+
+function MisPanel({ c }: { c: LoanCase }) {
+  const { users, updateCase, toast } = useHfmcStore();
+  const save = (field: string, value: unknown) =>
+    updateCase(c.id, { [field]: value }).then(() => toast("success", "Saved."));
+
+  return (
+    <div className="card p-4 anim-fade-up" style={{ borderLeft: "3px solid var(--amber)" }}>
+      <div className="flex items-center gap-2 mb-3">
+        <IFlag size={14} className="text-[var(--amber)]" />
+        <h3 className="font-disp font-semibold text-[13.5px] m-0">Status &amp; operations</h3>
+        {c.onHold && <span className="ml-auto chip" style={{ color: "var(--amber)", background: "rgba(242,176,76,0.12)", borderColor: "rgba(242,176,76,0.4)" }}>ON HOLD</span>}
+      </div>
+
+      {/* status note — the most important field */}
+      <Field label="Status note" hint="auto-saves on blur">
+        <textarea
+          key={`note-${c.statusNote ?? ""}`}
+          className="textarea"
+          rows={3}
+          placeholder="Today's narrative — what's happening, what's blocking, what's next."
+          defaultValue={c.statusNote ?? ""}
+          onBlur={(e) => {
+            const v = e.target.value.trim();
+            if (v !== (c.statusNote ?? "")) save("statusNote", v);
+          }}
+        />
+      </Field>
+
+      <div className="grid grid-cols-2 gap-3 mt-3">
+        <Field label="Employment profile" hint="drives the vault">
+          <select className="select" value={c.employmentProfile} onChange={(e) => save("employmentProfile", e.target.value)}>
+            {EMPLOYMENT_PROFILES.map((v) => <option key={v} value={v}>{v}</option>)}
+          </select>
+        </Field>
+        <Field label="Residency">
+          <select className="select" value={c.residency} onChange={(e) => save("residency", e.target.value)}>
+            {RESIDENCIES.map((v) => <option key={v} value={v}>{v}</option>)}
+          </select>
+        </Field>
+        <Field label="Property type" hint="drives the vault">
+          <select className="select" value={c.propertyType} onChange={(e) => save("propertyType", e.target.value)}>
+            {PROPERTY_TYPES.map((v) => <option key={v} value={v}>{v}</option>)}
+          </select>
+        </Field>
+        <Field label="Transaction type">
+          <select
+            className="select"
+            value={c.transactionType || ""}
+            onChange={(e) => save("transactionType", e.target.value)}
+          >
+            <option value="">— select —</option>
+            {TRANSACTION_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </Field>
+        <Field label="Bank RM">
+          <SaveText value={c.bankRm ?? ""} placeholder="RM name at bank" onSave={(v) => save("bankRm", v || null)} />
+        </Field>
+        <Field label="VRM (internal)">
+          <select
+            className="select"
+            value={c.vrmId ?? ""}
+            onChange={(e) => save("vrmId", e.target.value ? parseInt(e.target.value, 10) : null)}
+          >
+            <option value="">— unassigned —</option>
+            {users.filter((u) => u.active).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+          </select>
+        </Field>
+        <Field label="Property location">
+          <select
+            className="select"
+            value={c.propertyLocation ?? ""}
+            onChange={(e) => save("propertyLocation", e.target.value || null)}
+          >
+            <option value="">— select —</option>
+            {PROPERTY_LOCATIONS.map((p) => <option key={p} value={p}>{p}</option>)}
+          </select>
+        </Field>
+        <Field label="Co-applicant">
+          <SaveText value={c.coApplicantName ?? ""} placeholder="Optional" onSave={(v) => save("coApplicantName", v || null)} />
+        </Field>
+        <Field label="Loan type">
+          <select
+            className="select"
+            value={c.loanType ?? ""}
+            onChange={(e) => save("loanType", e.target.value || null)}
+          >
+            <option value="">— select —</option>
+            {LOAN_TYPES.map((l) => <option key={l} value={l}>{l}</option>)}
+          </select>
+        </Field>
+        <Field label="File submitted date">
+          <SaveText value={c.fileSubmittedDate ?? ""} type="date" mono onSave={(v) => save("fileSubmittedDate", v || null)} />
+        </Field>
+        <Field label="Bank tenor (months)">
+          <SaveText value={c.bankTenor != null ? String(c.bankTenor) : ""} type="number" mono placeholder="e.g. 300" onSave={(v) => save("bankTenor", v ? Number(v) : null)} />
+        </Field>
+        <Field label="Bank rate (%)">
+          <SaveText value={c.bankRate != null ? String(c.bankRate) : ""} type="number" mono placeholder="e.g. 4.49" onSave={(v) => save("bankRate", v ? Number(v) : null)} />
+        </Field>
+      </div>
+
+      {/* on hold toggle */}
+      <div className="mt-3 pt-3" style={{ borderTop: "1px dashed var(--line)" }}>
+        <div className="flex items-center justify-between gap-2 mb-2">
+          <div>
+            <div className="text-[12.5px] font-medium">On hold</div>
+            <div className="text-[11px] text-[var(--ink-faint)]">Park the case with a reason and optional resume date.</div>
+          </div>
+          <button
+            type="button"
+            onClick={() => save("onHold", !c.onHold)}
+            className="btn btn-sm"
+            style={c.onHold
+              ? { background: "rgba(242,176,76,0.14)", color: "var(--amber)", borderColor: "var(--amber)" }
+              : { background: "var(--bg2)", color: "var(--ink-dim)", borderColor: "var(--line)" }}
+          >
+            {c.onHold ? "On hold" : "Active"}
+          </button>
+        </div>
+        {c.onHold && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 anim-fade-up">
+            <Field label="Hold reason">
+              <SaveText value={c.holdReason ?? ""} placeholder="e.g. Awaiting client salary certificate" onSave={(v) => save("holdReason", v || null)} />
+            </Field>
+            <Field label="Hold until">
+              <SaveText value={c.holdUntil ?? ""} type="date" mono onSave={(v) => save("holdUntil", v || null)} />
+            </Field>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- Stage transition log ---------------- */
+
+function StageHistoryPanel({ caseId }: { caseId: number }) {
+  const { stageTransitions } = useHfmcStore();
+  const rows = useMemo(
+    () => stageTransitions.filter((t) => t.caseId === caseId).sort((a, b) => b.at.localeCompare(a.at)),
+    [stageTransitions, caseId]
+  );
+  return (
+    <div className="card anim-fade-up">
+      <div className="p-4 border-b flex items-center gap-2" style={{ borderColor: "var(--line-soft)" }}>
+        <IHistory size={14} className="text-[var(--ink-faint)]" />
+        <h3 className="font-disp font-semibold text-[14px] m-0">Stage history</h3>
+        <span className="text-[11.5px] text-[var(--ink-faint)] ml-auto">{rows.length} move{rows.length === 1 ? "" : "s"}</span>
+      </div>
+      <div className="p-4">
+        {rows.length === 0 ? (
+          <p className="text-[12.5px] text-[var(--ink-faint)] m-0">No stage moves recorded yet — the first move will be logged here.</p>
+        ) : (
+          <div className="space-y-3">
+            {rows.map((t) => (
+              <div key={t.id} className="flex items-start gap-3">
+                <Avatar name={t.userName ?? "?"} size={26} />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[12.5px] m-0 leading-snug">
+                    <strong className="font-medium">{t.userName ?? "Someone"}</strong>{" "}
+                    <span className="text-[var(--ink-dim)]">moved</span>{" "}
+                    <Chip tone="slate">{t.fromStage || "—"}</Chip>{" "}
+                    <span className="text-[var(--ink-dim)]">→</span>{" "}
+                    <Chip tone="amber">{t.toStage}</Chip>
+                  </p>
+                  <p className="mono text-[10.5px] text-[var(--ink-faint)] m-0 mt-0.5">{fmtDate(t.at.slice(0, 10))} · {relTime(t.at)}</p>
+                  {t.comment && (
+                    <p className="text-[12px] text-[var(--ink-dim)] m-0 mt-1 leading-snug rounded-lg px-2.5 py-1.5" style={{ background: "var(--tint)", border: "1px solid var(--line-soft)" }}>
+                      “{t.comment}”
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- Pre-approval & FOL capture ---------------- */
+
+function NumberSaveField({ label, hint, value, onSave, placeholder, suffix }: { label: string; hint?: string; value: number | null; onSave: (v: number | null) => void; placeholder?: string; suffix?: string }) {
+  return (
+    <Field label={label} hint={hint}>
+      <div className="relative">
+        <SaveText value={value != null ? String(value) : ""} type="number" mono placeholder={placeholder} onSave={(v) => onSave(v ? Number(v) : null)} />
+        {suffix && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-[var(--ink-faint)] pointer-events-none">{suffix}</span>}
+      </div>
+    </Field>
+  );
+}
+
+function PreApprovalPanel({ c }: { c: LoanCase }) {
+  const { updateCase, toast } = useHfmcStore();
+  const save = (field: string, value: unknown) =>
+    updateCase(c.id, { [field]: value }).then(() => toast("success", "Saved."));
+  return (
+    <div className="card p-4 anim-fade-up">
+      <div className="flex items-center gap-2 mb-3">
+        <IBank size={14} className="text-[var(--sky)]" />
+        <h3 className="font-disp font-semibold text-[13.5px] m-0">Pre-approval details</h3>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Pre-approval date">
+          <SaveText value={c.preApprovalDate ?? ""} type="date" mono onSave={(v) => save("preApprovalDate", v || null)} />
+        </Field>
+        <NumberSaveField label="Pre-approval amount" value={c.preApprovalAmount} placeholder="e.g. 1500000" suffix="AED" onSave={(v) => save("preApprovalAmount", v)} />
+        <NumberSaveField label="Pre-approval tenure" hint="months" value={c.preApprovalTenure} placeholder="e.g. 300" onSave={(v) => save("preApprovalTenure", v)} />
+        <NumberSaveField label="Pre-approval ROI" value={c.preApprovalRoi} placeholder="e.g. 4.49" suffix="%" onSave={(v) => save("preApprovalRoi", v)} />
+      </div>
+    </div>
+  );
+}
+
+function FolPanel({ c }: { c: LoanCase }) {
+  const { updateCase, toast } = useHfmcStore();
+  const save = (field: string, value: unknown) =>
+    updateCase(c.id, { [field]: value }).then(() => toast("success", "Saved."));
+  return (
+    <div className="card p-4 anim-fade-up" style={{ borderLeft: "3px solid var(--mint)" }}>
+      <div className="flex items-center gap-2 mb-3">
+        <ICheck size={14} className="text-[var(--mint)]" />
+        <h3 className="font-disp font-semibold text-[13.5px] m-0">Final Offer Letter</h3>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="FOL date">
+          <SaveText value={c.folDate ?? ""} type="date" mono onSave={(v) => save("folDate", v || null)} />
+        </Field>
+        <NumberSaveField label="FOL amount" value={c.folAmount} placeholder="e.g. 1500000" suffix="AED" onSave={(v) => save("folAmount", v)} />
+        <NumberSaveField label="FOL tenure" hint="months" value={c.folTenure} placeholder="e.g. 300" onSave={(v) => save("folTenure", v)} />
+        <NumberSaveField label="FOL ROI" value={c.folRoi} placeholder="e.g. 4.49" suffix="%" onSave={(v) => save("folRoi", v)} />
+      </div>
+    </div>
+  );
+}
+
 /* ---------------- Case Detail ---------------- */
 
 export default function CaseDetail({ id }: { id: number }) {
@@ -309,6 +601,12 @@ export default function CaseDetail({ id }: { id: number }) {
   const owner = userById(c.ownerId);
   const currentStageIdx = stageList.findIndex((s) => s.label === c.stage);
   const canEdit = flags?.super || flags?.admin || c.ownerId === me?.id;
+  const activeStages = stageList.filter((s) => s.active);
+  const activeIdx = activeStages.findIndex((s) => s.label === c.stage);
+  const preApprovalIdx = activeStages.findIndex((s) => s.label === "Pre-Approval");
+  const folIdx = activeStages.findIndex((s) => s.label === "Final Approval");
+  const showPreApproval = preApprovalIdx >= 0 && activeIdx >= preApprovalIdx;
+  const showFol = folIdx >= 0 && activeIdx >= folIdx;
 
   return (
     <div className="space-y-4">
@@ -324,8 +622,19 @@ export default function CaseDetail({ id }: { id: number }) {
               <span className="mono text-[13px]" style={{ color: "var(--amber)" }}>{c.caseNumber}</span>
               <CaseStateChip state={c.caseStatus} />
               {c.caseStatus === "Active" && <StatusChip status={status} />}
+              {c.onHold && (
+                <span
+                  className="chip"
+                  title={c.holdReason ? `On hold — ${c.holdReason}${c.holdUntil ? ` (until ${c.holdUntil})` : ""}` : "On hold"}
+                  style={{ color: "var(--amber)", background: "rgba(242,176,76,0.12)", borderColor: "rgba(242,176,76,0.4)" }}
+                >
+                  ON HOLD
+                </span>
+              )}
               <SourceChip source={c.source} />
-              {c.partner && <Chip tone="amber">{c.partner.kind} · {c.partner.name} @ {c.partner.sharePct}%</Chip>}
+              {c.transactionType && <Chip tone="sky">{c.transactionType}</Chip>}
+              {c.propertyLocation && <Chip tone="slate">{c.propertyLocation}</Chip>}
+              {c.partner && <Chip tone="amber">{c.partner.kind} · {c.partner.name}{flags?.viewRevenue ? ` @ ${c.partner.sharePct}%` : ""}</Chip>}
             </div>
             <h1 className="font-disp font-bold text-[26px] tracking-tight m-0 mt-2">{c.customer}</h1>
             <p className="text-[12.5px] text-[var(--ink-faint)] m-0 mt-1">
@@ -452,6 +761,12 @@ export default function CaseDetail({ id }: { id: number }) {
             </div>
           )}
 
+          {/* document vault */}
+          <DocVault c={c} />
+
+          {/* stage transition log */}
+          <StageHistoryPanel caseId={c.id} />
+
           {/* activity */}
           <div className="card anim-fade-up">
             <div className="p-4 border-b flex items-center gap-2" style={{ borderColor: "var(--line-soft)" }}>
@@ -476,8 +791,11 @@ export default function CaseDetail({ id }: { id: number }) {
           </div>
         </div>
 
-        {/* right: commission + copilot + client */}
+        {/* right: MIS + pre-approval/FOL + commission + copilot + client */}
         <div className="space-y-4">
+          <MisPanel c={c} />
+          {showPreApproval && <PreApprovalPanel c={c} />}
+          {showFol && <FolPanel c={c} />}
           <CaseCopilot caseId={c.id} />
           <CommissionPanel c={c} />
           <div className="card p-4">
@@ -499,12 +817,39 @@ export default function CaseDetail({ id }: { id: number }) {
                   <div className="text-[11px] text-[var(--ink-faint)]">{c.ownerId === me?.id ? "you" : "case owner"} · {owner?.role}</div>
                 </div>
               </div>
+              {c.vrmId && userById(c.vrmId) && (
+                <div className="flex items-center gap-2.5">
+                  <Avatar name={userById(c.vrmId)!.name} size={28} />
+                  <div>
+                    <div className="text-[12.5px] font-medium">{userById(c.vrmId)!.name}</div>
+                    <div className="text-[11px] text-[var(--ink-faint)]">VRM · {userById(c.vrmId)!.role}</div>
+                  </div>
+                </div>
+              )}
+              {c.bankRm && (
+                <div className="flex items-center gap-2.5">
+                  <Avatar name={c.bankRm} size={28} />
+                  <div>
+                    <div className="text-[12.5px] font-medium">{c.bankRm}</div>
+                    <div className="text-[11px] text-[var(--ink-faint)]">bank relationship manager</div>
+                  </div>
+                </div>
+              )}
+              {c.coApplicantName && (
+                <div className="flex items-center gap-2.5">
+                  <Avatar name={c.coApplicantName} size={28} />
+                  <div>
+                    <div className="text-[12.5px] font-medium">{c.coApplicantName}</div>
+                    <div className="text-[11px] text-[var(--ink-faint)]">co-applicant</div>
+                  </div>
+                </div>
+              )}
               {c.partner && (
                 <div className="flex items-center gap-2.5">
                   <Avatar name={c.partner.name} size={28} />
                   <div>
                     <div className="text-[12.5px] font-medium">{c.partner.name}</div>
-                    <div className="text-[11px] text-[var(--ink-faint)]">{c.partner.kind} · {c.partner.sharePct}% of our commission</div>
+                    <div className="text-[11px] text-[var(--ink-faint)]">{c.partner.kind}{flags?.viewRevenue ? ` · ${c.partner.sharePct}% of our commission` : ""}</div>
                   </div>
                 </div>
               )}

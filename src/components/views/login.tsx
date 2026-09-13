@@ -2,9 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useHfmcStore } from "@/lib/client-store";
-import { commissionFor, fmtMoney, fmtRate } from "@/lib/format";
-import { BarList, useCountUp } from "@/components/hfmc/charts";
 import { TONE_HEX } from "@/lib/format";
+import { BarList, useCountUp } from "@/components/hfmc/charts";
 import { LogoMark } from "@/components/icons";
 import { ThemeToggle } from "@/components/hfmc/ui";
 
@@ -31,7 +30,6 @@ export default function Login() {
   const active = cases.filter((c) => c.caseStatus === "Active");
   const booked = cases.filter((c) => c.caseStatus === "Closed");
   const bookedValue = booked.reduce((s, c) => s + c.loanAmount, 0);
-  const bookedCommission = booked.reduce((s, c) => s + commissionFor(c, banks).gross, 0);
   const openTasks = tasks.filter((t) => t.status === "Open");
   const nCases = useCountUp(active.length, 900);
   const nValue = useCountUp(Math.round(bookedValue / 1e6), 1100);
@@ -94,17 +92,16 @@ export default function Login() {
           {nCases} cases in flight<br />across <span style={{ color: "var(--amber)" }}>{banks.length} UAE banks</span>
         </h2>
         <p className="text-[14px] text-[var(--ink-dim)] mt-4 mb-0 max-w-[420px]">
-          {booked.length} booked files worth <strong className="text-[var(--ink)]">AED {nValue}M</strong> ·{" "}
-          <strong style={{ color: "var(--mint)" }}>{fmtMoney(bookedCommission)}</strong> in bank commission earned — partners paid, net tracked.
+          {booked.length} booked files worth <strong className="text-[var(--ink)]">AED {nValue}M</strong> — tracked stage by stage, task by task.
         </p>
         <div className="mt-10 max-w-[420px]">
           <div className="text-[11px] uppercase tracking-[0.12em] text-[var(--ink-faint)] font-disp font-semibold mb-3">Why the pipeline is pending</div>
           {whyRows.length ? <BarList items={whyRows} /> : <p className="text-[12.5px] text-[var(--ink-faint)] m-0">No open tasks.</p>}
         </div>
         <div className="mt-10 flex items-center gap-2 text-[11.5px] text-[var(--ink-faint)]">
-          <span className="mono">commission desk</span>
+          <span className="mono">partner desks</span>
           <span className="opacity-40">·</span>
-          <span>ADCB {fmtRate(1)} · ENBD {fmtRate(0.85)} · UAB {fmtRate(0.9)} · {banks.length - 3} more, all editable in Admin</span>
+          <span>{banks.length} UAE banks · commission & rates visible to permitted roles only</span>
         </div>
       </div>
 
@@ -127,6 +124,10 @@ export default function Login() {
           </div>
           {err && <p className="text-[12.5px] mt-2.5 mb-0 anim-fade-in" style={{ color: "var(--coral)" }}>{err}</p>}
           <button className="btn btn-primary w-full justify-center mt-5 !py-2.5" onClick={login}>Enter the tracker</button>
+          <div className="flex items-center justify-between gap-2 mt-3.5 text-[11.5px]">
+            <a href="/client" className="text-[var(--ink-faint)] hover:text-[var(--amber)] transition-colors">Client? Track your case →</a>
+            <a href="/agent" className="text-[var(--ink-faint)] hover:text-[var(--amber)] transition-colors">Agent portal →</a>
+          </div>
           <div className="mt-7">
             <div className="text-[10.5px] uppercase tracking-[0.14em] text-[var(--ink-faint)] font-disp font-semibold mb-2.5">Demo seats — one tap</div>
             <div className="grid grid-cols-2 gap-2">

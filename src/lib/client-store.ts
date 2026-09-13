@@ -2,8 +2,8 @@
 
 import { create } from "zustand";
 import type {
-  Activity, BankItem, BulletinItem, CasePartner, CaseSource, ChannelItem, Designation, Instruction,
-  LoanCase, MasterItem, PartnerItem, SlaRule, StageItem, Task, User,
+  Activity, BankItem, BulletinItem, CaseDocument, CasePartner, CaseSource, ChannelItem, Designation, DocRule,
+  FeeRule, Instruction, LoanCase, MasterItem, PartnerItem, SlaRule, StageItem, StageTransitionDto, Task, User,
 } from "./types";
 import type { RoleFlags } from "./domain";
 
@@ -35,6 +35,10 @@ interface StateSnapshot {
   instructions: Instruction[];
   bulletin: BulletinItem[];
   escalations: number;
+  docRules: DocRule[];
+  feeRules: FeeRule[];
+  stageTransitions: StageTransitionDto[];
+  caseDocuments: CaseDocument[];
 }
 
 interface ToastMsg {
@@ -73,6 +77,8 @@ interface HfmcState extends StateSnapshot {
     source: CaseSource; partner: CasePartner | null; whatsapp: string; waGroup: string | null;
     task?: { description: string; dueDate: string; waitingFor: string; whyPending: string; ownerId: number };
     submissionType?: "direct" | "channel"; channelId?: number | null; channelName?: string | null; channelRatePct?: number;
+    transactionType?: string; propertyLocation?: string | null; coApplicantName?: string | null; bankRm?: string | null; statusNote?: string;
+    employmentProfile?: string; propertyType?: string; residency?: string;
   }) => Promise<LoanCase>;
   updateCase: (id: number, patch: Record<string, unknown>) => Promise<void>;
   addTask: (caseId: number, input: { description: string; ownerId: number; waitingFor: string; whyPending: string; dueDate: string }) => Promise<void>;
@@ -87,6 +93,12 @@ interface HfmcState extends StateSnapshot {
   issueInstruction: (input: { caseId: number; instruction: string; assignedTo: number; dueDate: string }) => Promise<void>;
   completeInstruction: (id: number) => Promise<void>;
   replyInstruction: (id: number, text: string) => Promise<void>;
+
+  // document vault
+  addAdhocDoc: (caseId: number, input: { title: string; category: string; mandatory: boolean; visibleToClient: boolean; clientCanUpload: boolean; notes?: string }) => Promise<void>;
+  saveDoc: (id: number, patch: Record<string, unknown>) => Promise<void>;
+  deleteDoc: (id: number) => Promise<void>;
+  uploadDoc: (id: number, file: File) => Promise<void>;
 
   // email review queue
   linkEmail: (unmatchedId: number, caseId: number) => Promise<void>;
@@ -104,7 +116,7 @@ const empty: StateSnapshot = {
   me: null, flags: null, users: [], designations: [], cases: [], visibleCaseIds: [], tasks: [],
   visibleTaskIds: [], activities: [], stages: [], whyPending: [], waitingFor: [], banks: [],
   partners: [], channels: [], slaRules: [], instructions: [], bulletin: [],
-  escalations: 0,
+  escalations: 0, docRules: [], feeRules: [], stageTransitions: [], caseDocuments: [],
 };
 
 let toastSeq = 1;
@@ -217,6 +229,45 @@ export const useHfmcStore = create<HfmcState>((set, get) => ({
   },
   replyInstruction: async (id, text) => {
     await fetch(`/api/instructions/${id}/replies`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
+    await get().hydrate();
+  },
+
+  addAdhocDoc: async (caseId, input) => {
+    const res = await fetch("/api/documents", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ caseId, ...input }),
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      get().toast("error", e.error || "Could not add document.");
+      return;
+    }
+    await get().hydrate();
+  },
+  saveDoc: async (id, patch) => {
+    const res = await fetch(`/api/documents/${id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch),
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      get().toast("error", e.error || "Could not update document.");
+      return;
+    }
+    await get().hydrate();
+  },
+  deleteDoc: async (id) => {
+    await fetch(`/api/documents/${id}`, { method: "DELETE" });
+    await get().hydrate();
+  },
+  uploadDoc: async (id, file) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    const res = await fetch(`/api/documents/${id}/upload`, { method: "POST", body: fd });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      get().toast("error", e.error || "Upload failed.");
+      return;
+    }
+    get().toast("success", "Document uploaded — pending review.");
     await get().hydrate();
   },
 

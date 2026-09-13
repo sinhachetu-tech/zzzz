@@ -24,6 +24,7 @@ import type {
   LiabType, MortgageInput, MortgageResult,
 } from "@/lib/mortgage";
 import type { AffordabilityInput } from "@/lib/calc";
+import type { DocRule, FeeRule } from "@/lib/types";
 import { Avatar, Chip } from "@/components/hfmc/ui";
 import { useCountUp } from "@/components/hfmc/charts";
 import {
@@ -696,8 +697,11 @@ function TrailAndNotes({ r }: { r: MortgageResult }) {
 
 type WhifTab = "liab" | "rate" | "tenor" | "income";
 
+type CalcMode = "affordability" | "transfer";
+
 export default function Calculator() {
-  const { me, toast, nav } = useHfmcStore();
+  const { me, toast, nav, feeRules, docRules } = useHfmcStore();
+  const [mode, setMode] = useState<CalcMode>("affordability");
   const [input, setInput] = useState<MortgageInput>(defaultInput);
   const [whif, setWhif] = useState<WhifTab>("liab");
   const [cardId, setCardId] = useState("");
@@ -875,19 +879,32 @@ export default function Calculator() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-disp font-bold text-[24px] tracking-tight m-0 flex items-center gap-2.5">
-            <ICalc size={22} className="text-[var(--amber)]" /> Mortgage Eligibility Calculator
+            <ICalc size={22} className="text-[var(--amber)]" /> Mortgage Calculator
           </h1>
           <p className="text-[13px] text-[var(--ink-dim)] mt-0.5 mb-0">
-            Preliminary MPBF assessment · CBUAE-style DBR {fmtPct(MAX_DBR)} cap · <em>not</em> a bank approval
+            {mode === "affordability"
+              ? <>Preliminary MPBF assessment · CBUAE-style DBR {fmtPct(MAX_DBR)} cap · <em>not</em> a bank approval</>
+              : <>Cash needed at transfer · SOP §6.9 fee matrices · editable in Admin → Fee rules</>}
           </p>
         </div>
-        <div className="flex gap-2">
-          <button className="btn btn-ghost btn-sm" onClick={() => { setInput(defaultInput()); toast("info", "Calculator reset."); }}>
-            Reset
-          </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <ToggleChips
+            options={["Affordability", "Transfer Fees"]}
+            value={mode === "affordability" ? "Affordability" : "Transfer Fees"}
+            onChange={(v) => setMode(v === "Transfer Fees" ? "transfer" : "affordability")}
+          />
+          {mode === "affordability" && (
+            <button className="btn btn-ghost btn-sm" onClick={() => { setInput(defaultInput()); toast("info", "Calculator reset."); }}>
+              Reset
+            </button>
+          )}
         </div>
       </div>
 
+      {mode === "transfer" ? (
+        <TransferFees feeRules={feeRules} docRules={docRules} />
+      ) : (
+      <>
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_420px] gap-4 items-start">
         {/* ================= input column ================= */}
         <div className="space-y-4 xl:sticky xl:top-[86px] xl:self-start xl:max-h-[calc(100vh-100px)] xl:overflow-y-auto xl:pr-1 xl:-mr-1 xl:scrollbar-thin">
@@ -1259,6 +1276,140 @@ export default function Calculator() {
       <div className="flex items-center gap-2 text-[11.5px] text-[var(--ink-faint)] px-1">
         {me && <Avatar name={me.name} size={20} />}
         <span>Prepared by {me?.name ?? "—"} · figures follow CBUAE-style limits ({fmtPct(MAX_DBR)} DBR, {input.applicantType} LTV bands, 25y max tenor) — lender policy may differ.</span>
+      </div>
+      </>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------ transfer fees (SOP §6.9) ------------------------------ */
+
+const FEE_EMIRATES = ["Dubai", "Abu Dhabi"] as const;
+const FEE_TXNS = ["Primary", "Resale", "Buyout"] as const;
+
+function TransferFees({ feeRules, docRules }: { feeRules: FeeRule[]; docRules: DocRule[] }) {
+  const [emirate, setEmirate] = useState<(typeof FEE_EMIRATES)[number]>("Dubai");
+  const [txn, setTxn] = useState<(typeof FEE_TXNS)[number]>("Primary");
+  const [propertyValue, setPropertyValue] = useState(2500000);
+  const [finance, setFinance] = useState(2000000);
+
+  const rows = feeRules
+    .filter((f) => f.active && f.emirate === emirate && f.txnType === txn)
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+
+  const feeOf = (f: FeeRule) =>
+    f.amountType === "fixed" ? f.amount
+    : f.amountType === "pct_property" ? (propertyValue * f.amount) / 100
+    : (finance * f.amount) / 100;
+
+  const clientRows = rows.filter((f) => f.paidBy !== "Seller");
+  const sellerRows = rows.filter((f) => f.paidBy === "Seller");
+  const clientFees = clientRows.reduce((s, f) => s + feeOf(f), 0);
+  const equity = Math.max(propertyValue - finance, 0);
+  const totalCash = equity + clientFees;
+  const ltv = propertyValue > 0 ? (finance / propertyValue) * 100 : 0;
+
+  const activeDocs = docRules.filter((d) => d.active);
+
+  return (
+    <div className="space-y-4">
+      <Section num="01" title="Deal shape" hint="fees recalculate instantly">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="label">Emirate</label>
+            <ToggleChips options={[...FEE_EMIRATES]} value={emirate} onChange={(v) => setEmirate(v as (typeof FEE_EMIRATES)[number])} />
+          </div>
+          <div>
+            <label className="label">Transaction type</label>
+            <ToggleChips options={[...FEE_TXNS]} value={txn} onChange={(v) => setTxn(v as (typeof FEE_TXNS)[number])} />
+          </div>
+          <div>
+            <label className="label">Property value (AED)</label>
+            <NumIn value={propertyValue} onChange={setPropertyValue} min={0} step={50000} />
+          </div>
+          <div>
+            <label className="label">Finance amount (AED)</label>
+            <NumIn value={finance} onChange={setFinance} min={0} step={50000} />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2.5 mt-4 pt-3.5" style={{ borderTop: "1px dashed var(--line)" }}>
+          <Stat label="LTV" value={fmtPct(ltv)} tone={ltv > 85 ? "var(--coral)" : undefined} />
+          <Stat label="Equity / self contribution" value={fmtAED(equity)} />
+          <Stat label="Client-paid fees" value={fmtAED(clientFees)} tone="var(--amber)" />
+          <Stat label="Gross cash needed" value={fmtAED(totalCash)} tone="var(--mint)" />
+        </div>
+      </Section>
+
+      <div className="grid grid-cols-1 xl:grid-cols-[1fr_380px] gap-4 items-start">
+        <div className="card anim-fade-up overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-3 border-b" style={{ borderColor: "var(--line-soft)" }}>
+            <h3 className="font-disp font-semibold text-[13.5px] m-0">{emirate} · {txn === "Buyout" ? "Buyout / Equity Release" : txn}</h3>
+            <span className="text-[11px] text-[var(--ink-faint)] ml-auto">managed in Admin → Fee rules</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="tbl min-w-[560px]">
+              <thead>
+                <tr><th>Charge</th><th className="text-right">Amount</th><th>Payment</th></tr>
+              </thead>
+              <tbody>
+                {rows.length === 0 && (
+                  <tr><td colSpan={3} className="text-[12.5px] text-[var(--ink-faint)] py-4">No fee rules for this emirate / transaction type yet — add them in Admin → Fee rules.</td></tr>
+                )}
+                {clientRows.map((f) => (
+                  <tr key={f.id}>
+                    <td>
+                      <span className="font-medium">{f.label}</span>
+                      {f.note && <span className="block text-[10.5px] text-[var(--ink-faint)]">{f.note}</span>}
+                    </td>
+                    <td className="mono text-right">{fmtAED(feeOf(f))}</td>
+                    <td><Chip tone="slate">{f.paidBy}</Chip></td>
+                  </tr>
+                ))}
+                {sellerRows.length > 0 && (
+                  <tr>
+                    <td colSpan={3} className="text-[10.5px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)] pt-3">Seller-side · not in client total</td>
+                  </tr>
+                )}
+                {sellerRows.map((f) => (
+                  <tr key={f.id} style={{ opacity: 0.65 }}>
+                    <td>
+                      <span className="font-medium">{f.label}</span>
+                      {f.note && <span className="block text-[10.5px] text-[var(--ink-faint)]">{f.note}</span>}
+                    </td>
+                    <td className="mono text-right">{fmtAED(feeOf(f))}</td>
+                    <td><Chip tone="sky">{f.paidBy}</Chip></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="px-4 py-2.5 border-t text-[11.5px] text-[var(--ink-faint)] flex items-center gap-2" style={{ borderColor: "var(--line-soft)" }}>
+            Equity {fmtAED(equity)} + client-paid fees {fmtAED(clientFees)} = <strong className="mono" style={{ color: "var(--amber)" }}>{fmtAED(totalCash)}</strong> gross cash needed
+          </div>
+        </div>
+
+        <div className="card p-4 anim-fade-up">
+          <h3 className="font-disp font-semibold text-[13.5px] mt-0 mb-1">Document validity reference</h3>
+          <p className="text-[11.5px] text-[var(--ink-faint)] mt-0 mb-3">SOP §8.2 — managed in Admin → Doc Validity.</p>
+          <div className="space-y-2 max-h-[52vh] overflow-y-auto scrollbar-thin">
+            {activeDocs.length === 0 && <p className="text-[12.5px] text-[var(--ink-faint)] m-0">No document rules yet.</p>}
+            {activeDocs.map((d) => (
+              <div key={d.id} className="rounded-lg px-3 py-2" style={{ background: "var(--tint)" }}>
+                <div className="flex items-center gap-2">
+                  <span className="text-[12.5px] font-medium flex-1 truncate">{d.name}</span>
+                  <Chip tone="slate">{d.category}</Chip>
+                  {d.validityDays > 0 ? (
+                    <span className="mono text-[11px] font-semibold" style={{ color: "var(--amber)" }}>{d.validityDays}d</span>
+                  ) : (
+                    <span className="text-[10.5px] text-[var(--ink-faint)]">no fixed validity</span>
+                  )}
+                </div>
+                {d.verifyNotes && <p className="text-[11px] text-[var(--ink-dim)] mt-1 mb-0 leading-snug">{d.verifyNotes}</p>}
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );

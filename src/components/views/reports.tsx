@@ -92,9 +92,10 @@ function CountUp({ target, format }: { target: number; format?: (n: number) => s
 
 export default function Reports() {
   const {
-    cases, tasks, activities, banks, partners, users, stages, slaRules,
+    cases, tasks, activities, banks, partners, users, stages, slaRules, flags,
     nav, userById, visibleCases, visibleTasks, toast,
   } = useHfmcStore();
+  const canRevenue = !!flags?.viewRevenue;
 
   const visCases = useMemo(() => visibleCases(), [visibleCases]);
   const visTasks = useMemo(() => visibleTasks(), [visibleTasks]);
@@ -219,11 +220,12 @@ export default function Reports() {
 
   /* ---- CSV exports ---- */
   const exportCases = () => {
-    const header = ["Case #", "Customer", "Status", "Stage", "Source", "Banks", "Won bank", "Loan amount (AED)", "Owner", "Partner", "Share %", "Created", "Closed"];
+    const header = ["Case #", "Customer", "Status", "Stage", "Source", "Banks", "Won bank", "Loan amount (AED)", "Owner", "Partner", ...(canRevenue ? ["Share %"] : []), "Created", "Closed"];
     const rows = visCases.map((c) => [
       c.caseNumber, c.customer, c.caseStatus, c.stage, c.source,
       c.banks.join(" / ") || "TBC", c.wonBank ?? "", Math.round(c.loanAmount),
-      userById(c.ownerId)?.name ?? "", c.partner?.name ?? "", c.partner?.sharePct ?? "",
+      userById(c.ownerId)?.name ?? "", c.partner?.name ?? "",
+      ...(canRevenue ? [c.partner?.sharePct ?? ""] : []),
       c.createdAt.slice(0, 10), c.closedDate ?? "",
     ]);
     downloadCSV("hfmc-cases.csv", header, rows);
@@ -278,18 +280,22 @@ export default function Reports() {
           <button className="btn btn-ghost sm:btn-sm" onClick={exportTasks} title="Export every visible task">
             <IDownload size={14} /> Tasks
           </button>
-          <button className="btn btn-primary sm:btn-sm" onClick={exportCommission} title="Export commission breakdown for booked cases">
-            <IDownload size={14} /> Commission
-          </button>
+          {canRevenue && (
+            <button className="btn btn-primary sm:btn-sm" onClick={exportCommission} title="Export commission breakdown for booked cases">
+              <IDownload size={14} /> Commission
+            </button>
+          )}
         </div>
       </div>
 
       {/* KPI strip */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 stagger">
+      <div className={`grid gap-3 stagger ${canRevenue ? "grid-cols-2 lg:grid-cols-4" : "grid-cols-2 lg:grid-cols-3"}`}>
         <KpiCard label="Active pipeline" value={<CountUp target={active.length} />} sub={fmtMoney(active.reduce((s, c) => s + c.loanAmount, 0))} tone="amber" icon={<IBriefcase size={15} />} />
         <KpiCard label="Booked" value={<CountUp target={booked.length} />} sub={fmtMoney(booked.reduce((s, c) => s + c.loanAmount, 0))} tone="mint" icon={<ITrophy size={15} />} />
         <KpiCard label="Lost" value={<CountUp target={lost.length} />} sub={`${funnel.hitRate}% hit rate`} tone="coral" icon={<ITarget size={15} />} />
-        <KpiCard label="Net commission" value={<CountUp target={Math.round(commission.net)} format={fmtMoney} />} sub={`of ${fmtMoney(commission.gross)} gross`} tone="sky" icon={<IBank size={15} />} />
+        {canRevenue && (
+          <KpiCard label="Net commission" value={<CountUp target={Math.round(commission.net)} format={fmtMoney} />} sub={`of ${fmtMoney(commission.gross)} gross`} tone="sky" icon={<IBank size={15} />} />
+        )}
       </div>
 
       {/* report grid */}
@@ -325,7 +331,7 @@ export default function Reports() {
         {/* 3 · bank win rate */}
         <ReportCard
           title="Bank win rate"
-          sub="Submitted vs booked per bank, and commission earned"
+          sub={canRevenue ? "Submitted vs booked per bank, and commission earned" : "Submitted vs booked per bank"}
           icon={<IBank size={15} />}
           span
         >
@@ -337,26 +343,28 @@ export default function Reports() {
                 <thead>
                   <tr>
                     <th>Bank</th>
-                    <th>Rate</th>
+                    {canRevenue && <th>Rate</th>}
                     <th>Submitted</th>
                     <th>Won</th>
                     <th>Win %</th>
-                    <th>Commission earned</th>
+                    {canRevenue && <th>Commission earned</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {bankRows.map((r) => (
                     <tr key={r.b.id} style={{ cursor: "default" }}>
                       <td className="font-medium">{r.b.name}</td>
-                      <td className="mono">{fmtRate(r.b.ratePct)}</td>
+                      {canRevenue && <td className="mono">{fmtRate(r.b.ratePct)}</td>}
                       <td className="mono">{r.submitted}</td>
                       <td className="mono">{r.won}</td>
                       <td>
                         <WinPill pct={r.winPct} />
                       </td>
-                      <td className="mono" style={{ color: r.grossEarned > 0 ? "var(--mint)" : undefined }}>
-                        {r.grossEarned > 0 ? fmtMoney(r.grossEarned) : "—"}
-                      </td>
+                      {canRevenue && (
+                        <td className="mono" style={{ color: r.grossEarned > 0 ? "var(--mint)" : undefined }}>
+                          {r.grossEarned > 0 ? fmtMoney(r.grossEarned) : "—"}
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -370,7 +378,7 @@ export default function Reports() {
         {/* 4 · owner leaderboard */}
         <ReportCard
           title="Owner leaderboard"
-          sub="Ranked by booked volume — with win rate and net commission"
+          sub={canRevenue ? "Ranked by booked volume — with win rate and net commission" : "Ranked by booked volume — with win rate"}
           icon={<ITrophy size={15} />}
           span
         >
@@ -387,7 +395,7 @@ export default function Reports() {
                     <th>Booked</th>
                     <th>Win %</th>
                     <th>Booked volume</th>
-                    <th>Net commission</th>
+                    {canRevenue && <th>Net commission</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -406,7 +414,7 @@ export default function Reports() {
                       <td className="mono">{r.won}</td>
                       <td><WinPill pct={r.winPct} /></td>
                       <td className="mono">{fmtMoney(r.bookedValue)}</td>
-                      <td className="mono" style={{ color: "var(--mint)" }}>{fmtMoney(r.netEarn)}</td>
+                      {canRevenue && <td className="mono" style={{ color: "var(--mint)" }}>{fmtMoney(r.netEarn)}</td>}
                     </tr>
                   ))}
                 </tbody>
@@ -432,7 +440,8 @@ export default function Reports() {
           </div>
         </ReportCard>
 
-        {/* 6 · commission summary */}
+        {/* 6 · commission summary — restricted designations never see it */}
+        {canRevenue && (
         <ReportCard
           title="Commission summary"
           sub="Booked gross, partner payouts, and what the firm keeps"
@@ -453,6 +462,7 @@ export default function Reports() {
             <span className="mono" style={{ color: "var(--ink-dim)" }}>{fmtMoney(commission.pipelineGross)}</span>{" "}projected gross
           </div>
         </ReportCard>
+        )}
 
         <GroupLabel>Risk & rhythm</GroupLabel>
 

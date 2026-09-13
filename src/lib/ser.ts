@@ -1,7 +1,7 @@
 // Serialization: Prisma row → API DTO matching the original HFMC types.
 import type {
   Activity, BankItem, BulletinItem, CasePartner, Instruction, LoanCase,
-  MasterItem, PartnerItem, Reply, SlaRule, StageItem, Task, User,
+  CaseDocument, DocRule, FeeRule, MasterItem, PartnerItem, Reply, SlaRule, StageItem, StageTransition, StageTransitionDto, Task, User,
 } from "./types";
 
 type PrismaUser = {
@@ -22,6 +22,36 @@ type PrismaCase = {
   ownerId: number; source: string; partnerKind: string | null; partnerName: string | null;
   partnerSharePct: number | null; whatsapp: string; waGroup: string | null;
   createdAt: Date; updatedAt: Date;
+  // Two-way commission
+  submissionType?: string; channelId?: number | null; channelName?: string | null; channelRatePct?: number;
+  // --- MIS operational fields ---
+  statusNote?: string;
+  bankRm?: string | null;
+  vrmId?: number | null;
+  transactionType?: string;
+  propertyLocation?: string | null;
+  coApplicantName?: string | null;
+  onHold?: boolean;
+  holdReason?: string | null;
+  holdUntil?: string | null;
+  // --- Bank submission tracking ---
+  employmentProfile: string;
+  propertyType: string;
+  residency: string;
+  loanType?: string | null;
+  fileSubmittedDate?: string | null;
+  bankRate?: number | null;
+  bankTenor?: number | null;
+  // --- Pre-approval stage capture ---
+  preApprovalDate?: string | null;
+  preApprovalAmount?: number | null;
+  preApprovalTenure?: number | null;
+  preApprovalRoi?: number | null;
+  // --- Final Offer Letter (FOL) stage capture ---
+  folDate?: string | null;
+  folAmount?: number | null;
+  folTenure?: number | null;
+  folRoi?: number | null;
 };
 
 export function serCase(c: PrismaCase): LoanCase {
@@ -37,10 +67,36 @@ export function serCase(c: PrismaCase): LoanCase {
     closedDate: c.closedDate, ownerId: c.ownerId, source: c.source as LoanCase["source"],
     partner, whatsapp: c.whatsapp, waGroup: c.waGroup,
     createdAt: c.createdAt.toISOString(), updatedAt: c.updatedAt.toISOString(),
-    submissionType: (c as { submissionType?: string }).submissionType === "channel" ? "channel" : "direct",
-    channelId: (c as { channelId?: number | null }).channelId ?? null,
-    channelName: (c as { channelName?: string | null }).channelName ?? null,
-    channelRatePct: (c as { channelRatePct?: number }).channelRatePct ?? 0,
+    submissionType: c.submissionType === "channel" ? "channel" : "direct",
+    channelId: c.channelId ?? null,
+    channelName: c.channelName ?? null,
+    channelRatePct: c.channelRatePct ?? 0,
+    // MIS operational
+    statusNote: c.statusNote ?? "",
+    bankRm: c.bankRm ?? null,
+    vrmId: c.vrmId ?? null,
+    transactionType: c.transactionType ?? "",
+    propertyLocation: c.propertyLocation ?? null,
+    coApplicantName: c.coApplicantName ?? null,
+    onHold: c.onHold ?? false,
+    holdReason: c.holdReason ?? null,
+    holdUntil: c.holdUntil ?? null,
+    // Bank submission
+    employmentProfile: c.employmentProfile, propertyType: c.propertyType, residency: c.residency,
+    loanType: c.loanType ?? null,
+    fileSubmittedDate: c.fileSubmittedDate ?? null,
+    bankRate: c.bankRate ?? null,
+    bankTenor: c.bankTenor ?? null,
+    // Pre-approval
+    preApprovalDate: c.preApprovalDate ?? null,
+    preApprovalAmount: c.preApprovalAmount ?? null,
+    preApprovalTenure: c.preApprovalTenure ?? null,
+    preApprovalRoi: c.preApprovalRoi ?? null,
+    // FOL
+    folDate: c.folDate ?? null,
+    folAmount: c.folAmount ?? null,
+    folTenure: c.folTenure ?? null,
+    folRoi: c.folRoi ?? null,
   };
 }
 
@@ -169,6 +225,34 @@ export function serEmail(e: PrismaEmailLog): EmailLogDto {
   };
 }
 
+/* ---------------- stage transitions ---------------- */
+
+type PrismaStageTransition = {
+  id: number; caseId: number; fromStage: string; toStage: string;
+  comment: string; userId: number; at: Date;
+};
+
+export function serStageTransition(t: PrismaStageTransition): StageTransition {
+  return {
+    id: t.id, caseId: t.caseId, fromStage: t.fromStage, toStage: t.toStage,
+    comment: t.comment, userId: t.userId, at: t.at.toISOString(),
+  };
+}
+
+// `StageTransitionDto` (with the user's display name) lives in ./types and is
+// shared with the client store. This serializer accepts a Prisma row whose
+// `user` relation has been included.
+type PrismaStageTransitionWithUser = PrismaStageTransition & {
+  user: { name: string } | null;
+};
+
+export function serStageTransitionDto(t: PrismaStageTransitionWithUser): StageTransitionDto {
+  return {
+    ...serStageTransition(t),
+    userName: t.user?.name ?? null,
+  };
+}
+
 export interface UnmatchedEmailDto {
   id: number;
   subject: string;
@@ -191,3 +275,69 @@ export function serUnmatchedEmail(u: PrismaUnmatchedEmail): UnmatchedEmailDto {
   };
 }
 
+
+/* ---------------- SOP master data (doc validity + fee rules) ---------------- */
+
+type PrismaDocRuleRow = {
+  id: number; code: string; name: string; category: string; validityDays: number; warnDays: number;
+  verifyNotes: string; applicableEmployment: string; applicablePropertyType: string;
+  applicableTransaction: string; applicableResidency: string; mandatory: boolean;
+  visibleToClient: boolean; clientCanUpload: boolean; expiryTrackingRequired: boolean; active: boolean;
+};
+
+function parseVec(json: string): string[] {
+  try {
+    const arr = JSON.parse(json);
+    return Array.isArray(arr) ? arr.map(String) : ["any"];
+  } catch {
+    return ["any"];
+  }
+}
+
+export function serDocRule(d: PrismaDocRuleRow): DocRule {
+  return {
+    id: d.id, code: d.code, name: d.name, category: d.category,
+    validityDays: d.validityDays, warnDays: d.warnDays, verifyNotes: d.verifyNotes,
+    applicableEmployment: parseVec(d.applicableEmployment),
+    applicablePropertyType: parseVec(d.applicablePropertyType),
+    applicableTransaction: parseVec(d.applicableTransaction),
+    applicableResidency: parseVec(d.applicableResidency),
+    mandatory: d.mandatory, visibleToClient: d.visibleToClient,
+    clientCanUpload: d.clientCanUpload, expiryTrackingRequired: d.expiryTrackingRequired,
+    active: d.active,
+  };
+}
+
+type PrismaCaseDocumentRow = {
+  id: number; caseId: number; templateId: number | null; title: string; category: string;
+  status: string; mandatory: boolean; visibleToClient: boolean; clientCanUpload: boolean;
+  rejectionReason: string; notes: string; fileName: string | null; fileType: string | null;
+  fileSize: number | null; expiryDate: string | null; uploadedByKind: string;
+  uploadedAt: Date | null; verifiedAt: Date | null; createdAt: Date;
+};
+
+export function serCaseDocument(d: PrismaCaseDocumentRow): CaseDocument {
+  return {
+    id: d.id, caseId: d.caseId, templateId: d.templateId, title: d.title, category: d.category,
+    status: d.status as CaseDocument["status"], mandatory: d.mandatory,
+    visibleToClient: d.visibleToClient, clientCanUpload: d.clientCanUpload,
+    rejectionReason: d.rejectionReason, notes: d.notes, fileName: d.fileName,
+    fileType: d.fileType, fileSize: d.fileSize, expiryDate: d.expiryDate,
+    uploadedByKind: d.uploadedByKind,
+    uploadedAt: d.uploadedAt ? d.uploadedAt.toISOString() : null,
+    verifiedAt: d.verifiedAt ? d.verifiedAt.toISOString() : null,
+    createdAt: d.createdAt.toISOString(),
+  };
+}
+
+type PrismaFeeRuleRow = {
+  id: number; emirate: string; txnType: string; label: string; amountType: string;
+  amount: number; paidBy: string; note: string; sortOrder: number; active: boolean;
+};
+export function serFeeRule(f: PrismaFeeRuleRow): FeeRule {
+  return {
+    id: f.id, emirate: f.emirate as FeeRule["emirate"], txnType: f.txnType as FeeRule["txnType"],
+    label: f.label, amountType: f.amountType as FeeRule["amountType"], amount: f.amount,
+    paidBy: f.paidBy, note: f.note, sortOrder: f.sortOrder, active: f.active,
+  };
+}

@@ -33,6 +33,7 @@ export interface Designation {
   issueTasks: boolean;
   admin: boolean;
   super: boolean;
+  viewRevenue: boolean; // commission rates & earnings are restricted
   builtIn: boolean;
 }
 
@@ -58,6 +59,52 @@ export interface LoanCase {
   channelId: number | null;
   channelName: string | null;
   channelRatePct: number;
+  // --- MIS operational fields ---
+  statusNote: string; // daily free-text status narrative
+  bankRm: string | null; // bank relationship manager name
+  vrmId: number | null; // internal VRM (User.id, separate from owner)
+  transactionType: string; // Buyout, Buyout+Equity, Primary Handover, Resale, etc.
+  propertyLocation: string | null; // Dubai, Abu Dhabi, ADGM, etc.
+  coApplicantName: string | null;
+  onHold: boolean;
+  holdReason: string | null;
+  holdUntil: string | null; // ISO date
+  // --- Bank submission tracking ---
+  // Document Vault profile vectors
+  employmentProfile: string; // Salaried | Self-Employed | Non-Resident
+  propertyType: string; // Ready | Off-Plan
+  residency: string; // UAE National | Resident Expatriate | Non-Resident
+  loanType: string | null; // NSTL | STL
+  fileSubmittedDate: string | null; // ISO date
+  bankRate: number | null; // actual rate the bank quoted
+  bankTenor: number | null; // actual tenor in months
+  // --- Pre-approval stage capture ---
+  preApprovalDate: string | null;
+  preApprovalAmount: number | null;
+  preApprovalTenure: number | null; // months
+  preApprovalRoi: number | null; // rate of interest
+  // --- Final Offer Letter (FOL) stage capture ---
+  folDate: string | null;
+  folAmount: number | null;
+  folTenure: number | null; // months
+  folRoi: number | null; // rate of interest
+}
+
+// Stage transition log — one row per stage change on a case.
+export interface StageTransition {
+  id: number;
+  caseId: number;
+  fromStage: string;
+  toStage: string;
+  comment: string;
+  userId: number;
+  at: string;
+}
+
+// DTO variant that includes the user's display name — returned by the
+// transitions API route and the state endpoint for the audit timeline.
+export interface StageTransitionDto extends StageTransition {
+  userName: string | null;
 }
 
 export interface ChannelItem {
@@ -194,10 +241,83 @@ export interface AffordabilityCheck {
   payload?: string;
 }
 
+// SOP §8.2 — document validity / expiry rule (Admin → Doc Validity, fully CRUD-managed)
+export interface DocRule {
+  id: number;
+  code: string; // e.g. DOC-SAL-CERT
+  name: string;
+  category: string; // KYC | Income | Property | Bank & Liabilities | Internal Underwriting | Valuation | Transfer
+  validityDays: number; // 0 = no fixed validity — see verifyNotes
+  warnDays: number; // flag this many days before expiry
+  verifyNotes: string;
+  // condition vectors — "all"/"any" or specific values
+  applicableEmployment: string[]; // Salaried | Self-Employed | Non-Resident | all
+  applicablePropertyType: string[]; // Ready | Off-Plan | any
+  applicableTransaction: string[]; // New Purchase | Buyout / Equity Release | any
+  applicableResidency: string[]; // UAE National | Resident Expatriate | Non-Resident | all
+  mandatory: boolean;
+  visibleToClient: boolean;
+  clientCanUpload: boolean;
+  expiryTrackingRequired: boolean;
+  active: boolean;
+}
+
+export type CaseDocStatus = "Pending upload" | "Uploaded" | "Verified" | "Rejected" | "Waived";
+
+// Per-case document instance — the living vault (metadata only; file bytes are
+// served separately via /api/documents/[id]/file).
+export interface CaseDocument {
+  id: number;
+  caseId: number;
+  templateId: number | null; // null = ad-hoc
+  title: string;
+  category: string;
+  status: CaseDocStatus;
+  mandatory: boolean;
+  visibleToClient: boolean;
+  clientCanUpload: boolean;
+  rejectionReason: string;
+  notes: string;
+  fileName: string | null;
+  fileType: string | null;
+  fileSize: number | null;
+  expiryDate: string | null;
+  uploadedByKind: string; // client | staff
+  uploadedAt: string | null;
+  verifiedAt: string | null;
+  createdAt: string;
+}
+
+// SOP §6.9 — transfer fee rule (Admin → Fee rules); feeds the Calculator's Transfer Fees tab
+export type FeeEmirate = "Dubai" | "Abu Dhabi";
+export type FeeTxnType = "Primary" | "Resale" | "Buyout";
+export type FeeAmountType = "pct_property" | "pct_loan" | "fixed";
+
+export interface FeeRule {
+  id: number;
+  emirate: FeeEmirate;
+  txnType: FeeTxnType;
+  label: string;
+  amountType: FeeAmountType;
+  amount: number;
+  paidBy: string; // Client | Seller
+  note: string;
+  sortOrder: number;
+  active: boolean;
+}
+
 export type Tone = "mint" | "amber" | "coral" | "sky" | "slate";
 
 export const SOURCES: CaseSource[] = ["Direct", "Agent", "Broker", "Website", "Referral"];
 export const PARTNER_SHARES = [10, 15, 20, 30];
+
+// MIS operational dropdown options — shared by Dashboard, Case Detail, and New Case modal.
+export const EMPLOYMENT_PROFILES = ["Salaried", "Self-Employed", "Non-Resident"] as const;
+export const PROPERTY_TYPES = ["Ready", "Off-Plan"] as const;
+export const RESIDENCIES = ["UAE National", "Resident Expatriate", "Non-Resident"] as const;
+export const TRANSACTION_TYPES = ["Buyout", "Buyout+Equity", "Primary Handover", "Resale", "Equity Cashout", "Refinance", "Other"] as const;
+export const PROPERTY_LOCATIONS = ["Dubai", "Abu Dhabi", "ADGM", "Sharjah", "RAK", "Other"] as const;
+export const LOAN_TYPES = ["NSTL", "STL"] as const;
 
 export interface NewCaseInput {
   customer: string;

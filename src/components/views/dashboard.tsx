@@ -34,7 +34,7 @@ function Kpi({ label, value, format, tone, sub }: { label: string; value: number
 const STATE_TABS: ("Active" | "Booked" | "Lost" | "All")[] = ["Active", "Booked", "Lost", "All"];
 
 export default function Dashboard() {
-  const { cases, tasks, activities, stages, banks, whyPending, waitingFor, users, me, nav, userById, visibleCases, visibleTasks, escalations, bulletin, visibleCaseIds, visibleTaskIds, openNewCase } = useHfmcStore();
+  const { cases, tasks, activities, stages, banks, whyPending, waitingFor, users, me, nav, userById, visibleCases, visibleTasks, escalations, bulletin, visibleCaseIds, visibleTaskIds, openNewCase, flags } = useHfmcStore();
   useTick(30000);
   const [search, setSearch] = useState("");
   const [stage, setStage] = useState("All");
@@ -52,7 +52,10 @@ export default function Dashboard() {
     () => computeKpis(visCases, visTasks, (c) => caseStatusOf(c, tasks), banks, escalations),
     [visCases, visTasks, banks, escalations, tasks]
   );
-  const spark = useMemo(() => activityPerDay(activities, 14), [activities]);
+  const spark = useMemo(
+    () => activityPerDay(activities.filter((a) => visCases.some((c) => c.id === a.caseId)), 14),
+    [activities, visCases],
+  );
   const statusOf = (c: LoanCase): CaseStatus => caseStatusOf(c, tasks);
 
   const openTasks = visTasks.filter((t) => t.status === "Open");
@@ -162,7 +165,7 @@ export default function Dashboard() {
         <Kpi label="No next action" value={k.noAction} tone="sky" />
         <Kpi label="Open tasks" value={k.openTasks} />
         <Kpi label="Pipeline value" value={k.pipelineValue} format={fmtMoney} tone="mint" />
-        <Kpi label="Est. commission" value={k.estCommission} format={fmtMoney} tone="amber" sub="at current bank rates" />
+        {flags?.viewRevenue && <Kpi label="Est. commission" value={k.estCommission} format={fmtMoney} tone="amber" sub="at current bank rates" />}
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-4 items-start">
@@ -200,28 +203,61 @@ export default function Dashboard() {
             </select>
           </div>
 
-          <div className="overflow-auto" style={{ maxHeight: "52vh" }}>
+          <div className="overflow-x-auto" style={{ maxHeight: "52vh" }}>
             {filtered.length === 0 ? (
               <div className="p-6">
-                <EmptyState icon={<IInbox size={26} />} title={`Nothing in “${stateTab}”`} body="Adjust the filters, or use the New case button in the top bar to get things moving." />
+                <EmptyState icon={<IInbox size={26} />} title={`Nothing in “${stateTab}”`} body="Adjust the filters, or use the Add client button in the top bar to get things moving." />
               </div>
             ) : (
-              <table className="tbl min-w-[860px]">
+              <table className="tbl min-w-[1200px]">
                 <thead>
                   <tr>
-                    <th>Case</th><th>Customer</th><th>Source</th><th>Banks</th><th>Stage</th><th>Amount</th><th>Owner</th><th>Age</th>
+                    <th>Case</th>
+                    <th>Customer</th>
+                    <th>Status note</th>
+                    <th>Source</th>
+                    <th>Banks</th>
+                    <th>Stage</th>
+                    <th>Amount</th>
+                    <th>Owner</th>
+                    <th>Age</th>
                     {stateTab === "Active" ? <th>Status</th> : <th>Lifecycle</th>}
+                    <th className="hidden md:table-cell">Transaction</th>
+                    <th className="hidden md:table-cell">Location</th>
+                    <th className="hidden md:table-cell">Bank RM</th>
+                    <th className="hidden md:table-cell">VRM</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.map((c) => {
                     const st = statusOf(c);
+                    const vrm = c.vrmId ? userById(c.vrmId) : null;
+                    const note = c.statusNote?.trim() ?? "";
+                    const noteShort = note.length > 40 ? `${note.slice(0, 39)}…` : note;
                     return (
                       <tr key={c.id} onClick={() => nav({ name: "case", id: c.id })}>
                         <td className="mono text-[12.5px]" style={{ color: "var(--amber)" }}>{c.caseNumber}</td>
                         <td className="font-medium">
-                          {c.customer}
-                          {c.partner && <span className="block text-[10.5px] text-[var(--ink-faint)]">{c.partner.name} · {c.partner.sharePct}%</span>}
+                          <div className="flex items-center gap-1.5">
+                            {c.onHold && (
+                              <span
+                                className="chip shrink-0"
+                                title={c.holdReason ? `On hold — ${c.holdReason}${c.holdUntil ? ` (until ${c.holdUntil})` : ""}` : "On hold"}
+                                style={{ color: "var(--amber)", background: "rgba(242,176,76,0.12)", borderColor: "rgba(242,176,76,0.4)", padding: "1px 6px", fontSize: "9.5px" }}
+                              >
+                                ON HOLD
+                              </span>
+                            )}
+                            <span className="truncate" style={{ maxWidth: 200 }}>{c.customer}</span>
+                          </div>
+                          {c.partner && (<span className="block text-[10.5px] text-[var(--ink-faint)]">{c.partner.name}{flags?.viewRevenue ? ` · ${c.partner.sharePct}%` : ""}</span>)}
+                        </td>
+                        <td className="text-[12px] text-[var(--ink-dim)]" style={{ maxWidth: 220 }}>
+                          {noteShort ? (
+                            <span title={note}>{noteShort}</span>
+                          ) : (
+                            <span className="text-[var(--ink-faint)]">—</span>
+                          )}
                         </td>
                         <td><SourceChip source={c.source} /></td>
                         <td><BankChips c={c} /></td>
@@ -235,6 +271,17 @@ export default function Dashboard() {
                         </td>
                         <td className="mono text-[12.5px] text-[var(--ink-dim)]">{ageDays(c.createdAt)}d</td>
                         <td>{c.caseStatus === "Active" ? <StatusChip status={st} /> : <CaseStateChip state={c.caseStatus} />}</td>
+                        <td className="hidden md:table-cell text-[12px] text-[var(--ink-dim)]">{c.transactionType || <span className="text-[var(--ink-faint)]">—</span>}</td>
+                        <td className="hidden md:table-cell text-[12px] text-[var(--ink-dim)]">{c.propertyLocation || <span className="text-[var(--ink-faint)]">—</span>}</td>
+                        <td className="hidden md:table-cell text-[12px] text-[var(--ink-dim)]">{c.bankRm || <span className="text-[var(--ink-faint)]">—</span>}</td>
+                        <td className="hidden md:table-cell">
+                          {vrm ? (
+                            <div className="flex items-center gap-2">
+                              <Avatar name={vrm.name} size={22} />
+                              <span className="text-[12px] text-[var(--ink-dim)]">{vrm.name.split(" ")[0]}</span>
+                            </div>
+                          ) : <span className="text-[var(--ink-faint)]">—</span>}
+                        </td>
                       </tr>
                     );
                   })}

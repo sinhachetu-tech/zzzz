@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { currentUser } from "@/lib/auth";
 import { serCase } from "@/lib/ser";
+import { syncCaseVault } from "@/lib/vault";
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const me = await currentUser();
@@ -46,12 +47,60 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     data.partnerName = body.partner?.name ?? null;
     data.partnerSharePct = body.partner?.sharePct ?? null;
   }
+  if (body.statusNote !== undefined) data.statusNote = body.statusNote;
+  // Document Vault profile vectors — changing any of them re-syncs the checklist
+  let profileChanged = false;
+  if (body.employmentProfile !== undefined && body.employmentProfile !== existing.employmentProfile) {
+    data.employmentProfile = body.employmentProfile;
+    profileChanged = true;
+  }
+  if (body.propertyType !== undefined && body.propertyType !== existing.propertyType) {
+    data.propertyType = body.propertyType;
+    profileChanged = true;
+  }
+  if (body.residency !== undefined && body.residency !== existing.residency) {
+    data.residency = body.residency;
+    profileChanged = true;
+  }
+  if (body.transactionType !== undefined && body.transactionType !== existing.transactionType) {
+    data.transactionType = body.transactionType;
+    profileChanged = true;
+  }
+  if (body.bankRm !== undefined) data.bankRm = body.bankRm;
+  if (body.propertyLocation !== undefined) data.propertyLocation = body.propertyLocation;
+  if (body.coApplicantName !== undefined) data.coApplicantName = body.coApplicantName;
+  if (body.onHold !== undefined) data.onHold = !!body.onHold;
+  if (body.holdReason !== undefined) data.holdReason = body.holdReason;
+  if (body.holdUntil !== undefined) data.holdUntil = body.holdUntil;
+  if (body.preApprovalDate !== undefined) data.preApprovalDate = body.preApprovalDate;
+  if (body.preApprovalAmount !== undefined) data.preApprovalAmount = body.preApprovalAmount;
+  if (body.preApprovalTenure !== undefined) data.preApprovalTenure = body.preApprovalTenure;
+  if (body.preApprovalRoi !== undefined) data.preApprovalRoi = body.preApprovalRoi;
+  if (body.folDate !== undefined) data.folDate = body.folDate;
+  if (body.folAmount !== undefined) data.folAmount = body.folAmount;
+  if (body.folTenure !== undefined) data.folTenure = body.folTenure;
+  if (body.folRoi !== undefined) data.folRoi = body.folRoi;
   if (body.whatsapp !== undefined) data.whatsapp = body.whatsapp;
   if (body.waGroup !== undefined) data.waGroup = body.waGroup;
   if (body.customer !== undefined) data.customer = body.customer;
   if (body.loanAmount !== undefined) data.loanAmount = body.loanAmount;
 
   const updated = await db.loanCase.update({ where: { id: caseId }, data });
+
+  // profile vectors moved → pull in newly-applicable document requirements
+  if (profileChanged) await syncCaseVault(caseId);
+
+  if (data.stage) {
+    await db.stageTransition.create({
+      data: {
+        caseId,
+        fromStage: existing.stage,
+        toStage: String(data.stage),
+        comment: typeof body.stageComment === 'string' ? body.stageComment : '',
+        userId: me.id,
+      },
+    });
+  }
 
   for (const a of actions) {
     await db.activity.create({

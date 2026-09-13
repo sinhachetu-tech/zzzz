@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useHfmcStore } from "@/lib/client-store";
 import type {
-  BankItem, Designation, MasterItem, PartnerItem, PartnerKind,
+  BankItem, Designation, DocRule, FeeRule, MasterItem, PartnerItem, PartnerKind,
   SlaRule, StageItem, User,
 } from "@/lib/types";
 import { fmtRate } from "@/lib/format";
@@ -15,7 +15,7 @@ import {
 
 /* ------------------------------ types ------------------------------ */
 
-type Tab = "users" | "designations" | "banks" | "partners" | "stages" | "masters" | "sla";
+type Tab = "users" | "designations" | "banks" | "partners" | "channels" | "stages" | "masters" | "sla" | "docrules" | "feerules";
 type MasterKind = "whyPending" | "waitingFor";
 
 const TEAMS = ["Management", "Dubai", "Abu Dhabi"];
@@ -29,7 +29,23 @@ const TAB_OPTIONS: { value: Tab; label: string }[] = [
   { value: "stages", label: "Stages" },
   { value: "masters", label: "Masters" },
   { value: "sla", label: "SLA rules" },
+  { value: "docrules", label: "Doc Rules" },
+  { value: "feerules", label: "Fee rules" },
 ];
+
+// Two-level admin navigation: group row on top, tabs for the active group below.
+// New sections slot into a group — the top row stays small no matter how much grows.
+const GROUPS: { key: string; label: string; tabs: { value: Tab; label: string }[] }[] = [
+  { key: "team", label: "Team & Access", tabs: TAB_OPTIONS.filter((t) => ["users", "designations"].includes(t.value)) },
+  { key: "market", label: "Marketplace", tabs: TAB_OPTIONS.filter((t) => ["banks", "partners", "channels"].includes(t.value)) },
+  { key: "workflow", label: "Workflow", tabs: TAB_OPTIONS.filter((t) => ["stages", "masters", "sla"].includes(t.value)) },
+  { key: "docs", label: "Docs & Fees", tabs: TAB_OPTIONS.filter((t) => ["docrules", "feerules"].includes(t.value)) },
+];
+
+const DOC_CATEGORIES = ["KYC", "Income", "Approval", "Property", "Valuation", "Transfer"];
+const FEE_EMIRATES: FeeRule["emirate"][] = ["Dubai", "Abu Dhabi"];
+const FEE_TXN_TYPES: FeeRule["txnType"][] = ["Primary", "Resale", "Buyout"];
+const FEE_AMOUNT_TYPES: FeeRule["amountType"][] = ["pct_property", "pct_loan", "fixed"];
 
 /* ------------------------------ admin api helpers ------------------------------ */
 
@@ -124,15 +140,18 @@ function ActiveDot({ active }: { active: boolean }) {
   );
 }
 
-function CardHeader({ title, sub, action }: { title: string; sub?: string; action?: React.ReactNode }) {
+function CardHeader({ title, sub, action, children }: { title: string; sub?: string; action?: React.ReactNode; children?: React.ReactNode }) {
   return (
-    <div className="flex flex-wrap items-center gap-3 px-4 py-3 border-b" style={{ borderColor: "var(--line-soft)" }}>
-      <div className="min-w-0 flex-1">
-        <h3 className="font-disp font-semibold text-[14px] m-0">{title}</h3>
-        {sub && <p className="text-[11.5px] text-[var(--ink-faint)] mt-0.5 mb-0">{sub}</p>}
+    <>
+      <div className="flex flex-wrap items-center gap-3 px-4 py-3 border-b" style={{ borderColor: "var(--line-soft)" }}>
+        <div className="min-w-0 flex-1">
+          <h3 className="font-disp font-semibold text-[14px] m-0">{title}</h3>
+          {sub && <p className="text-[11.5px] text-[var(--ink-faint)] mt-0.5 mb-0">{sub}</p>}
+        </div>
+        {action}
       </div>
-      {action}
-    </div>
+      {children}
+    </>
   );
 }
 
@@ -165,18 +184,30 @@ export default function Admin() {
     );
   }
 
+  const group = GROUPS.find((g) => g.tabs.some((t) => t.value === tab)) ?? GROUPS[0];
+
   return (
     <div className="space-y-4 anim-fade-up">
-      <div className="card p-3 flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2 pl-1 pr-2 shrink-0">
+      <div className="card p-3 space-y-2.5">
+        <div className="flex items-center gap-2 pl-1 pr-2">
           <IShield size={16} className="text-[var(--amber)]" />
-          <span className="font-disp font-semibold text-[13px] whitespace-nowrap">Master data</span>
+          <span className="font-disp font-semibold text-[13px] whitespace-nowrap">Admin</span>
+          <span className="text-[11px] text-[var(--ink-faint)] ml-2 hidden sm:inline">every change lands in the activity trail</span>
         </div>
-        <div className="overflow-x-auto -my-1.5 flex-1 min-w-0 pb-1">
+        {/* level 1 — groups */}
+        <div className="overflow-x-auto pb-0.5">
+          <Seg<string>
+            value={group.key}
+            onChange={(k) => setTab(GROUPS.find((g) => g.key === k)!.tabs[0].value)}
+            options={GROUPS.map((g) => ({ value: g.key, label: g.label }))}
+          />
+        </div>
+        {/* level 2 — tabs within the group */}
+        <div className="overflow-x-auto -mb-1 pb-1">
           <Seg<Tab>
             value={tab}
             onChange={setTab}
-            options={TAB_OPTIONS}
+            options={group.tabs}
           />
         </div>
       </div>
@@ -189,6 +220,8 @@ export default function Admin() {
       {tab === "stages" && <StagesTab />}
       {tab === "masters" && <MastersTab />}
       {tab === "sla" && <SlaTab />}
+      {tab === "docrules" && <DocRulesTab />}
+      {tab === "feerules" && <FeeRulesTab />}
     </div>
   );
 }
@@ -419,11 +452,12 @@ interface DesigDraft {
   issueTasks: boolean;
   admin: boolean;
   super: boolean;
+  viewRevenue: boolean;
   builtIn: boolean;
 }
 
 function blankDesig(): DesigDraft {
-  return { id: 0, name: "", scope: "own", issueTasks: false, admin: false, super: false, builtIn: false };
+  return { id: 0, name: "", scope: "own", issueTasks: false, admin: false, super: false, viewRevenue: false, builtIn: false };
 }
 
 function DesignationsTab() {
@@ -452,6 +486,7 @@ function DesignationsTab() {
       issueTasks: editing.issueTasks,
       admin: editing.admin,
       super: editing.super,
+      viewRevenue: editing.viewRevenue,
     };
     const res = creating
       ? await adminPost(body)
@@ -522,6 +557,7 @@ function DesignationsTab() {
                     <span className="flex flex-wrap gap-1.5">
                       <Chip tone={d.issueTasks ? "mint" : "slate"}>{d.issueTasks ? "issues tasks" : "no tasks"}</Chip>
                       <Chip tone={d.admin ? "mint" : "slate"}>{d.admin ? "admin" : "no admin"}</Chip>
+                      <Chip tone={d.viewRevenue ? "amber" : "slate"}>{d.viewRevenue ? "sees revenue" : "no revenue"}</Chip>
                     </span>
                   </td>
                   <td className="text-[12.5px] text-[var(--ink-dim)] mono">{holders}</td>
@@ -599,10 +635,20 @@ function DesignationsTab() {
                   label="supreme"
                   locked={editing.builtIn && editing.super}
                 />
+                <Toggle
+                  on={editing.viewRevenue}
+                  onClick={() => setEditing({ ...editing, viewRevenue: !editing.viewRevenue })}
+                  label="sees revenue"
+                />
               </div>
               {editing.super && (
                 <p className="text-[11.5px] text-[var(--ink-faint)] mt-1.5 mb-0">
                   Supreme designations always see all cases and can issue tasks. Scope is locked.
+                </p>
+              )}
+              {!editing.viewRevenue && (
+                <p className="text-[11.5px] text-[var(--ink-faint)] mt-1.5 mb-0">
+                  Without revenue permission, commission rates, partner shares, and every earnings figure are hidden for this designation.
                 </p>
               )}
             </div>
@@ -817,11 +863,12 @@ interface PartnerDraft {
   kind: PartnerKind;
   name: string;
   defaultSharePct: number;
+  password: string;
   active: boolean;
 }
 
 function blankPartner(): PartnerDraft {
-  return { id: 0, kind: "Agent", name: "", defaultSharePct: 20, active: true };
+  return { id: 0, kind: "Agent", name: "", defaultSharePct: 20, password: "agent123", active: true };
 }
 
 function partnerKindTone(k: PartnerKind): "amber" | "sky" | "coral" {
@@ -859,6 +906,8 @@ function PartnersTab() {
       defaultSharePct: editing.defaultSharePct,
       active: editing.active,
     };
+    // blank password on edit = keep the existing one
+    if (creating || editing.password.trim()) body.password = editing.password.trim() || "agent123";
     const res = creating
       ? await adminPost(body)
       : await adminPatch({ ...body, id: editing.id });
@@ -948,7 +997,7 @@ function PartnersTab() {
                       <div className="inline-flex gap-1.5">
                         <button
                           className="btn btn-ghost btn-sm"
-                          onClick={() => { setEditing({ ...p }); setCreating(false); }}
+                          onClick={() => { setEditing({ ...p, password: "" }); setCreating(false); }}
                         >
                           <IPencil size={13} /> Edit
                         </button>
@@ -1011,6 +1060,18 @@ function PartnersTab() {
                 onChange={(e) => setEditing({ ...editing, name: e.target.value })}
                 autoFocus
               />
+            </Field>
+            <Field label="Agent portal password">
+              <input
+                className="input mono"
+                type="text"
+                placeholder={creating ? "agent123" : "leave blank to keep current"}
+                value={editing.password}
+                onChange={(e) => setEditing({ ...editing, password: e.target.value })}
+              />
+              <p className="text-[11px] text-[var(--ink-faint)] mt-1.5 mb-0">
+                Used to sign in at the Agent portal ({editing.name ? editing.name : "partner name"} + this password).
+              </p>
             </Field>
             <div className="flex items-center gap-2">
               <input
@@ -1688,6 +1749,590 @@ function SlaTab() {
         onConfirm={confirmDelete}
         title="Delete SLA rule?"
         body={`Stage "${deleting?.stage ?? ""}" · ${deleting?.bank ?? "all banks"} · ${deleting?.maxDays ?? 0}d will stop escalating.`}
+        confirmLabel="Delete"
+      />
+    </div>
+  );
+}
+
+/* ------------------------------ doc rules — conditional vault master (SOP §8.2 + §3.3) ------------------------------ */
+
+const DOC_CONDITION_SETS = {
+  employment: ["all", "Salaried", "Self-Employed", "Non-Resident"],
+  property: ["any", "Ready", "Off-Plan"],
+  transaction: ["any", "New Purchase", "Buyout / Equity Release"],
+  residency: ["all", "UAE National", "Resident Expatriate", "Non-Resident"],
+};
+
+interface DocRuleDraft {
+  id: number;
+  code: string;
+  name: string;
+  category: string;
+  validityDays: number;
+  warnDays: number;
+  verifyNotes: string;
+  applicableEmployment: string[];
+  applicablePropertyType: string[];
+  applicableTransaction: string[];
+  applicableResidency: string[];
+  mandatory: boolean;
+  visibleToClient: boolean;
+  clientCanUpload: boolean;
+  active: boolean;
+}
+
+function blankDocRule(): DocRuleDraft {
+  return {
+    id: 0, code: "", name: "", category: "KYC", validityDays: 30, warnDays: 7, verifyNotes: "",
+    applicableEmployment: ["all"], applicablePropertyType: ["any"], applicableTransaction: ["any"],
+    applicableResidency: ["all"], mandatory: true, visibleToClient: true, clientCanUpload: true, active: true,
+  };
+}
+
+function ConditionRow({ label, options, selected, onToggle, exclusive }: {
+  label: string; options: string[]; selected: string[]; onToggle: (v: string) => void; exclusive: string;
+}) {
+  return (
+    <div>
+      <label className="label">{label}</label>
+      <div className="flex flex-wrap gap-1.5">
+        {options.map((o) => {
+          const on = selected.includes(o);
+          return (
+            <button key={o} type="button" className="chip transition-all" onClick={() => onToggle(o)}
+              style={on
+                ? { background: "rgba(242,176,76,0.14)", borderColor: "var(--amber)", color: "var(--amber)" }
+                : { background: "var(--bg2)", borderColor: "var(--line)", color: "var(--ink-faint)" }}>
+              {o}
+            </button>
+          );
+        })}
+      </div>
+      <p className="text-[10.5px] text-[var(--ink-faint)] mt-1 mb-0">pick {exclusive} — or any mix of specific values</p>
+    </div>
+  );
+}
+
+function toggleValue(selected: string[], value: string, exclusive: string): string[] {
+  const others = selected.filter((v) => v !== exclusive);
+  // toggling a specific value clears the exclusive, and vice versa
+  if (value === exclusive) return selected.includes(value) ? [] : [value];
+  const next = others.includes(value) ? others.filter((v) => v !== value) : [...others, value];
+  return next.length ? next : [exclusive];
+}
+
+function DocRulesTab() {
+  const { docRules, hydrate, toast } = useHfmcStore();
+  const [editing, setEditing] = useState<DocRuleDraft | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [deleting, setDeleting] = useState<DocRule | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const sorted = useMemo(
+    () => [...docRules].sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name)),
+    [docRules],
+  );
+
+  const save = async () => {
+    if (!editing) return;
+    if (!editing.name.trim()) {
+      toast("error", "Document name is required.");
+      return;
+    }
+    setBusy(true);
+    const body: Record<string, unknown> = {
+      kind: "docrule",
+      name: editing.name.trim(),
+      category: editing.category,
+      validityDays: Math.max(0, editing.validityDays || 0),
+      warnDays: Math.max(0, editing.warnDays || 0),
+      verifyNotes: editing.verifyNotes,
+      applicableEmployment: editing.applicableEmployment.length ? editing.applicableEmployment : ["all"],
+      applicablePropertyType: editing.applicablePropertyType.length ? editing.applicablePropertyType : ["any"],
+      applicableTransaction: editing.applicableTransaction.length ? editing.applicableTransaction : ["any"],
+      applicableResidency: editing.applicableResidency.length ? editing.applicableResidency : ["all"],
+      mandatory: editing.mandatory,
+      visibleToClient: editing.visibleToClient,
+      clientCanUpload: editing.clientCanUpload,
+      active: editing.active,
+    };
+    const res = creating ? await adminPost(body) : await adminPatch({ ...body, id: editing.id });
+    setBusy(false);
+    if (!res.ok) {
+      toast("error", res.error ?? "Could not save document rule.");
+      return;
+    }
+    await hydrate();
+    toast("success", creating ? `Document rule added: ${editing.name}.` : "Document rule updated — checklists re-sync on the next profile change.");
+    setEditing(null);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleting) return;
+    setBusy(true);
+    const res = await adminDelete("docrule", deleting.id);
+    setBusy(false);
+    if (!res.ok) {
+      toast("error", res.error ?? "Could not delete document rule.");
+      return;
+    }
+    await hydrate();
+    toast("info", "Document rule removed.");
+  };
+
+  const condSummary = (d: DocRule) => {
+    const parts: string[] = [];
+    if (!d.applicableEmployment.includes("all")) parts.push(d.applicableEmployment.join("/"));
+    if (!d.applicableResidency.includes("all")) parts.push(d.applicableResidency.join("/"));
+    if (!d.applicablePropertyType.includes("any")) parts.push(d.applicablePropertyType.join("/"));
+    if (!d.applicableTransaction.includes("any")) parts.push(d.applicableTransaction.join("/"));
+    return parts.length ? parts.join(" · ") : "all cases";
+  };
+
+  return (
+    <div className="card anim-fade-up">
+      <CardHeader
+        title={`Document rules · ${docRules.length}`}
+        sub="The master catalog behind every case's Document Vault — conditions decide which cases need each document. Edit here, no code needed."
+        action={
+          <button
+            className="btn btn-primary sm:btn-sm"
+            onClick={() => { setEditing(blankDocRule()); setCreating(true); }}
+          >
+            <IPlus size={14} /> Add document
+          </button>
+        }
+      />
+      {sorted.length === 0 ? (
+        <EmptyState icon={<ICheck size={20} />} title="No document rules" body="Add the documents your process tracks — they auto-appear on matching cases." />
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="tbl min-w-[900px]">
+            <thead>
+              <tr>
+                <th>Document</th>
+                <th>Category</th>
+                <th>Applies to</th>
+                <th>Valid / warn</th>
+                <th>Access</th>
+                <th>What to verify</th>
+                <th>Status</th>
+                <th className="text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((d) => (
+                <tr key={d.id} style={{ opacity: d.active ? 1 : 0.5 }}>
+                  <td>
+                    <span className="font-medium">{d.name}</span>
+                    {d.code && <span className="block mono text-[10px] text-[var(--ink-faint)]">{d.code}</span>}
+                  </td>
+                  <td><Chip tone="slate">{d.category}</Chip></td>
+                  <td className="text-[11.5px] text-[var(--ink-dim)] max-w-[200px]">{condSummary(d)}</td>
+                  <td className="mono text-[12.5px]">
+                    {d.validityDays > 0 ? `${d.validityDays}d` : "—"}
+                    <span className="text-[var(--ink-faint)]"> / {d.warnDays > 0 ? `${d.warnDays}d` : "—"}</span>
+                  </td>
+                  <td>
+                    <span className="flex flex-wrap gap-1">
+                      <Chip tone={d.visibleToClient ? "sky" : "coral"}>{d.visibleToClient ? "client" : "internal"}</Chip>
+                      {d.visibleToClient && d.clientCanUpload && <Chip tone="mint">upload</Chip>}
+                      {d.mandatory && <Chip tone="amber">must</Chip>}
+                    </span>
+                  </td>
+                  <td className="text-[12px] text-[var(--ink-dim)] max-w-[300px]">{d.verifyNotes || "—"}</td>
+                  <td>
+                    <span className="inline-flex items-center gap-1.5">
+                      <ActiveDot active={d.active} />
+                      <span className="text-[12px] text-[var(--ink-dim)]">{d.active ? "active" : "inactive"}</span>
+                    </span>
+                  </td>
+                  <td className="text-right">
+                    <div className="inline-flex gap-1.5">
+                      <button className="btn btn-ghost btn-sm" onClick={() => { setEditing({ ...d }); setCreating(false); }}>
+                        <IPencil size={13} /> Edit
+                      </button>
+                      <button className="btn btn-danger btn-sm !px-2" onClick={() => setDeleting(d)} title="Delete">
+                        <ITrash size={13} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {editing && (
+        <Modal
+          title={creating ? "Add document rule" : `Edit · ${editing.name}`}
+          sub="Conditions decide which cases get this document. Changing conditions only affects new checklist syncs — existing cases keep their vault until a profile change."
+          onClose={() => setEditing(null)}
+          width={560}
+          footer={
+            <>
+              <button className="btn btn-ghost" onClick={() => setEditing(null)} disabled={busy}>Cancel</button>
+              <button className="btn btn-primary" onClick={save} disabled={busy}>
+                <ICheck size={15} /> Save
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-3.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Field label="Document name">
+                <input className="input" value={editing.name} placeholder="e.g. Salary Certificate" onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
+              </Field>
+              <Field label="Code (optional)">
+                <input className="input mono" value={editing.code} placeholder="e.g. DOC-SAL-CERT" onChange={(e) => setEditing({ ...editing, code: e.target.value.toUpperCase() })} />
+              </Field>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <Field label="Category">
+                <select className="select" value={editing.category} onChange={(e) => setEditing({ ...editing, category: e.target.value })}>
+                  {DOC_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </Field>
+              <Field label="Valid for (days · 0 = none)">
+                <input className="input mono" type="number" min={0} value={editing.validityDays} onChange={(e) => setEditing({ ...editing, validityDays: Number(e.target.value) || 0 })} />
+              </Field>
+              <Field label="Warn before expiry">
+                <input className="input mono" type="number" min={0} value={editing.warnDays} onChange={(e) => setEditing({ ...editing, warnDays: Number(e.target.value) || 0 })} />
+              </Field>
+            </div>
+
+            <div className="rounded-lg p-3 space-y-3" style={{ background: "var(--tint)" }}>
+              <ConditionRow
+                label="Employment profile"
+                options={DOC_CONDITION_SETS.employment}
+                selected={editing.applicableEmployment}
+                onToggle={(v) => setEditing({ ...editing, applicableEmployment: toggleValue(editing.applicableEmployment, v, "all") })}
+                exclusive="all"
+              />
+              <ConditionRow
+                label="Residency"
+                options={DOC_CONDITION_SETS.residency}
+                selected={editing.applicableResidency}
+                onToggle={(v) => setEditing({ ...editing, applicableResidency: toggleValue(editing.applicableResidency, v, "all") })}
+                exclusive="all"
+              />
+              <ConditionRow
+                label="Property type"
+                options={DOC_CONDITION_SETS.property}
+                selected={editing.applicablePropertyType}
+                onToggle={(v) => setEditing({ ...editing, applicablePropertyType: toggleValue(editing.applicablePropertyType, v, "any") })}
+                exclusive="any"
+              />
+              <ConditionRow
+                label="Transaction"
+                options={DOC_CONDITION_SETS.transaction}
+                selected={editing.applicableTransaction}
+                onToggle={(v) => setEditing({ ...editing, applicableTransaction: toggleValue(editing.applicableTransaction, v, "any") })}
+                exclusive="any"
+              />
+            </div>
+
+            <div className="flex flex-wrap gap-1.5">
+              <ToggleChip on={editing.mandatory} onClick={() => setEditing({ ...editing, mandatory: !editing.mandatory })} onLabel="mandatory" offLabel="optional" />
+              <ToggleChip on={editing.visibleToClient} onClick={() => setEditing({ ...editing, visibleToClient: !editing.visibleToClient, clientCanUpload: !editing.visibleToClient ? false : editing.clientCanUpload })} onLabel="client visible" offLabel="internal only" />
+              <ToggleChip on={editing.clientCanUpload} onClick={() => setEditing({ ...editing, clientCanUpload: !editing.clientCanUpload })} onLabel="client can upload" offLabel="staff upload" />
+              <ToggleChip on={editing.active} onClick={() => setEditing({ ...editing, active: !editing.active })} onLabel="active" offLabel="inactive" />
+            </div>
+
+            <Field label="What to verify / rejection triggers">
+              <textarea
+                className="input"
+                rows={2}
+                value={editing.verifyNotes}
+                placeholder="e.g. Company stamp + PO Box; issued within 1 month"
+                onChange={(e) => setEditing({ ...editing, verifyNotes: e.target.value })}
+              />
+            </Field>
+          </div>
+        </Modal>
+      )}
+
+      <ConfirmModal
+        open={!!deleting}
+        onClose={() => setDeleting(null)}
+        onConfirm={confirmDelete}
+        title="Delete document rule?"
+        body={`"${deleting?.name ?? ""}" will no longer appear on new checklists. Existing case vaults keep their copies.`}
+        confirmLabel="Delete"
+      />
+    </div>
+  );
+}
+
+function ToggleChip({ on, onClick, onLabel, offLabel }: { on: boolean; onClick: () => void; onLabel: string; offLabel: string }) {
+  return (
+    <button type="button" className="chip transition-all" onClick={onClick}
+      style={on
+        ? { background: "rgba(67,214,155,0.12)", borderColor: "rgba(67,214,155,0.5)", color: "var(--mint)" }
+        : { background: "var(--bg2)", borderColor: "var(--line)", color: "var(--ink-faint)" }}>
+      {on ? onLabel : offLabel}
+    </button>
+  );
+}
+
+/* ------------------------------ fee rules (SOP §6.9) ------------------------------ */
+
+interface FeeRuleDraft {
+  id: number;
+  emirate: FeeRule["emirate"];
+  txnType: FeeRule["txnType"];
+  label: string;
+  amountType: FeeRule["amountType"];
+  amount: number;
+  paidBy: string;
+  note: string;
+  active: boolean;
+}
+
+function blankFeeRule(): FeeRuleDraft {
+  return { id: 0, emirate: "Dubai", txnType: "Primary", label: "", amountType: "fixed", amount: 0, paidBy: "Client", note: "", active: true };
+}
+
+function FeeRulesTab() {
+  const { feeRules, hydrate, toast } = useHfmcStore();
+  const [editing, setEditing] = useState<FeeRuleDraft | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [deleting, setDeleting] = useState<FeeRule | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [filterEmirate, setFilterEmirate] = useState<FeeRule["emirate"]>("Dubai");
+  const [filterTxn, setFilterTxn] = useState<FeeRule["txnType"]>("Primary");
+
+  const rows = useMemo(
+    () => feeRules
+      .filter((f) => f.emirate === filterEmirate && f.txnType === filterTxn)
+      .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id),
+    [feeRules, filterEmirate, filterTxn],
+  );
+
+  const amountLabel = (f: FeeRule) =>
+    f.amountType === "fixed" ? `AED ${f.amount.toLocaleString("en-US")}` : `${f.amount}%`;
+
+  const save = async () => {
+    if (!editing) return;
+    if (!editing.label.trim()) {
+      toast("error", "Fee label is required.");
+      return;
+    }
+    setBusy(true);
+    const body: Record<string, unknown> = {
+      kind: "feerule",
+      emirate: editing.emirate,
+      txnType: editing.txnType,
+      label: editing.label.trim(),
+      amountType: editing.amountType,
+      amount: Math.max(0, editing.amount || 0),
+      paidBy: editing.paidBy,
+      note: editing.note,
+      active: editing.active,
+    };
+    const res = creating ? await adminPost(body) : await adminPatch({ ...body, id: editing.id });
+    setBusy(false);
+    if (!res.ok) {
+      toast("error", res.error ?? "Could not save fee rule.");
+      return;
+    }
+    await hydrate();
+    toast("success", creating ? `Fee rule added: ${editing.label}.` : "Fee rule updated.");
+    setEditing(null);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleting) return;
+    setBusy(true);
+    const res = await adminDelete("feerule", deleting.id);
+    setBusy(false);
+    if (!res.ok) {
+      toast("error", res.error ?? "Could not delete fee rule.");
+      return;
+    }
+    await hydrate();
+    toast("info", "Fee rule removed.");
+  };
+
+  return (
+    <div className="card anim-fade-up">
+      <CardHeader
+        title="Transfer fee rules"
+        sub="Government & bank charges per emirate and transaction type — feeds the Calculator's Transfer Fees tab. Edit here, no code needed."
+        action={
+          <button
+            className="btn btn-primary sm:btn-sm"
+            onClick={() => { setEditing({ ...blankFeeRule(), emirate: filterEmirate, txnType: filterTxn }); setCreating(true); }}
+          >
+            <IPlus size={14} /> Add fee
+          </button>
+        }
+      />
+      <div className="flex flex-wrap gap-2 px-4 py-3 border-b" style={{ borderColor: "var(--line-soft)" }}>
+        <Seg<FeeRule["emirate"]> value={filterEmirate} onChange={setFilterEmirate} options={FEE_EMIRATES.map((e) => ({ value: e, label: e }))} />
+        <Seg<FeeRule["txnType"]> value={filterTxn} onChange={setFilterTxn} options={FEE_TXN_TYPES.map((t) => ({ value: t, label: t === "Buyout" ? "Buyout / Equity" : t }))} />
+      </div>
+      {rows.length === 0 ? (
+        <EmptyState icon={<ICheck size={20} />} title="No fees for this emirate / transaction" body="Add the charges your teams quote clients — DLD transfer, trustee, registration, agency." />
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="tbl min-w-[760px]">
+            <thead>
+              <tr>
+                <th>Fee</th>
+                <th>Amount</th>
+                <th>Paid by</th>
+                <th>Note</th>
+                <th>Status</th>
+                <th className="text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((f) => (
+                <tr key={f.id} style={{ opacity: f.active ? 1 : 0.5 }}>
+                  <td className="font-medium">{f.label}</td>
+                  <td className="mono text-[13px] font-semibold">
+                    {amountLabel(f)}
+                    <span className="text-[10.5px] text-[var(--ink-faint)] ml-1.5 normal-case">
+                      {f.amountType === "pct_property" ? "of property" : f.amountType === "pct_loan" ? "of finance" : ""}
+                    </span>
+                  </td>
+                  <td>
+                    <Chip tone={f.paidBy === "Seller" ? "sky" : "slate"}>{f.paidBy}</Chip>
+                  </td>
+                  <td className="text-[12px] text-[var(--ink-dim)] max-w-[320px]">{f.note || "—"}</td>
+                  <td>
+                    <span className="inline-flex items-center gap-1.5">
+                      <ActiveDot active={f.active} />
+                      <span className="text-[12px] text-[var(--ink-dim)]">{f.active ? "active" : "inactive"}</span>
+                    </span>
+                  </td>
+                  <td className="text-right">
+                    <div className="inline-flex gap-1.5">
+                      <button className="btn btn-ghost btn-sm" onClick={() => { setEditing({ ...f }); setCreating(false); }}>
+                        <IPencil size={13} /> Edit
+                      </button>
+                      <button className="btn btn-danger btn-sm !px-2" onClick={() => setDeleting(f)} title="Delete">
+                        <ITrash size={13} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {editing && (
+        <Modal
+          title={creating ? "Add fee rule" : "Edit fee rule"}
+          onClose={() => setEditing(null)}
+          width={520}
+          footer={
+            <>
+              <button className="btn btn-ghost" onClick={() => setEditing(null)} disabled={busy}>Cancel</button>
+              <button className="btn btn-primary" onClick={save} disabled={busy}>
+                <ICheck size={15} /> Save
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-3.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Field label="Emirate">
+                <select
+                  className="select"
+                  value={editing.emirate}
+                  onChange={(e) => setEditing({ ...editing, emirate: e.target.value as FeeRule["emirate"] })}
+                >
+                  {FEE_EMIRATES.map((e2) => <option key={e2} value={e2}>{e2}</option>)}
+                </select>
+              </Field>
+              <Field label="Transaction type">
+                <select
+                  className="select"
+                  value={editing.txnType}
+                  onChange={(e) => setEditing({ ...editing, txnType: e.target.value as FeeRule["txnType"] })}
+                >
+                  {FEE_TXN_TYPES.map((t) => <option key={t} value={t}>{t === "Buyout" ? "Buyout / Equity Release" : t}</option>)}
+                </select>
+              </Field>
+            </div>
+            <Field label="Fee label">
+              <input
+                className="input"
+                value={editing.label}
+                placeholder="e.g. DLD Transfer Fee"
+                onChange={(e) => setEditing({ ...editing, label: e.target.value })}
+              />
+            </Field>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <Field label="Basis">
+                <select
+                  className="select"
+                  value={editing.amountType}
+                  onChange={(e) => setEditing({ ...editing, amountType: e.target.value as FeeRule["amountType"] })}
+                >
+                  {FEE_AMOUNT_TYPES.map((t) => (
+                    <option key={t} value={t}>
+                      {t === "pct_property" ? "% of property" : t === "pct_loan" ? "% of finance" : "Fixed AED"}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label={editing.amountType === "fixed" ? "Amount (AED)" : "Percent (%)"}>
+                <input
+                  className="input mono"
+                  type="number"
+                  min={0}
+                  step={editing.amountType === "fixed" ? 1 : 0.05}
+                  value={editing.amount}
+                  onChange={(e) => setEditing({ ...editing, amount: Number(e.target.value) || 0 })}
+                />
+              </Field>
+              <Field label="Paid by">
+                <select
+                  className="select"
+                  value={editing.paidBy}
+                  onChange={(e) => setEditing({ ...editing, paidBy: e.target.value })}
+                >
+                  <option value="Client">Client</option>
+                  <option value="Seller">Seller</option>
+                </select>
+              </Field>
+            </div>
+            <Field label="Note">
+              <input
+                className="input"
+                value={editing.note}
+                placeholder="e.g. 4% of property value · incl. VAT"
+                onChange={(e) => setEditing({ ...editing, note: e.target.value })}
+              />
+            </Field>
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="feerule-active"
+                checked={editing.active}
+                onChange={(e) => setEditing({ ...editing, active: e.target.checked })}
+              />
+              <label htmlFor="feerule-active" className="text-[12.5px] text-[var(--ink-dim)] m-0">
+                Active — included in transfer fee quotes
+              </label>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      <ConfirmModal
+        open={!!deleting}
+        onClose={() => setDeleting(null)}
+        onConfirm={confirmDelete}
+        title="Delete fee rule?"
+        body={`"${deleting?.label ?? ""}" (${deleting?.emirate ?? ""} · ${deleting?.txnType ?? ""}) will no longer appear in transfer quotes.`}
         confirmLabel="Delete"
       />
     </div>

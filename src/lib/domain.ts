@@ -8,6 +8,7 @@ export interface RoleFlags {
   issueTasks: boolean;
   admin: boolean;
   super: boolean;
+  viewRevenue: boolean;
 }
 
 /* ---------- visibility scoping ---------- */

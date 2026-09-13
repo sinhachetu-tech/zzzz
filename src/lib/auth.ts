@@ -73,15 +73,16 @@ export interface RoleFlags {
   issueTasks: boolean;
   admin: boolean;
   super: boolean;
+  viewRevenue: boolean;
 }
 
-const SUPER_FLAGS: RoleFlags = { scope: "all", issueTasks: true, admin: true, super: true };
+const SUPER_FLAGS: RoleFlags = { scope: "all", issueTasks: true, admin: true, super: true, viewRevenue: true };
 
 export async function flagsFor(user: SessionUser): Promise<RoleFlags> {
   if (user.role === "Super Admin") return SUPER_FLAGS;
   const d = await db.designation.findUnique({ where: { name: user.role } });
-  if (!d) return { scope: "own", issueTasks: false, admin: false, super: false };
-  return { scope: d.scope as RoleFlags["scope"], issueTasks: d.issueTasks, admin: d.admin, super: d.super };
+  if (!d) return { scope: "own", issueTasks: false, admin: false, super: false, viewRevenue: false };
+  return { scope: d.scope as RoleFlags["scope"], issueTasks: d.issueTasks, admin: d.admin, super: d.super, viewRevenue: d.viewRevenue };
 }
 
 export async function canManageAll(user: SessionUser): Promise<boolean> {

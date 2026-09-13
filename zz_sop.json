@@ -1,0 +1,4624 @@
+{
+ "document-control": {
+  "heading": "DOCUMENT CONTROL",
+  "h2": "DOCUMENT CONTROL",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "Document ID: HFMC-SOP-MASTER-2026 (Merged Edition)"
+   },
+   {
+    "type": "text",
+    "t": "Scope: Single, exhaustive training manual and Standard Operating Procedure (SOP) reference for the Mortgage Processing and Sales Progression teams, covering salaried, self-employed, non-resident, buyout, and equity release profiles across all partner banking institutions in the UAE."
+   },
+   {
+    "type": "text",
+    "t": "Status: Living document — see Preface."
+   },
+   {
+    "type": "text",
+    "t": "Includes: Update per meeting dated 13 August 2026 (Valuation Report Sharing Protocol)."
+   },
+   {
+    "type": "text",
+    "t": "Edition Note: This edition consolidates the full, unabridged operational data set (every bank matrix, fee table, template, and directory) under an improved governance and navigation structure. Where a figure or rule could not be traced back to verified source records — for example, specific staff-to-team assignments or SLA figures not present in the underlying documentation — it has been left out rather than guessed. If your team has confirmed source material for any such item, please route it to your Team Lead so it can be added in the next revision."
+   }
+  ]
+ },
+ "preface": {
+  "heading": "PREFACE",
+  "h2": "PREFACE",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "This Guidebook has been compiled as a single, comprehensive training and reference resource for the Mortgage Processing team, drawing together pre-approval procedures, valuation and inspection protocols, Final Offer Letter and loan booking workflows, final transfer and disbursal procedures, digital systems governance, and the full set of supporting matrices, checklists, bank-specific formats, fee structures, and directories used across the organization."
+   },
+   {
+    "type": "text",
+    "t": "Readers should note that this document is, by its nature, a living record built up over time from multiple internal sources, presentations, checklists, and bank communications. As a result:"
+   },
+   {
+    "type": "text",
+    "t": "Some information — including certain policy figures, rates, fee amounts, portal links, and procedural steps — may reflect the position at the time it was originally recorded and may have since been revised by the respective banks or regulatory authorities."
+   },
+   {
+    "type": "text",
+    "t": "Some staff names, designations, Relationship Manager (RM) allocations, and contact details mentioned throughout this Guidebook may change over time as personnel move roles, teams are restructured, or banks reassign their relationship managers."
+   },
+   {
+    "type": "text",
+    "t": "Some procedures, portal names, submission channels (e.g., Huspy, Prypco, Direct), and internal workflows may be updated, replaced, or streamlined as the organization's processes evolve."
+   },
+   {
+    "type": "text",
+    "t": "Nothing in this Guidebook has been deleted, shortened, or removed in the course of compiling this edition — every detail, matrix, checklist, template, and reference from the source materials has been retained in full so that no operational knowledge is lost."
+   },
+   {
+    "type": "text",
+    "t": "As readers and users of this Guidebook become actively involved in day-to-day processing work, they are encouraged — and expected — to flag outdated names, rates, procedures, or contacts to their Team Leads so that this document can be reviewed and updated accordingly. This Guidebook should therefore be treated as a continuously evolving working document, to be corrected, refined, and kept current as the team's real-world experience grows, rather than a static, one-time publication. Updates, corrections, and version notes should be logged and circulated so that every team member always works from the most accurate available version."
+   },
+   {
+    "type": "text",
+    "t": "Objective: To provide a standardized, step-by-step operational procedure for processing mortgage applications from initial document collection to the final property transfer, loan booking, disbursal, and post-completion quality checks. This document serves as the ultimate operational reference for all processing executives, ensuring compliance, accuracy, and maximum efficiency."
+   }
+  ]
+ },
+ "four-core-operating-principles": {
+  "heading": "Four Core Operating Principles",
+  "h2": "PREFACE",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "1. One Case, One Controlled Journey: A mortgage file is treated as a controlled case moving through defined stages. At every stage, the responsible person must know what has been received, verified, what remains outstanding, and who owns the next action."
+   },
+   {
+    "type": "text",
+    "t": "2. Verification Before Submission: Never forward an incomplete document package. Verify client information against KYC and bank forms. Record and resolve discrepancies before treating the file as submission-ready."
+   },
+   {
+    "type": "text",
+    "t": "3. Transaction Type Drives the Document Set: The required property documents change depending on whether the case is Primary, Resale, Buyout, or Equity. Identify the transaction type before building the file."
+   },
+   {
+    "type": "text",
+    "t": "4. Stage Handover is a Control Point: A case moves to the next stage ONLY after the required handover items are available and checked."
+   }
+  ]
+ },
+ "five-verified-operational-tenets": {
+  "heading": "Five Verified Operational Tenets",
+  "h2": "PREFACE",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "Written Communication Only: All operational updates, bank queries, client confirmations, and stage handovers must be executed via email or logged system notes. Verbal communication is not treated as binding — keep all conversations through email only."
+   },
+   {
+    "type": "text",
+    "t": "Rigid Maker-Checker Separation: Virtue Relationship Managers (VRMs) act as \"Makers\" — sourcing clients and gathering initial documentation. Sales Progression Officers (SPOs) act as \"Checkers\" — auditing, verifying, and submitting to banks. See Section 1."
+   },
+   {
+    "type": "text",
+    "t": "4:30 PM Daily Bank-Submission Cutoff: File submission to the bank is targeted for the same day, with a 4:30 PM UAE time deadline for that day's batch."
+   },
+   {
+    "type": "text",
+    "t": "Clean Drive Protocol: Temporary G-Drive folders must be purged daily upon task completion, and no created folders should remain in the shared drive before logging off. See Section 7."
+   },
+   {
+    "type": "text",
+    "t": "Quality Benchmark — Max 4 Recalls per Month: Exceeding four file recalls in a month, providing wrong updates, or bypassing checklists triggers a formal Warning Letter; a third Warning Letter results in termination. See Section 1.5."
+   }
+  ]
+ },
+ "table-of-contents": {
+  "heading": "Table of Contents",
+  "h2": "Table of Contents",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "1. Section 1 — Organizational Structure, Roles & Governance"
+   },
+   {
+    "type": "text",
+    "t": "2. Section 2 — Glossary of Terms & Acronyms"
+   },
+   {
+    "type": "text",
+    "t": "3. Section 3 — Stage 1: Pre-Approval SOP"
+   },
+   {
+    "type": "text",
+    "t": "4. Section 4 — Stage 2: Valuation, Inspection & Account Opening SOP"
+   },
+   {
+    "type": "text",
+    "t": "5. Section 5 — Stage 3: Final Offer Letter (FOL) & Loan Booking SOP"
+   },
+   {
+    "type": "text",
+    "t": "6. Section 6 — Stage 4: Final Transfer & Disbursal SOP"
+   },
+   {
+    "type": "text",
+    "t": "7. Section 7 — Digital Systems, G-Drive Taxonomy & Workbook Blueprint"
+   },
+   {
+    "type": "text",
+    "t": "8. Section 8 — Appendix: Quick Reference Directories & Matrices"
+   },
+   {
+    "type": "text",
+    "t": "9. Section 9 — Governance Disclaimer"
+   }
+  ]
+ },
+ "maker-checker-operational-framework": {
+  "heading": "1.1 Maker-Checker Operational Framework",
+  "h2": "SECTION 1: Organizational Structure, Roles & Governance",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "HFMC enforces a strict division between file generation and file execution:"
+   },
+   {
+    "type": "text",
+    "t": "Virtue Relationship Managers (VRMs – Makers): Responsible for initial client interaction, qualification, gathering raw KYC and income documentation, and transferring complete file packages to the SPO via G-Drive."
+   },
+   {
+    "type": "text",
+    "t": "Sales Progression Officers (SPOs – Checkers): Responsible for independent verification of documents against bank criteria, calculating affordability (DSR/LTV), converting files to bank-specific formats, submitting files via bank portals or RMs, tracking valuation/FOL progress, and coordinating transfers."
+   },
+   {
+    "type": "text",
+    "t": "Operational Flow: Sales Teams find Client -> Move Case to VRM Team -> VRM Collects Docs as per Bank Requirement -> VRM Sends to SPO (G-Drive Handover) -> SPO Checks Docs Carefully (Passport/Visa match, etc.) -> Pending Docs? YES: SPO contacts VRM / NO: Submit to Bank -> Bank TAT: 4-5 Working Days"
+   }
+  ]
+ },
+ "team-structure": {
+  "heading": "1.2 Team Structure",
+  "h2": "SECTION 1: Organizational Structure, Roles & Governance",
+  "blocks": [
+   {
+    "type": "table",
+    "head": [
+     "Team",
+     "Team Lead",
+     "Members / Specialists",
+     "Core Responsibility"
+    ],
+    "rows": [
+     [
+      "VRM Team (Makers)",
+      "Ankita Pawar",
+      "Sanjay, Gaurav, Priyanka",
+      "Submitting new pre-approval cases, responding to SPO queries, daily client chasing/updating, maintaining the Pending Client List and MIS, updating WhatsApp groups, following the road map and checklists."
+     ],
+     [
+      "SPO Team (Checkers)",
+      "Yash Jadhav",
+      "Vijaya, Vaibhavi, Devika, Vijay",
+      "File submission to bank (target 4:30 PM UAE time), daily follow-up, FOL conversion proof logged in G-Drive within 24 hours, MIS updates. Cross-training across stages is mandatory."
+     ]
+    ]
+   },
+   {
+    "type": "text",
+    "t": "Handover Flow: VRM (Maker) collects and packages client documents -> Handover via G-Drive -> SPO (Checker) independently audits and submits to the bank."
+   }
+  ]
+ },
+ "spo-stage-ownership-matrix": {
+  "heading": "1.3 SPO Stage Ownership Matrix",
+  "h2": "SECTION 1: Organizational Structure, Roles & Governance",
+  "blocks": [
+   {
+    "type": "table",
+    "head": [
+     "SPO Owner",
+     "Stage Owned",
+     "Key Duties"
+    ],
+    "rows": [
+     [
+      "Yash Jadhav",
+      "Stage 1 – Pre-Approval",
+      "Bank portal and RM submissions, daily RM follow-ups, daily pending-case reporting to banks."
+     ],
+     [
+      "Vijaya",
+      "Stage 2 – Valuation",
+      "Valuation initiation, fee payment tracking, scheduling inspections via Binish/Siham, and executing the 13 August 2026 Valuation Report Sharing Protocol (Section 4.2)."
+     ],
+     [
+      "Vaibhavi",
+      "Stage 3 – FOL Conversion",
+      "FOL verification against Pre-Approval terms, financial/condition audit, and coordinating client contract signings."
+     ],
+     [
+      "Devika & Vijay",
+      "Stage 4 – Loan Booking & Transfer",
+      "Liability settlements, mortgage release clearances, developer NOC tracking, Manager's Cheque issuance, and final transfer coordination."
+     ]
+    ]
+   }
+  ]
+ },
+ "communication-escalation-protocols": {
+  "heading": "1.4 Communication & Escalation Protocols",
+  "h2": "SECTION 1: Organizational Structure, Roles & Governance",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "Do NOT copy Sir Kiran on routine bank emails or reminders. Copy him only when receiving a formal bank query, a credit approval, or when escalating a case (e.g., unresolved bank delay)."
+   },
+   {
+    "type": "text",
+    "t": "When sending emails to Virtual 1 & 2 (internal Virtual DLs), Sir Kiran should be copied."
+   },
+   {
+    "type": "text",
+    "t": "Do NOT copy Virtual 1 & 2 on direct correspondence with bank RMs, unless the email is sent by Sir Kiran."
+   },
+   {
+    "type": "text",
+    "t": "Daily Updates: Send the daily update by 3:00 PM to the Virtual DL, copying the SPO DL and Karen."
+   },
+   {
+    "type": "text",
+    "t": "Follow-up with banks is handled directly with the assigned Bank RM — do not copy Shahid (or other portal contacts) on routine RM follow-ups once an RM has been assigned."
+   }
+  ]
+ },
+ "workstation-policy-quality-disciplinary-framework": {
+  "heading": "1.5 Workstation Policy & Quality / Disciplinary Framework",
+  "h2": "SECTION 1: Organizational Structure, Roles & Governance",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "Workstation Discipline: Staff must fix their chair and lock their laptop whenever leaving their seat. Ensure no temporary case folders created by Virtue or Sir Kiran remain in G-Drive before logging off daily (see Section 7.1)."
+   },
+   {
+    "type": "text",
+    "t": "Monthly Evaluations: Conducted by Unit Heads based on performance, team management, training, and discipline."
+   },
+   {
+    "type": "text",
+    "t": "Quality of Work (Warning Letters — a 3rd results in termination):"
+   },
+   {
+    "type": "text",
+    "t": "More than 4 file recalls in a month."
+   },
+   {
+    "type": "text",
+    "t": "Wrong updates provided."
+   },
+   {
+    "type": "text",
+    "t": "Not following the process/checklist or referring to important documents."
+   },
+   {
+    "type": "text",
+    "t": "Behavior & Professionalism (Salary Deductions):"
+   },
+   {
+    "type": "text",
+    "t": "Late coming or absenteeism."
+   },
+   {
+    "type": "text",
+    "t": "Attitude towards staff, lack of respect, chit-chatting, or causing noise in the office."
+   },
+   {
+    "type": "text",
+    "t": "Laptop left unlocked when away from seat."
+   },
+   {
+    "type": "text",
+    "t": "Failure to follow proper dress code."
+   },
+   {
+    "type": "text",
+    "t": "Communication Rule: NO verbal communication. Keep all conversations through email only."
+   }
+  ]
+ },
+ "glossary-of-terms-acronyms": {
+  "heading": "SECTION 2: Glossary of Terms & Acronyms",
+  "h2": "SECTION 2: Glossary of Terms & Acronyms",
+  "blocks": [
+   {
+    "type": "table",
+    "head": [
+     "Acronym",
+     "Full Form / Definition"
+    ],
+    "rows": [
+     [
+      "AECB",
+      "Al Etihad Credit Bureau (UAE's credit reporting agency showing credit history, liabilities, and payment behavior)."
+     ],
+     [
+      "ADM",
+      "Abu Dhabi Municipality (Real estate regulatory body in Abu Dhabi)."
+     ],
+     [
+      "ADGM",
+      "Abu Dhabi Global Market (Financial free zone with its own property registry, handles Al Reem & Al Maryah transfers)."
+     ],
+     [
+      "ADREC",
+      "Abu Dhabi Real Estate Center (Portal for property transaction data and transfers)."
+     ],
+     [
+      "AIP",
+      "Approval in Principle (Initial Pre-Approval)."
+     ],
+     [
+      "AML",
+      "Anti-Money Laundering (Compliance checks)."
+     ],
+     [
+      "BCC",
+      "Building Completion Certificate."
+     ],
+     [
+      "BPR",
+      "Business Process Record (Excel sheet for daily tracking)."
+     ],
+     [
+      "BUA",
+      "Built-Up Area."
+     ],
+     [
+      "BVC",
+      "Bank Valuation Certificate (A valuation confirmation accepted by the bank, commonly used in Abu Dhabi)."
+     ],
+     [
+      "CBD",
+      "Commercial Bank of Dubai."
+     ],
+     [
+      "CPV",
+      "Contact Point Verification (Bank's verification of employer/company)."
+     ],
+     [
+      "CTO",
+      "Credit Transfer Office / Central Treasury Office."
+     ],
+     [
+      "DDA",
+      "Direct Debit Authority (Form signed by customer authorizing bank to automatically deduct EMI from their account)."
+     ],
+     [
+      "DIB",
+      "Dubai Islamic Bank."
+     ],
+     [
+      "DLD",
+      "Dubai Land Department."
+     ],
+     [
+      "DRF",
+      "Disbursement Request Form (Internal bank document authorizing release of funds)."
+     ],
+     [
+      "DSR/DBR",
+      "Debt Service Ratio / Debt Burden Ratio (Liabilities vs. Income)."
+     ],
+     [
+      "EIBOR",
+      "Emirates Inter Bank Offered Rate (Benchmark interest rate published by UAE Central Bank)."
+     ],
+     [
+      "EID",
+      "Emirates ID."
+     ],
+     [
+      "EMI",
+      "Equated Monthly Installment."
+     ],
+     [
+      "EOSB",
+      "End of Service Benefits (Sometimes considered for long-term stability)."
+     ],
+     [
+      "FOL",
+      "Final Offer Letter (The formal loan approval document)."
+     ],
+     [
+      "FTS",
+      "Financial Tracking System / Form."
+     ],
+     [
+      "HIO",
+      "Home In One (Specific RAK Bank product)."
+     ],
+     [
+      "IPA",
+      "Initial Pre-Approval Fee."
+     ],
+     [
+      "KFS",
+      "Key Facts Statement (Mandatory document summarizing rates, fees, and settlement charges)."
+     ],
+     [
+      "LTV",
+      "Loan-to-Value (Loan amount divided by property value)."
+     ],
+     [
+      "MC",
+      "Manager's Cheque (A guarantee cheque issued by the bank by blocking available funds, signed by an authorized bank person)."
+     ],
+     [
+      "MOA",
+      "Memorandum of Association."
+     ],
+     [
+      "MOU",
+      "Memorandum of Understanding (Agreement between buyer & seller / Form F)."
+     ],
+     [
+      "NOC",
+      "No Objection Certificate."
+     ],
+     [
+      "OS Amount",
+      "Outstanding Amount (On an existing loan)."
+     ],
+     [
+      "POA",
+      "Power of Attorney."
+     ],
+     [
+      "PRO",
+      "Public Relations Officer (Bank representative handling registrations)."
+     ],
+     [
+      "QC",
+      "Quality Check / Quality Call."
+     ],
+     [
+      "RPA/AI",
+      "Robotic Process Automation / Artificial Intelligence (Machine compliance)."
+     ],
+     [
+      "SC",
+      "Salary Certificate."
+     ],
+     [
+      "SI",
+      "Standing Instruction (Authorization for automatic monthly deductions)."
+     ],
+     [
+      "SOA",
+      "Statement of Account (Developer payment schedule)."
+     ],
+     [
+      "SPA",
+      "Sales and Purchase Agreement."
+     ],
+     [
+      "STL",
+      "Salary Transfer Letter."
+     ],
+     [
+      "Takaful",
+      "Islamic Insurance (Life/Property Insurance)."
+     ],
+     [
+      "TAMM",
+      "Abu Dhabi Government Portal for services."
+     ],
+     [
+      "TAT",
+      "Turn Around Time."
+     ],
+     [
+      "UBO",
+      "Ultimate Beneficial Owner (Requested for corporate borrowers)."
+     ],
+     [
+      "UVC",
+      "Unit Verification Certificate (Confirms property details, commonly requested in Abu Dhabi)."
+     ],
+     [
+      "VRM",
+      "Virtual Relationship Manager."
+     ]
+    ]
+   }
+  ]
+ },
+ "stage-1-pre-approval-sop": {
+  "heading": "SECTION 3: STAGE 1 — Pre-Approval SOP",
+  "h2": "SECTION 3: STAGE 1 — Pre-Approval SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "Goal: Collect, verify, and submit client documents to the respective bank to obtain a pre-approval. Virtue RMs (VRMs) forward all client documents to the Sales Progression Team (SPO) to initiate this process."
+   },
+   {
+    "type": "text",
+    "t": "Operational Flow: Sales Teams find Client -> Move Case to VRM Team -> VRM Collects Docs as per Bank Requirement -> VRM Sends to SPO -> SPO Checks Docs Carefully (Passport/Visa match, etc.) -> Pending Docs? YES: SPO contacts VRM / NO: Submit to Bank -> Bank TAT: 4-5 Working Days"
+   }
+  ]
+ },
+ "initial-customer-interaction-affordability-calculations": {
+  "heading": "3.1 Initial Customer Interaction & Affordability Calculations",
+  "h2": "SECTION 3: STAGE 1 — Pre-Approval SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "Before submitting to the bank, SPT must ensure the client meets basic eligibility criteria using internal calculators."
+   }
+  ]
+ },
+ "customer-greeting-3-stage-calculator-flow": {
+  "heading": "A. Customer Greeting & 3-Stage Calculator Flow",
+  "h2": "SECTION 3: STAGE 1 — Pre-Approval SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "When greeting a customer, follow this strict 3-stage process:"
+   },
+   {
+    "type": "text",
+    "t": "Stage 1: Cash Requirement"
+   },
+   {
+    "type": "text",
+    "t": "1. Greet Customer."
+   },
+   {
+    "type": "text",
+    "t": "2. Ask if it is their 1st property finance or an existing property finance in UAE, and determine their nationality."
+   },
+   {
+    "type": "text",
+    "t": "3. Ask the property value."
+   },
+   {
+    "type": "text",
+    "t": "4. Calculate cash needed in hand as per the required LTV using the website calculator. If the client asks for a breakup, provide it directly from the website calculator."
+   },
+   {
+    "type": "text",
+    "t": "Stage 2: Installment Calculation"
+   },
+   {
+    "type": "text",
+    "t": "1. Go to the ROI sheet. Input the property value and bank rate of 2.69% (for Expats at 80% LTV). Note: For every customer, the initial calculation is based on 2.69%."
+   },
+   {
+    "type": "text",
+    "t": "2. Get two confirmations: How much cash they have on hand, and provide the EMI breakup."
+   },
+   {
+    "type": "text",
+    "t": "3. Inform them that a consultant will explain further details."
+   },
+   {
+    "type": "text",
+    "t": "Stage 3: Age Calculator"
+   },
+   {
+    "type": "text",
+    "t": "1. Maximum tenure eligibility is 300 months (25 years)."
+   },
+   {
+    "type": "text",
+    "t": "2. Ask for the client's age and calculate using the age calculator."
+   },
+   {
+    "type": "text",
+    "t": "3. Rule: If the current month on the calculator is, for example, September, change it to November (advance by one month)."
+   },
+   {
+    "type": "text",
+    "t": "4. Based on age, calculate and let the customer know their age eligibility, EMI, and cash needed. Inform them a consultant will call for a detailed discussion."
+   }
+  ]
+ },
+ "age-tenure-limits-customer-types-matrix": {
+  "heading": "B. Age & Tenure Limits (Customer Types Matrix)",
+  "h2": "SECTION 3: STAGE 1 — Pre-Approval SOP",
+  "blocks": [
+   {
+    "type": "table",
+    "head": [
+     "Customer Type",
+     "Retirement Age",
+     "1st Property LTV (<5M / >5M)",
+     "2nd Property LTV (Any Value)",
+     "Extra Finance Limit (1st / 2nd Prop)"
+    ],
+    "rows": [
+     [
+      "UAE National",
+      "70 Years (Salaried/Self)",
+      "85% / 75%",
+      "65%",
+      "90% / 70%"
+     ],
+     [
+      "Expatriate",
+      "65 Years (Salaried) / 70 Years (Self-Emp)",
+      "80% / 70%",
+      "60%",
+      "85% / 65%"
+     ],
+     [
+      "Non-Resident",
+      "65 Years (Salaried/Self)",
+      "50% / 50%",
+      "50%",
+      "N/A"
+     ]
+    ]
+   },
+   {
+    "type": "text",
+    "t": "DIB Exception (Expats): Age increased to 70 years subject to ALL conditions: Length of service at least 2 years in UAE, Salary >= AED 40,000/month, and age at application is 50 years. Based on 70% LTV policy, eligible for 70 years tenor."
+   },
+   {
+    "type": "text",
+    "t": "Maximum Tenor: 300 months (25 years) across the board."
+   },
+   {
+    "type": "text",
+    "t": "GCC Nationals Rule: Customers from UAE, Oman, Kuwait, Bahrain, Saudi, and Qatar do not have visas and Emirates IDs. UAE Nationals only have a Family Book."
+   }
+  ]
+ },
+ "eibor-mechanics-interest-rates": {
+  "heading": "C. EIBOR Mechanics & Interest Rates",
+  "h2": "SECTION 3: STAGE 1 — Pre-Approval SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "What is EIBOR? Emirates Inter Bank Offered Rate. Published by the UAE Central Bank on their website (https://www.centralbank.ae/en/forex-eibor/eibor-rates/)."
+   },
+   {
+    "type": "text",
+    "t": "Update Timing: Central Bank revises and updates rates daily, usually by 12:30 PM UAE Time."
+   },
+   {
+    "type": "text",
+    "t": "Tenors Available: Day, Week, 1 Month, 3 Months, 6 Months, 1 Year."
+   },
+   {
+    "type": "text",
+    "t": "Calculation Logic: If a bank uses a 1-Month EIBOR, they track the daily EIBOR for the whole month, sum it, and divide by the days of the month. This average becomes the EIBOR for the next month. For 3-Month EIBOR, the average of Jan-Mar dictates the rate for Apr-Jun. \"Past is the EIBOR for the Future.\""
+   },
+   {
+    "type": "text",
+    "t": "Impact on Client: If the client is on a floating/variable rate and EIBOR drops for 3 months, their interest will decrease in the next quarter."
+   }
+  ]
+ },
+ "dsr-dbr-debt-burden-ratio-calculation": {
+  "heading": "D. DSR/DBR (Debt Burden Ratio) Calculation",
+  "h2": "SECTION 3: STAGE 1 — Pre-Approval SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "Must strictly be below 50% in both actual and qualifying rates. If DSR goes above 50%, the CRM must trigger a pop-up or notification."
+   },
+   {
+    "type": "text",
+    "t": "Formula: DBR = (Total Monthly Obligations / Monthly Income) x 100"
+   },
+   {
+    "type": "text",
+    "t": "Step-by-Step Calculation Logic & Example:"
+   },
+   {
+    "type": "text",
+    "t": "1. Determine Maximum Obligations: Monthly Salary (AED 20,000) x 50% = AED 10,000 Max DBR."
+   },
+   {
+    "type": "text",
+    "t": "2. Sum Existing Liabilities: Car Loan (AED 2,000) + Personal Loan (AED 1,500) + Credit Card Min (AED 500) = AED 4,000 Total Liability."
+   },
+   {
+    "type": "text",
+    "t": "3. Calculate Available Mortgage EMI: Max DBR (AED 10,000) - Total Liability (AED 4,000) = AED 6,000 available for mortgage installment."
+   },
+   {
+    "type": "text",
+    "t": "Credit Card Liability Calculation: Even if the customer pays cards in full, banks calculate liability. Most banks use 5% of the Credit Card Limit. (e.g., Limit AED 50,000 x 5% = AED 2,500 monthly obligation)."
+   },
+   {
+    "type": "text",
+    "t": "RAK Bank Policy: 5% of the credit limit is considered for DBR calculations."
+   },
+   {
+    "type": "text",
+    "t": "Liabilities Included: Existing loan installments, monthly rental income (if applicable), 5% of total credit card limits across all banks, monthly insurance premiums, monthly property insurance."
+   },
+   {
+    "type": "text",
+    "t": "Income Considerations: Bonus (Arab Bank considers up to 50%), Incentives/Commission (Arab Bank up to 90% capped to monthly income). CBD does not consider bonus as part of income calculation. Rental income considered up to 70% of annual rental (Arab Bank caps at 25% of primary income). Rental income outside UAE cannot be considered (RAK Bank rule)."
+   }
+  ]
+ },
+ "ltv-loan-to-value-matrix-uae-central-bank-regulations": {
+  "heading": "E. LTV (Loan to Value) Matrix - UAE Central Bank Regulations",
+  "h2": "SECTION 3: STAGE 1 — Pre-Approval SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "First Property Finance:"
+   },
+   {
+    "type": "text",
+    "t": "UAE National: 85% Finance (If property value < AED 4.99M). If > AED 4.99M, then 75%."
+   },
+   {
+    "type": "text",
+    "t": "Expatriate: 80% Finance (If property value < AED 4.99M). If > AED 4.99M, then 70%."
+   },
+   {
+    "type": "text",
+    "t": "Second Property Finance:"
+   },
+   {
+    "type": "text",
+    "t": "UAE National: 65% Finance (Any property value)."
+   },
+   {
+    "type": "text",
+    "t": "Expatriate: 60% Finance (Any property value)."
+   },
+   {
+    "type": "text",
+    "t": "Non-Residents: Max LTV is 50% (or higher if strict criteria met). RAK Bank max AIP LTV is 60%."
+   }
+  ]
+ },
+ "personal-loan-for-shortfall-downpayment-bridging-finance": {
+  "heading": "3.2 Personal Loan for Shortfall / Downpayment (Bridging Finance)",
+  "h2": "SECTION 3: STAGE 1 — Pre-Approval SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "If the client requires a personal loan to cover the shortfall/downpayment on their mortgage:"
+   },
+   {
+    "type": "text",
+    "t": "General Conditions: Maximum amount up to 20 times gross salary. Installment must be within 50% of gross salary (including all existing liabilities; credit card limit considered at 5%)."
+   },
+   {
+    "type": "text",
+    "t": "Loan Tenor: 4 Years fixed."
+   },
+   {
+    "type": "text",
+    "t": "Rate of Interest (Approximate) — determined by monthly salary band:"
+   },
+   {
+    "type": "table",
+    "head": [
+     "Monthly Salary Range",
+     "Rate of Interest"
+    ],
+    "rows": [
+     [
+      "Less than AED 20K",
+      "8.49%"
+     ],
+     [
+      "AED 20K - AED 39K",
+      "7.99%"
+     ],
+     [
+      "AED 40K and above",
+      "6.99%"
+     ]
+    ]
+   },
+   {
+    "type": "text",
+    "t": "Processing Fee — determined by loan amount, independent of the salary band above: Up to AED 250K = 1.05% (Max AED 2,625 incl. VAT). More than AED 250K = flat AED 2,625 (incl. VAT)."
+   },
+   {
+    "type": "text",
+    "t": "Insurance Fee: 1% + VAT on finance amount (one-time, deducted by bank)."
+   },
+   {
+    "type": "text",
+    "t": "Important Note: Always take a buffer amount greater than the client's shortfall (e.g., if shortfall is 800K, process calculation for 820K). Advise the client that personal loan approval is subject to bank policy and eligibility."
+   }
+  ]
+ },
+ "exhaustive-document-verification-matrix": {
+  "heading": "3.3 Exhaustive Document Verification Matrix",
+  "h2": "SECTION 3: STAGE 1 — Pre-Approval SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "Thoroughly check all documents based on the client's employment type, nationality, and transaction type. Ensure all documents are properly scanned, merged, and legible. Acceptable Formats: Only properly scanned PDF copies are accepted. Photographs or pictures of documents will not be accepted."
+   }
+  ]
+ },
+ "pre-approval-document-checking-parameters-strict-verification": {
+  "heading": "A. Pre-Approval Document Checking Parameters (Strict Verification)",
+  "h2": "SECTION 3: STAGE 1 — Pre-Approval SOP",
+  "blocks": [
+   {
+    "type": "table",
+    "head": [
+     "Document",
+     "Parameters to Verify",
+     "Rejection / Query Triggers"
+    ],
+    "rows": [
+     [
+      "Emirates ID",
+      "1. Expiry Date (must be valid for at least 2 months) 2. Employer Name (must match SC) 3. Occupation (must be present) 4. Client Name (must match Passport/Visa) 5. Signature (must match Passport/Visa)",
+      "Missing occupation, name mismatch, nearing expiry."
+     ],
+     [
+      "Visa",
+      "1. EID Number (or UID if EID no. missing) 2. Visa Number 3. Passport Number (check for old passport mention) 4. Profession & Employer (match SC) 5. Expiry Date (valid 2+ months)",
+      "Old passport not provided, profession missing."
+     ],
+     [
+      "Passport",
+      "1. Client Name (match EID/Visa) 2. Passport Number (match Visa/SC) 3. Expiry Date 4. Signature 5. Nationality",
+      "Missing signature, name mismatch. For NR (CBD), all pages required."
+     ],
+     [
+      "Bank Statement",
+      "1. Salary credits (match SC) 2. High transactions (flag if excessive) 3. Any EMI deductions 4. Client Name 5. Statement Period (6 months merged)",
+      "Salary mismatch (requires payslip), unexplained cash transactions, gambling, bounced cheques."
+     ],
+     [
+      "Salary Cert",
+      "1. Company Name & Address 2. PO Box & Company Stamp 3. Issue Date (valid 1 month) 4. Salary Amount 5. Date of Joining",
+      "Missing stamp, invalid PO Box, outdated."
+     ],
+     [
+      "Payslip",
+      "1. Net pay amount (match Bank Stmt) 2. Client Name 3. Period (latest 6 months)",
+      "Variance in salary without payslip, company name mismatch."
+     ]
+    ]
+   }
+  ]
+ },
+ "kyc-document-requirements-by-nationality-residency": {
+  "heading": "B. KYC Document Requirements (By Nationality/Residency)",
+  "h2": "SECTION 3: STAGE 1 — Pre-Approval SOP",
+  "blocks": [
+   {
+    "type": "table",
+    "head": [
+     "Client Type",
+     "Required KYC Documents"
+    ],
+    "rows": [
+     [
+      "UAE National",
+      "Valid Passport copy, Valid Emirates ID card copy (Front & Back), Family Book copy."
+     ],
+     [
+      "Expatriate (Resident)",
+      "Valid Passport & Visa copy. (If valid visa is stamped in old passport, old passport copy needed), Valid Emirates ID card copy (Front & Back)."
+     ],
+     [
+      "Non-Resident",
+      "Valid Passport copy, Government ID proof from home country."
+     ]
+    ]
+   }
+  ]
+ },
+ "income-document-requirements-by-employment-type": {
+  "heading": "C. Income Document Requirements (By Employment Type)",
+  "h2": "SECTION 3: STAGE 1 — Pre-Approval SOP",
+  "blocks": [
+   {
+    "type": "table",
+    "head": [
+     "Client Category",
+     "Required Income Documents"
+    ],
+    "rows": [
+     [
+      "UAE / Expat - Salaried",
+      "1. Latest Salary Certificate addressed \"To Whom It May Concern\" or specific bank. 2. Latest 6 months salary credit bank statement (e-statement or branch stamped). 3. Latest 6 months payslip (company stamped or system generated). 4. Credit card bank name and proper limit matching AECB."
+     ],
+     [
+      "UAE / Expat - Self-Employed",
+      "1. Trade License copy. 2. MOA / AOA from beginning till date with amendments. 3. POA copy (if any). 4. Freezone Share Certificate (if Freezone). 5. Audited financials for latest 3 years (e.g., 17-18, 18-19) + current year inhouse financial. 6. Latest 1 year company bank statement (all UAE accounts). 7. Latest 1 year personal bank statement (one UAE account is ok). 8. Sample 10 Purchase Invoices & 10 Sales Invoices. 9. Office tenancy contract copy. 10. Office water/electricity/telephone bill copy. 11. MOL list from Labour website. 12. Detailed VAT report for latest 2 years from VAT website."
+     ],
+     [
+      "Non-Resident (50% LTV)",
+      "1. Latest 6 months bank statement (salary credited or balances maintained). 2. Valid Salary Certificate / Trade License / Incorporation copy. 3. Residency proof (Water/Electricity/Telephone bill)."
+     ],
+     [
+      "Non-Resident (>50% LTV)",
+      "All of the above PLUS Latest 2 years Income Tax documents (for self if salaried; for self & company if self-employed)."
+     ]
+    ]
+   },
+   {
+    "type": "text",
+    "t": "Note: ADIB accepts 3 months bank statements. Al Hilal requires a quarterly VAT statement and mandates an audit report for company turnovers above AED 5M."
+   }
+  ]
+ },
+ "property-document-requirements-pre-approval-valuation": {
+  "heading": "D. Property Document Requirements (Pre-Approval / Valuation)",
+  "h2": "SECTION 3: STAGE 1 — Pre-Approval SOP",
+  "blocks": [
+   {
+    "type": "table",
+    "head": [
+     "Transaction Type",
+     "Required Property Documents"
+    ],
+    "rows": [
+     [
+      "First Sale (Direct from Developer)",
+      "Signed SPA (all pages), Oqood/Initial TD (DXB) or Reg Deed (AUH), Floor Plan (if not in SPA), Current dated SOA from developer, Handover Notice. (Client must clear late payment fees on SOA; bank won't finance them)."
+     ],
+     [
+      "Resale / Secondary Market",
+      "Title Deed/Reg Deed, Oqood/Initial TD, Floor Plan, Seller KYC, MOU (AUH) / Form F (DXB) signed by Buyer & Seller, Seller valid passport/visa/EID, Payment Proof, Trade License (if seller is company), RE Agent contact. (AUH: SPA copy to match addresses)."
+     ],
+     [
+      "Buyout / Refinance / Equity",
+      "Title Deed/Reg Deed, Floor Plan, SPA copy (AUH only to match addresses), Mortgage Sticker / Unit Verification Cert from Smart Pass OR Mortgage Contract copy from bank, Existing bank FOL copy, Existing bank loan repayment statement from inception till date. (RAK Bank: Undertaking form mandatory)."
+     ]
+    ]
+   }
+  ]
+ },
+ "arab-bank-product-matrix": {
+  "heading": "A. Arab Bank Product Matrix",
+  "h2": "SECTION 3: STAGE 1 — Pre-Approval SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "USPs: Project listing not mandatory for ready properties. Full LTV up to 80% on 2nd mortgage (if 1st is <=60%). Nil PF on Buyout + Equity. Pure equity directly credited (renovation quotation required). Variable income considered (Bonus 50%, Incentives 90% capped). Grace period up to 90 days."
+   },
+   {
+    "type": "text",
+    "t": "Key Criteria (Salaried):"
+   },
+   {
+    "type": "text",
+    "t": "Arab Nationals (UAE, Jordan, Lebanon, Palestine, Syria, Egypt, Iraq, Saudi): Min Salary AED 15,000. Service: 6 months current or confirmed + 1 year UAE exp."
+   },
+   {
+    "type": "text",
+    "t": "Other Arab Nationalities: Min Salary AED 20,000."
+   },
+   {
+    "type": "text",
+    "t": "Other Nationalities: Min Salary AED 20K-25K. Service: 1 year current or confirmed + 3 years UAE exp."
+   },
+   {
+    "type": "text",
+    "t": "Key Criteria (Self-Employed): All Arab Nationalities (Dual for Egyptian, Saudi, Levant). Min LOB: 2 years. Min Income: AED 25,000. Last 2 years audited financials. Exception: Self-employed holding <25% shares with salary in MOA credited for 6 months treated as Salaried."
+   },
+   {
+    "type": "text",
+    "t": "Buyout + Cash Out / Equity:"
+   },
+   {
+    "type": "text",
+    "t": "Buyout + Equity: Max equity 30% of Market Value/Purchase Price. Max 300 months. Nil PF on equity."
+   },
+   {
+    "type": "text",
+    "t": "Pure Equity Release: LTV: 60% (Arabs) / 50% (Non-Arabs). Max Loan: AED 5M. Max Tenure: 180 months. PF: 1.00% + VAT."
+   },
+   {
+    "type": "text",
+    "t": "General Rules: Max 3 properties financed. Credit card @ 5%. Medical mandatory if Loan >= AED 3.5M OR age >= 60. TAT: Salaried 2-3 days, Self-Employed 3-4 days. No associate fees. Important: All documents must be shared by the client directly to the bank, not from the broker side."
+   }
+  ]
+ },
+ "al-hilal-bank-product-matrix-islamic-only": {
+  "heading": "B. Al Hilal Bank Product Matrix (Islamic Only)",
+  "h2": "SECTION 3: STAGE 1 — Pre-Approval SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "Eligibility: Min Salary AED 15,000 (Joint: AED 12k & AED 5k). Age: Max 65 (Salaried) / 70 (Self/UAE). Min Finance AED 250k. Max: 7 yrs income (Expat) / 8 yrs (UAE)."
+   },
+   {
+    "type": "text",
+    "t": "Rates: Salaried: 3.99% fixed 3 yrs (<25k fresh), 4.19% (no STL), 4.49% fixed 5 yrs. Variable: 1.99% fixed + 3M EIBOR. Self-Employed: 4.74% fixed 5 yrs, then 1.99% + 3M EIBOR."
+   },
+   {
+    "type": "text",
+    "t": "Insurance & Fees: No property insurance (bank pays). Life: 0.0163%. PF: 0.50% + VAT. 100% valuation fee refunded if booked. Buyout: No valuation charges. Approval: AED 1,050 (documented), Free (email)."
+   },
+   {
+    "type": "text",
+    "t": "Self-Employed LTV: <1 yr employment: 50%, 1-2 yrs: 60%, >2 yrs: 80%."
+   },
+   {
+    "type": "text",
+    "t": "Operations: Field visit required for all self-employed, and salaried if company not listed. TAT: 3 days salaried, 5 days self-employed. Valuation TAT: 3 days. FOL TAT: 3 days. Account opening via mobile app before valuation. 2 FTS forms required. Submission via Prypco. No limit on partial payments."
+   },
+   {
+    "type": "text",
+    "t": "(For G-Drive folder setup and Huspy portal submission mechanics, see Section 7.)"
+   }
+  ]
+ },
+ "bank-forms-file-size-document-submission-matrix": {
+  "heading": "3.5 Bank Forms, File Size & Document Submission Matrix",
+  "h2": "SECTION 3: STAGE 1 — Pre-Approval SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "Strict adherence to file sizes, mandatory forms, and KYC formats is required for portal/email submission."
+   },
+   {
+    "type": "table",
+    "head": [
+     "Bank Name",
+     "Max File Size",
+     "KYC Format",
+     "Mandatory Bank Forms & Policies"
+    ],
+    "rows": [
+     [
+      "Arab Bank",
+      "10 MB",
+      "Merged, No Attestation",
+      "AECB Consent, FTS, Pre-Approval Login, Customer Affordability, Fact Sheet (signed all pages). No co-applicant fees. >4M needs special insurance. Docs must be shared by client to bank directly."
+     ],
+     [
+      "CBD",
+      "4 MB",
+      "Merged, No Attestation",
+      "App Form, KFS, FTS, Suitability Affordability, Online FTS, Consent Form (Digital Approval Islamic). 60% DBR. >4M special insurance. Pre-Approval valid 60 days. No bonus income."
+     ],
+     [
+      "DIB",
+      "5 MB",
+      "EID Separate, Others Merged",
+      "App Form, AECB, Aggregator-Customer Auth, App Info Excel, Lead Referral, KFS, CRF for DLD/ADM. No DIB account needed (DDA). Salama insurance link at FOL signing."
+     ],
+     [
+      "ADIB",
+      "10 MB",
+      "Merged, Attested",
+      "App Form, App Info Sheet, FTS, KFS, Takaful KFS, Terms & Cond, Customer Affordability, Customer Undertaking Bureau, Information sheet. Only handwritten signatures."
+     ],
+     [
+      "NBF",
+      "4 MB",
+      "Merged, No Attestation",
+      "Acknowledgement Consent, AECB Consent, App Form, Affordability Assessment, FATCA, Business Profile, Client Detail Sheet, Pre-approval detail sheet, CAA update."
+     ],
+     [
+      "ADCB",
+      "10 MB",
+      "Merged, No Attestation",
+      "App Form, Income Declaration, FTS, KFS, Purpose of Finance, Referral Form, Huspy App. (Currently STOPPED)"
+     ],
+     [
+      "EIB",
+      "N/A",
+      "Merged, No Attestation",
+      "EIB Application Forms, EIB Checklist."
+     ],
+     [
+      "ENBD",
+      "N/A",
+      "Merged, No Attestation",
+      "ENBD App Form, Checklist Form, FTS, KFS, Application Form One Pager, Field Visit Form. (Prypco)"
+     ],
+     [
+      "FAB",
+      "10 MB",
+      "Merged, No Attestation",
+      "App Form, KFS, Huspy Form. Min 1M for Conventional. <1M must use Islamic forms."
+     ],
+     [
+      "Mashreq",
+      "10 MB",
+      "Merged, No Attestation",
+      "AECB Consent, App Form, KFS, Customer Consent (Online), Huspy Form, Lifestyle Declaration. Collects 1st EMI, Prop & Life insurance upfront. Name must match passport."
+     ],
+     [
+      "HSBC",
+      "No Limit",
+      "Merged, No Attestation",
+      "HSBC App Form, FTS, KFS, Referral Form, Customer Acknowledgement Form. Digital liability letters accepted if they carry the \"issued digital\" line."
+     ],
+     [
+      "RAK",
+      "10 MB",
+      "Merged, No Attestation",
+      "App Form, FTS, KFS (HIO KFS if applicable). NR needs London credit report. Equity release >500K stopped (except to contractors)."
+     ],
+     [
+      "SIB",
+      "No Limit",
+      "Merged, No Attestation",
+      "Affordability, Privacy Consent, AECB, FTS, KFS (Res/Non-Res), Term Sheet, Real Estate App Form. (Huspy)"
+     ],
+     [
+      "BOB",
+      "N/A",
+      "Merged, No Attestation",
+      "App Form, KFS, AECB Authority, Networth Form (Self-Employed), Home Loan Application, Lifestyle expenses."
+     ],
+     [
+      "SCB",
+      "N/A",
+      "Merged, No Attestation",
+      "Client Consent Form (SOA Release), Credit Info Consent, App Form, KFS. No signatures to be added in any bank form; bank sends for e-sign directly to client. (Prypco)"
+     ],
+     [
+      "Al Hilal",
+      "< 10 MB",
+      "Merged, No Attestation",
+      "Islamic only. Submission via Prypco. 2 FTS forms for Self-Employed."
+     ]
+    ]
+   }
+  ]
+ },
+ "comprehensive-cross-bank-pre-approval-submission-matrix": {
+  "heading": "A. Comprehensive Cross-Bank Pre-Approval Submission Matrix",
+  "h2": "SECTION 3: STAGE 1 — Pre-Approval SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "The following matrix details the exact documents required based on transaction type and the specific bank."
+   },
+   {
+    "type": "table",
+    "head": [
+     "Document / Parameter",
+     "DIB",
+     "ADIB",
+     "RAK",
+     "MASHREQ",
+     "FAB",
+     "NBF",
+     "CBD",
+     "ARAB",
+     "HSBC",
+     "SCB",
+     "ENBD",
+     "BOB"
+    ],
+    "rows": [
+     [
+      "Processing Source",
+      "Direct",
+      "Direct",
+      "Direct",
+      "Huspy",
+      "Prypco",
+      "Direct",
+      "Prypco",
+      "Direct",
+      "Huspy",
+      "Prypco",
+      "Huspy",
+      "Direct"
+     ],
+     [
+      "Bank Statement",
+      "3 or 6 mo",
+      "3 or 6 mo",
+      "6 mo",
+      "6 mo",
+      "6 mo",
+      "6 mo",
+      "6 mo",
+      "6 mo",
+      "6 mo",
+      "6 mo",
+      "3 or 6 mo",
+      "3 or 6 mo"
+     ],
+     [
+      "Important Note",
+      "-",
+      "-",
+      "-",
+      "-",
+      "-",
+      "-",
+      "-",
+      "All Docs shared by client directly to bank",
+      "-",
+      "No signature on forms; e-sign sent to client",
+      "-",
+      "-"
+     ],
+     [
+      "Bank Forms",
+      "App Form, App Info, Aggregator Referral, Lead Referral, AECB, KFS, Customer Auth",
+      "KFS, Customer Undertaking, Smart App, Terms & Cond, Affordability, Takaful, FTS, Info Sheet",
+      "-",
+      "-",
+      "-",
+      "-",
+      "App Form, FTS, KFS, Affordability, Consent (Digital Islamic)",
+      "Consent Form, Referral Form, Pre-app detail sheet, CAA update, FTS",
+      "App Form, FTS, Acknowledgement Form, Huspy App, KFS",
+      "-",
+      "App Form, KFS, FTS, One Pager, Checklist, Field Visit",
+      "Consent Form, Home Loan App, KFS, Lifestyle Expenses"
+     ],
+     [
+      "Primary Property Docs",
+      "SPA, BCC, Handover Notice, Latest SOA, Oqood/Pre-TD, Initial Contract",
+      "Same",
+      "Same",
+      "Same",
+      "Same",
+      "Same",
+      "Same",
+      "Same",
+      "Same",
+      "Same",
+      "Same",
+      "Same"
+     ],
+     [
+      "Resale Property Docs",
+      "Title Deed, Signed MOU, Seller KYC, Floor Plan, Latest SOA",
+      "Same",
+      "Same",
+      "Same",
+      "Same",
+      "Same",
+      "Same",
+      "Same",
+      "Same",
+      "Same",
+      "Same",
+      "Same"
+     ],
+     [
+      "Buyout Property Docs",
+      "Title Deed, Floor Plan, Payment Proof, FOL",
+      "Same",
+      "Same",
+      "Same",
+      "Same",
+      "Same",
+      "Same",
+      "Same",
+      "Same",
+      "Same",
+      "Same",
+      "Same"
+     ]
+    ]
+   }
+  ]
+ },
+ "dib-specific-submission-rules": {
+  "heading": "A. DIB Specific Submission Rules",
+  "h2": "SECTION 3: STAGE 1 — Pre-Approval SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "Buyout Submissions: Must include: Offer letter copy, Current outstanding (with name/property details), Search certificate/Unit verification/previous mortgage contract copy, Title Deed. Equity Undertaking Form required."
+   },
+   {
+    "type": "text",
+    "t": "Lifestyle Expenses: When inputting lifestyle expenses, keep the figure between 17% to 23% of fixed salary. Do not keep the same number; change it within this bracket."
+   },
+   {
+    "type": "text",
+    "t": "BUA Requirement: For all Dubai properties except apartments, Built-Up Area (BUA) is required."
+   }
+  ]
+ },
+ "fab-islamic-rule": {
+  "heading": "B. FAB (Islamic) Rule",
+  "h2": "SECTION 3: STAGE 1 — Pre-Approval SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "If the loan amount is lesser than AED 1M, Islamic forms are required to submit the case."
+   }
+  ]
+ },
+ "arab-bank-mandatory-forms": {
+  "heading": "C. Arab Bank Mandatory Forms",
+  "h2": "SECTION 3: STAGE 1 — Pre-Approval SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "1. Fact Sheet (must be filled and signed by customer on all pages)."
+   },
+   {
+    "type": "text",
+    "t": "2. Customer Affordability Form (must be filled with actual figures. Unfilled/invalid info leads to rejection)."
+   }
+  ]
+ },
+ "adib-dda-form-filling-rules": {
+  "heading": "D. ADIB DDA Form Filling Rules",
+  "h2": "SECTION 3: STAGE 1 — Pre-Approval SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "Only fill: Customer ID Type + Number, Bank Name, Title of Account, Account Type, IBAN, Commences On (from repayment schedule), Instances Allowed (Tenure), Payer Name, Signature & Date. Tick \"I have read and understood the terms\". Do NOT mention contact number, email, or extra details."
+   },
+   {
+    "type": "text",
+    "t": "Helpdesk for EMI deduction: 800 4354."
+   }
+  ]
+ },
+ "huspy-portal-submission-salaried-cases": {
+  "heading": "E. Huspy Portal Submission (Salaried Cases)",
+  "h2": "SECTION 3: STAGE 1 — Pre-Approval SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "For banks like Mashreq, HSBC, SCB, ENBD, ADCB, FAB, SIB submitted via Huspy — see Section 7.2 for the full step-by-step portal mechanics."
+   }
+  ]
+ },
+ "submission-procedures-routing-email-templates": {
+  "heading": "3.7 Submission Procedures, Routing & Email Templates",
+  "h2": "SECTION 3: STAGE 1 — Pre-Approval SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "Process Flow: Receive Docs from Sales/VRMs -> Add to Comms Group -> Verify Completeness -> Errors? -> YES: Return for Correction / NO: Proceed -> Submit on Portal (LTV <2M, No Co-app) -> Submit to Shahid with BR -> RM Assigned -> Follow up with Bank RM Directly (Do NOT copy Shahid)"
+   }
+  ]
+ },
+ "adib-submission-format-email-to-rami-jrab": {
+  "heading": "A. ADIB Submission Format (Email to Rami Jrab)",
+  "h2": "SECTION 3: STAGE 1 — Pre-Approval SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "To: M.Jrab@adib.com"
+   },
+   {
+    "type": "text",
+    "t": "CC: hfmb@adib.com, SalesProgressionDL@hfmcgroupuae.com, VirtualRM@hfmcgroupuae.com"
+   },
+   {
+    "type": "text",
+    "t": "Subject: Client Name, ADIB, Loan Amount, Tenor, Transaction Type."
+   },
+   {
+    "type": "text",
+    "t": "Please find the attached documents of (Client Name)."
+   },
+   {
+    "type": "text",
+    "t": "ADIB - (4.19% fixed for 5 years) ROI as per Bank"
+   },
+   {
+    "type": "text",
+    "t": "CLIENT PROFILE-"
+   },
+   {
+    "type": "text",
+    "t": "Client Name:"
+   },
+   {
+    "type": "text",
+    "t": "Transaction Type:"
+   },
+   {
+    "type": "text",
+    "t": "Client's employment details:"
+   },
+   {
+    "type": "text",
+    "t": "Salary of Client:"
+   },
+   {
+    "type": "text",
+    "t": "Loan tenor:"
+   },
+   {
+    "type": "text",
+    "t": "Property Value:"
+   },
+   {
+    "type": "text",
+    "t": "Facility Amount:"
+   },
+   {
+    "type": "text",
+    "t": "LTV:"
+   },
+   {
+    "type": "text",
+    "t": "Documents Attached-"
+   },
+   {
+    "type": "text",
+    "t": "KYC of Applicant (Visa, Emirates ID, Passport), Salary Certificate, Bank Statement, ADIB Customer Affordability Form, ADIB KFS Form, ADIB Takaful KFS, ADIB Terms & Conditions, ADIB Application Details, ADIB Application Form, ADIB FTS."
+   },
+   {
+    "type": "text",
+    "t": "PROPERTY DETAILS"
+   },
+   {
+    "type": "text",
+    "t": "Property Details: [Value]"
+   },
+   {
+    "type": "text",
+    "t": "Property Value: [Value]"
+   },
+   {
+    "type": "text",
+    "t": "Finance Amount: [Value]"
+   },
+   {
+    "type": "text",
+    "t": "LTV: [%]"
+   },
+   {
+    "type": "text",
+    "t": "Customer's Name as per Passport: [Name]"
+   },
+   {
+    "type": "text",
+    "t": "Customer's Mobile number as per Home Finance Application Form: [Number]"
+   },
+   {
+    "type": "text",
+    "t": "Customer's email address: [Email]"
+   },
+   {
+    "type": "text",
+    "t": "Property Value: [Value]"
+   },
+   {
+    "type": "text",
+    "t": "Finance Amount: [Value]"
+   },
+   {
+    "type": "text",
+    "t": "Transaction Type: [Type]"
+   },
+   {
+    "type": "text",
+    "t": "Customer's Profile: [Profile]"
+   },
+   {
+    "type": "text",
+    "t": "Product: [Product]"
+   },
+   {
+    "type": "text",
+    "t": "Loan Tenor: [Months]"
+   }
+  ]
+ },
+ "nbf-submission-format-email-to-harendra": {
+  "heading": "B. NBF Submission Format (Email to Harendra)",
+  "h2": "SECTION 3: STAGE 1 — Pre-Approval SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "To: mortgages@nbf.ae, xHarendra@nbf.ae"
+   },
+   {
+    "type": "text",
+    "t": "CC: SalesProgressionDL@hfmcgroupuae.com, VirtualRM@hfmcgroupuae.com"
+   },
+   {
+    "type": "text",
+    "t": "Dear Harendra,"
+   },
+   {
+    "type": "text",
+    "t": "Please find the attached documents of (Client Name)."
+   },
+   {
+    "type": "text",
+    "t": "NBF Bundle Offer (STL) - (NBF: 4.99% fixed for 5 Years)"
+   },
+   {
+    "type": "text",
+    "t": "CLIENT PROFILE-"
+   },
+   {
+    "type": "text",
+    "t": "Client (Client Name) is the Main Applicant."
+   },
+   {
+    "type": "text",
+    "t": "Transaction Type: Primary/Resale/Buyout/Equity Release etc."
+   },
+   {
+    "type": "text",
+    "t": "(Client Name) is working in (Company name)."
+   },
+   {
+    "type": "text",
+    "t": "Salary of (Client Name) is AED -----/- per month."
+   },
+   {
+    "type": "text",
+    "t": "Loan tenor is ------- Months MAX."
+   },
+   {
+    "type": "text",
+    "t": "Property Value AED --------------- /-."
+   },
+   {
+    "type": "text",
+    "t": "Facility Amount AED -------------- /-."
+   },
+   {
+    "type": "text",
+    "t": "LTV - --%."
+   },
+   {
+    "type": "text",
+    "t": "Documents Attached-"
+   },
+   {
+    "type": "text",
+    "t": "KYC of Applicant (Visa, Emirates ID, Passport), Bank Statements, Salary Certificate Latest, NBF Bank Forms."
+   },
+   {
+    "type": "text",
+    "t": "Customer is aware of the referral commission paid to us from the bank. There is no service charge to the customer from our side."
+   }
+  ]
+ },
+ "other-bank-routing": {
+  "heading": "C. Other Bank Routing",
+  "h2": "SECTION 3: STAGE 1 — Pre-Approval SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "RAK Bank: Email mortgagereferrals@rakbank.ae (CC Burhan.Athar@rakbank.ae, Ashita.Dhakan@rakbank.ae, DLs). RM: Siji / Brian / Burhan."
+   },
+   {
+    "type": "text",
+    "t": "DIB: Open Lead Referral Form via Adobe, submit to generate serial no. Auto-drafts email to HF.Leads@dib.ae. Forward to Babar.Zaheer@dib.ae mentioning \"kindly assist\". Create new email with Aggregator Referral no in subject, attach Lead Referral Form, Customer Auth Form, and initial outlook email. RM: Babar / Nawzat."
+   },
+   {
+    "type": "text",
+    "t": "CBD: Submit on portal: https://mortgage.cbd.ae/brokerportal (Login: swathi.narvekar@gmail.com, Pass: 0585884190. Broker: HFMCG, Promo: INPRO20. OTP goes to Swathi). BR no. generates (becomes LMF no). Manual submission to Annuradha.singh@cbd.ae (CC Shahid Liaqat). RM: Shyamshundar / Anjum."
+   },
+   {
+    "type": "text",
+    "t": "Arab Bank: Submit to Syed.Haider@arabbank.ae. RM: Syed / Pradipto / Sourav."
+   }
+  ]
+ },
+ "bank-specific-pre-approval-rules-fee-breakdown-matrix": {
+  "heading": "3.8 Bank-Specific Pre-Approval Rules & Fee Breakdown Matrix",
+  "h2": "SECTION 3: STAGE 1 — Pre-Approval SOP",
+  "blocks": [
+   {
+    "type": "table",
+    "head": [
+     "Bank",
+     "Valuation Fee (Incl. VAT)",
+     "Life Insurance",
+     "Property Insurance",
+     "Processing Fee",
+     "NOC / Other Fees"
+    ],
+    "rows": [
+     [
+      "CBD",
+      "AED 3,150/-",
+      "0.01167% of Loan Amt",
+      "0.040% of Property Amt",
+      "0.525% of Finance (Min AED 5,250)",
+      "NOC: 5,250/-"
+     ],
+     [
+      "DIB",
+      "AED 2,625/-",
+      "0.0163% of Loan Amt",
+      "0.0333125% of Prop Amt",
+      "0.25%+VAT (w/ STL) / 0.50%+VAT (w/o STL). Min 5,250",
+      "NOC: 5,250/-"
+     ],
+     [
+      "NBF",
+      "AED 2,625/-",
+      "0.02268% of Loan amt",
+      "0.040% of Property Amt",
+      "1.05% inc Vat (0.525% if >5M). No PF for Buyout.",
+      "NOC: 5,250/-"
+     ],
+     [
+      "BOB",
+      "AED 2,625/-",
+      "Not needed (external)",
+      "Up to loan amount/value",
+      "Nil. Legal Fee: AED 2,500+VAT",
+      "NOC: 5,250/-"
+     ],
+     [
+      "RAK",
+      "AED 1,942.50 (up to 8M)",
+      "Single: 0.0242%/mo, Joint: 0.0550%/mo",
+      "0.035% of Property Amt",
+      "0.25% all (0.50% refinance/equity).",
+      "NOC: 5,250/-"
+     ],
+     [
+      "ADCB",
+      "AED 3,150/-",
+      "0.0184% of Loan Amt",
+      "0.0420% of Property Amt",
+      "0.7875% inc Vat (0.50% Excellency)",
+      "NOC: 5,250/-"
+     ],
+     [
+      "ADIB",
+      "AED 2,625/-",
+      "0.025% monthly (~0.3% annual)",
+      "Free",
+      "Zero (HM Promotion)",
+      "DDA: 105, AECB: 37, NOC: 5,250/-"
+     ],
+     [
+      "ENBD",
+      "AED 3,150/-",
+      "0.0180% per month (0.17213% pilots)",
+      "0.01% of Property Amt",
+      "0.00% Variable / 1% Fixed",
+      "NOC: 5,250/-"
+     ],
+     [
+      "HSBC",
+      "AED 2,625/-",
+      "Independent with Zurich",
+      "Individual basis",
+      "0.50% (Min 5k) / 1% (Advance). BT: AED 2,500+VAT",
+      "NOC: 5,250/-"
+     ],
+     [
+      "Mashreq",
+      "AED 2,625/-",
+      "Islamic 0.165% / Conv 0.17%",
+      "Islamic 0.06% / Conv 0.03%",
+      "Buyout Nil / Resale 0.50% / Equity 1%",
+      "NOC: 5,250/-"
+     ],
+     [
+      "Al Hilal",
+      "Refunded if booked",
+      "0.0163%",
+      "None (Bank pays)",
+      "0.50% + VAT",
+      "AED 1,050 (Documented Approval)"
+     ]
+    ]
+   }
+  ]
+ },
+ "pre-approval-team-checklist-red-flags": {
+  "heading": "3.9 Pre-Approval Team Checklist & Red Flags",
+  "h2": "SECTION 3: STAGE 1 — Pre-Approval SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "Before submitting any file, verify:"
+   },
+   {
+    "type": "text",
+    "t": "Passport, Visa, Emirates ID valid"
+   },
+   {
+    "type": "text",
+    "t": "Salary Certificate (1 month validity)"
+   },
+   {
+    "type": "text",
+    "t": "6 Months Bank Statements (salary consistency, no bounced cheques, no gambling)"
+   },
+   {
+    "type": "text",
+    "t": "Latest Payslip"
+   },
+   {
+    "type": "text",
+    "t": "AECB Report checked"
+   },
+   {
+    "type": "text",
+    "t": "Existing Loan Details & Credit Card Limits (5% rule)"
+   },
+   {
+    "type": "text",
+    "t": "DBR Calculation strictly below 50%"
+   },
+   {
+    "type": "text",
+    "t": "LTV Eligibility confirmed"
+   },
+   {
+    "type": "text",
+    "t": "Transaction Type identified"
+   },
+   {
+    "type": "text",
+    "t": "Property Budget & Down Payment available"
+   },
+   {
+    "type": "text",
+    "t": "Red Flags Before Submission:"
+   },
+   {
+    "type": "text",
+    "t": "Applicant still on probation"
+   },
+   {
+    "type": "text",
+    "t": "Multiple bounced payments / recent personal loan taken"
+   },
+   {
+    "type": "text",
+    "t": "Salary recently reduced"
+   },
+   {
+    "type": "text",
+    "t": "Existing high liabilities / credit cards maxed out"
+   },
+   {
+    "type": "text",
+    "t": "Frequent job changes"
+   },
+   {
+    "type": "text",
+    "t": "Property valuation expected below purchase price"
+   },
+   {
+    "type": "text",
+    "t": "Insufficient down payment"
+   }
+  ]
+ },
+ "follow-up-protocol-post-approval-actions": {
+  "heading": "3.10 Follow-up Protocol & Post-Approval Actions",
+  "h2": "SECTION 3: STAGE 1 — Pre-Approval SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "Follow-up Cadence (All Banks):"
+   },
+   {
+    "type": "text",
+    "t": "Day 1: Check if RM received the file."
+   },
+   {
+    "type": "text",
+    "t": "Day 2: Check if RM reviewed the file."
+   },
+   {
+    "type": "text",
+    "t": "Day 3: Check if file submitted to credit."
+   },
+   {
+    "type": "text",
+    "t": "Day 5: Check for queries or expected pre-approval date."
+   },
+   {
+    "type": "text",
+    "t": "Friday Rule: If submitted on Friday, do not chase Monday 1st half. Reminders by 2nd half."
+   },
+   {
+    "type": "text",
+    "t": "Post-Approval: Once pre-approval is received, check client name, loan amount, tenure, rate of interest, and conditions. Notify Sales/VRMs. Notify the next executive to initiate Valuation. (CBD Note: For 50% valuation fee waiver promo, deposit full fee AED 3,150. Discount adjusted at disbursal)."
+   }
+  ]
+ },
+ "stage-2-valuation-inspection-account-opening-sop": {
+  "heading": "SECTION 4: STAGE 2 — Valuation, Inspection & Account Opening SOP",
+  "h2": "SECTION 4: STAGE 2 — Valuation, Inspection & Account Opening SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "Goal: Upon receiving the pre-approval, the case moves to valuation and inspection. SPO requests property documents and payment proof from VRM."
+   },
+   {
+    "type": "text",
+    "t": "Operational Flow: Pre-Approval Received -> Check Transaction Type -> Collect Property Docs + Payment Proof -> Submit to Bank (Keep Client CC) -> Day 2: Follow up Initiation -> Valuation Scheduled -> Coordinate Inspection -> Day After: Follow up Report -> Report Positive? YES: FOL / NO: 2nd Valuation or Shortfall"
+   }
+  ]
+ },
+ "valuation-stage-document-matrix": {
+  "heading": "4.1 Valuation Stage Document Matrix",
+  "h2": "SECTION 4: STAGE 2 — Valuation, Inspection & Account Opening SOP",
+  "blocks": [
+   {
+    "type": "table",
+    "head": [
+     "Transaction Type",
+     "Required Property Documents for Valuation"
+    ],
+    "rows": [
+     [
+      "Primary / Direct from Developer",
+      "Signed SPA (all pages), Oqood/Initial TD (DXB) or Reg Deed (AUH), Floor Plan, Title Deed, Payment Proof, Handover Notice. (Client must clear late payment fees on SOA; bank won't finance them)."
+     ],
+     [
+      "Resale / Secondary Market",
+      "Title Deed/Reg Deed, Oqood/Initial TD, Floor Plan, Seller KYC, MOU (AUH) / Form F (DXB) signed by Buyer & Seller, Seller valid passport/visa/EID, Payment Proof, Trade License (if seller is company), RE Agent contact."
+     ],
+     [
+      "Buyout / Buyout + Equity / Refinance",
+      "Title Deed/Reg Deed, Oqood/Initial TD, Floor Plan, Payment Proof. (AUH: SPA copy to match addresses). RAK Bank: Undertaking form mandatory."
+     ]
+    ]
+   },
+   {
+    "type": "text",
+    "t": "Note: If MOU/Form F has a Co-Applicant, the file must be submitted on both names."
+   }
+  ]
+ },
+ "mandatory-update-post-valuation-report-sharing-protocol-per-meeting-dated-13-08-2026": {
+  "heading": "4.2 MANDATORY UPDATE — Post-Valuation Report Sharing Protocol (Per Meeting dated 13/08/2026)",
+  "h2": "SECTION 4: STAGE 2 — Valuation, Inspection & Account Opening SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "Meeting Reference: As per the meeting held on 13th August 2026 with Swathi, the VRM Team, the SPO Team, and Janardhan, the following new operational requirement is now in effect and must be strictly followed by all team members handling the Valuation Stage:"
+   },
+   {
+    "type": "text",
+    "t": "New Requirement: Once the property Valuation is completed and the Valuation Report is received from the bank, the Valuation Report MUST be forwarded to the Real Estate Team so that they are kept informed and updated with the valuation outcome and property details."
+   },
+   {
+    "type": "text",
+    "t": "Purpose: This information sharing will build an internal reference database that may be used in the future by the Real Estate Team as a reference point in cases of Negative Valuation on similar or nearby properties."
+   },
+   {
+    "type": "text",
+    "t": "Special Case - No Formal Report Issued: If the bank has only provided the Valuation Amount (a figure/number) without issuing a full formal Valuation Report, then in such cases the Valuation Amount along with the complete Property Details (Building No., Unit No., Building Name, Developer, Area, Emirate, Transaction Type, etc.) must still be compiled and sent to the Real Estate Team."
+   },
+   {
+    "type": "text",
+    "t": "Applicability: This protocol applies uniformly across all banks, all Emirates (Dubai and Abu Dhabi), and all transaction types (Primary, Resale, Buyout, Equity/Refinance), whenever a valuation outcome (report or amount) is received."
+   },
+   {
+    "type": "text",
+    "t": "Responsibility: The SPO handling the Valuation Stage for the case (Vijaya, per Section 1.3) is responsible for ensuring the Valuation Report (or Valuation Amount + Property Details, where no report is issued) is shared with the Real Estate Team promptly after receipt from the bank, and that this action is logged/saved in G-Drive along with the rest of the valuation documentation for that case."
+   },
+   {
+    "type": "text",
+    "t": "Note: This is a newly introduced control point in addition to, and not a replacement for, all existing valuation review and account opening steps described below."
+   }
+  ]
+ },
+ "bank-specific-valuation-initiation-formats-email-templates": {
+  "heading": "4.3 Bank-Specific Valuation Initiation Formats & Email Templates",
+  "h2": "SECTION 4: STAGE 2 — Valuation, Inspection & Account Opening SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "Strict adherence to the following bank formats is required. All documents must be in PDF format only. No extra documents. For inspection calls, provide the contact number of Binish (971 58 563 6232 / +971 50 666 1754)."
+   }
+  ]
+ },
+ "dib-bank-valuation-format": {
+  "heading": "A. DIB Bank Valuation Format",
+  "h2": "SECTION 4: STAGE 2 — Valuation, Inspection & Account Opening SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "Please find the below documents and provide us the valuation payment link for the subject client."
+   },
+   {
+    "type": "text",
+    "t": "Title Deed"
+   },
+   {
+    "type": "text",
+    "t": "Floor Plan"
+   },
+   {
+    "type": "text",
+    "t": "Customer passport copy"
+   },
+   {
+    "type": "text",
+    "t": "MOU /SPA"
+   },
+   {
+    "type": "text",
+    "t": "Seller KYC"
+   },
+   {
+    "type": "text",
+    "t": "Customer Details:"
+   },
+   {
+    "type": "text",
+    "t": "Customer Mobile No:"
+   },
+   {
+    "type": "text",
+    "t": "Customer Email ID:"
+   },
+   {
+    "type": "text",
+    "t": "Property details:"
+   },
+   {
+    "type": "text",
+    "t": "Property price -"
+   },
+   {
+    "type": "text",
+    "t": "Agent name and Number for Viewing - Please give the contact number of Binish - 971 58 563 6232 for inspection call."
+   },
+   {
+    "type": "text",
+    "t": "Note: Once we received the payment proof again, we have to share the all docs along with the payment proof with the bank for Valuation Initiation. For Al reef villa property require a plot identification certificate."
+   }
+  ]
+ },
+ "adib-bank-valuation-format": {
+  "heading": "B. ADIB Bank Valuation Format",
+  "h2": "SECTION 4: STAGE 2 — Valuation, Inspection & Account Opening SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "In ADIB bank, account details are received in the pre-approval email itself from the bank to make the payment for valuation."
+   },
+   {
+    "type": "text",
+    "t": "Please find attached the property documents and payment proof to initiate the Valuation."
+   },
+   {
+    "type": "text",
+    "t": "Payment proof"
+   },
+   {
+    "type": "text",
+    "t": "Seller documents/KYC"
+   },
+   {
+    "type": "text",
+    "t": "Floor plan"
+   },
+   {
+    "type": "text",
+    "t": "MOU"
+   },
+   {
+    "type": "text",
+    "t": "Title deed"
+   },
+   {
+    "type": "text",
+    "t": "Please give the contact number of Binish - 971 58 563 6232 for inspection call."
+   }
+  ]
+ },
+ "cbd-bank-valuation-format": {
+  "heading": "C. CBD Bank Valuation Format",
+  "h2": "SECTION 4: STAGE 2 — Valuation, Inspection & Account Opening SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "Please find attached the property documents and payment proof to complete the inspection."
+   },
+   {
+    "type": "text",
+    "t": "Payment proof"
+   },
+   {
+    "type": "text",
+    "t": "Seller documents"
+   },
+   {
+    "type": "text",
+    "t": "Floor plan"
+   },
+   {
+    "type": "text",
+    "t": "MOU/SPA"
+   },
+   {
+    "type": "text",
+    "t": "Title deed"
+   },
+   {
+    "type": "text",
+    "t": "Email Body -"
+   },
+   {
+    "type": "text",
+    "t": "Please find the property address"
+   },
+   {
+    "type": "text",
+    "t": "Building No. -"
+   },
+   {
+    "type": "text",
+    "t": "Unit No. -"
+   },
+   {
+    "type": "text",
+    "t": "Building Name -"
+   },
+   {
+    "type": "text",
+    "t": "Developer -"
+   },
+   {
+    "type": "text",
+    "t": "Area -"
+   },
+   {
+    "type": "text",
+    "t": "Emirates -"
+   },
+   {
+    "type": "text",
+    "t": "Transaction type - Resale, Cash Seller."
+   },
+   {
+    "type": "text",
+    "t": "Please give the contact number of Binish - 971 58 563 6232 for inspection call."
+   }
+  ]
+ },
+ "rak-bank-valuation-format": {
+  "heading": "D. RAK Bank Valuation Format",
+  "h2": "SECTION 4: STAGE 2 — Valuation, Inspection & Account Opening SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "Please find attached the property documents and payment proof to initiate the Valuation."
+   },
+   {
+    "type": "text",
+    "t": "Payment proof"
+   },
+   {
+    "type": "text",
+    "t": "Seller documents"
+   },
+   {
+    "type": "text",
+    "t": "Floor plan"
+   },
+   {
+    "type": "text",
+    "t": "MOU"
+   },
+   {
+    "type": "text",
+    "t": "Title deed"
+   },
+   {
+    "type": "text",
+    "t": "Valuation undertaking form"
+   },
+   {
+    "type": "text",
+    "t": "Please give the contact number of Binish - 971 58 563 6232 for inspection call."
+   }
+  ]
+ },
+ "mashreq-bank-valuation-format": {
+  "heading": "E. Mashreq Bank Valuation Format",
+  "h2": "SECTION 4: STAGE 2 — Valuation, Inspection & Account Opening SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "Please find attached the property documents and payment proof to complete the inspection."
+   },
+   {
+    "type": "text",
+    "t": "MOU /SPA"
+   },
+   {
+    "type": "text",
+    "t": "TD -"
+   },
+   {
+    "type": "text",
+    "t": "Floor Plan -"
+   },
+   {
+    "type": "text",
+    "t": "Valuation Payment Proof-"
+   },
+   {
+    "type": "text",
+    "t": "Seller Passport Copy -"
+   },
+   {
+    "type": "text",
+    "t": "Customer Passport Copy -"
+   },
+   {
+    "type": "text",
+    "t": "Please give the contact number of Binish - 971 58 563 6232 for inspection call."
+   },
+   {
+    "type": "text",
+    "t": "Note: We have received the new valuation payment policy from bank which is applicable from 01st May 2026."
+   }
+  ]
+ },
+ "enbd-bank-valuation-format": {
+  "heading": "F. ENBD Bank Valuation Format",
+  "h2": "SECTION 4: STAGE 2 — Valuation, Inspection & Account Opening SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "Please find the attached property documents. To proceed with the valuation process for the subject client, kindly share the valuation payment details so that we can initiate the valuation accordingly."
+   },
+   {
+    "type": "text",
+    "t": "Documents attached:"
+   },
+   {
+    "type": "text",
+    "t": "1. Title deed"
+   },
+   {
+    "type": "text",
+    "t": "2. Floor plan"
+   },
+   {
+    "type": "text",
+    "t": "3. SPA/MOU"
+   },
+   {
+    "type": "text",
+    "t": "4. ENBD Property Evaluation request (without signature)"
+   },
+   {
+    "type": "text",
+    "t": "5. Contact person for valuation - name and phone number- Binish at +971 50 666 1754."
+   },
+   {
+    "type": "text",
+    "t": "6. Client's email address (ENBD will share the link for the valuation amount) -"
+   },
+   {
+    "type": "text",
+    "t": "Note: ENBD bank will send the valuation request form for signing and payment link for the valuation payment with the client. Once we receive the payment proof, we will share it with the bank and inform them to proceed with the valuation. Please note for borrower & Co-borrower case, both signatures are required on the valuation request."
+   }
+  ]
+ },
+ "general-valuation-rules-desktop-vs-physical-report-scenarios": {
+  "heading": "G. General Valuation Rules, Desktop vs. Physical & Report Scenarios",
+  "h2": "SECTION 4: STAGE 2 — Valuation, Inspection & Account Opening SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "Account Opening: Except DIB bank, we will have to follow-up with the client for account opening in rest all banks."
+   },
+   {
+    "type": "text",
+    "t": "TAT: After the inspection, 48 Hours is expected TAT for the valuation report from the bank."
+   },
+   {
+    "type": "text",
+    "t": "Desktop Valuations: Often used for well-established communities, standard apartments/villas, or buyouts with recent records. Faster TAT (24-48 hrs). No physical access needed."
+   },
+   {
+    "type": "text",
+    "t": "Physical Valuation: Required for luxury, high-value, unique properties, or equity release. Valuer checks condition, size, comparable transactions."
+   },
+   {
+    "type": "text",
+    "t": "Valuation Scenarios:"
+   },
+   {
+    "type": "text",
+    "t": "Scenario 1 (Valuation = Purchase Price): Bank finances normally based on standard LTV."
+   },
+   {
+    "type": "text",
+    "t": "Scenario 2 (Valuation > Purchase Price): Bank uses the lower figure (Purchase Price) for financing."
+   },
+   {
+    "type": "text",
+    "t": "Scenario 3 (Valuation < Purchase Price - Shortfall): Bank finances based on Valuation. Client must cover original down payment + the shortfall difference. Can be challenged with a Bayut report subject to Sir Kiran's confirmation."
+   },
+   {
+    "type": "text",
+    "t": "Report Check: Check that details on the valuation report are proper (name of the client, address)."
+   },
+   {
+    "type": "text",
+    "t": "Desktop Valuation / Existing Property: Bank will ask for bank evaluation on existing home finance to check if the finance amount against the current market value is less than 60%."
+   }
+  ]
+ },
+ "valuation-preparation-adrec-adm-protocols-abu-dhabi": {
+  "heading": "4.4 Valuation Preparation: ADREC & ADM Protocols (Abu Dhabi)",
+  "h2": "SECTION 4: STAGE 2 — Valuation, Inspection & Account Opening SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "ADREC Protocol (Bank Valuation): Pull recent transaction data from the ADREC Dashboard (https://adrec.gov.ae/en/property_and_index/adrec-dashboard) to prevent down-valuations. Search Recent Sales Area (within 2 months), select Residential, type District, enter Project Name, select Layout. Screenshot and share with bank's valuator."
+   },
+   {
+    "type": "text",
+    "t": "ADM Valuation (Municipality for Transfer): Done by the Seller exactly 2 days before transfer."
+   },
+   {
+    "type": "text",
+    "t": "1. Seller logs into Smart Hub via UAE Pass. Services > Land Services > \"Request a valuation certificate for a single unit\"."
+   },
+   {
+    "type": "text",
+    "t": "2. Search by plot number > Select Property > Submit. Reason: \"Buy and sell\" > Enter price. Service charge: \"Yes\" > Enter annual amount > Submit."
+   },
+   {
+    "type": "text",
+    "t": "3. Seller pays AED 1,050. Takes 24-48 hours. Valid 30 days."
+   },
+   {
+    "type": "text",
+    "t": "ADGM Properties Note: Properties in Al Reem and Al Maryah Island transfer in ADGM. Require an ADGM Valuation Report instead of standard ADM. (DIB Note: DIB HF OPS team will not upload docs on ADGM portal till the E2E process is clear. Manual process must be followed)."
+   }
+  ]
+ },
+ "inspection-process-follow-up": {
+  "heading": "4.5 Inspection Process & Follow-up",
+  "h2": "SECTION 4: STAGE 2 — Valuation, Inspection & Account Opening SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "Day 1: Submit docs + payment proof to bank for valuation initiation. Keep client in CC."
+   },
+   {
+    "type": "text",
+    "t": "Day 2: Follow up with bank to confirm initiation. Within 24 hrs, evaluator calls Siham / Binish (Valuation Coordinators) to schedule."
+   },
+   {
+    "type": "text",
+    "t": "Scheduling: Siham/Binish coordinates with valuator and buyer (if buyout). SPO confirms schedule and informs bank & VRM."
+   },
+   {
+    "type": "text",
+    "t": "Inspection Day: Takes 1 day. Maintain communication with agent. Send final update to bank confirming completion."
+   },
+   {
+    "type": "text",
+    "t": "Day 3: Follow up for report. Max 48 hours to be received."
+   }
+  ]
+ },
+ "valuation-report-review-account-opening": {
+  "heading": "4.6 Valuation Report Review & Account Opening",
+  "h2": "SECTION 4: STAGE 2 — Valuation, Inspection & Account Opening SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "Positive Valuation (Market Value >= MOU Price): Share with VRM, save in G-Drive, proceed to FOL. (Per the 13/08/2026 protocol above, also forward the Valuation Report — or the Valuation Amount plus Property Details if no report was issued — to the Real Estate Team at this point.)"
+   },
+   {
+    "type": "text",
+    "t": "Negative Valuation (Market Value < MOU Price): Client pays balance as down payment, OR request 2nd valuation company. If challenging, get confirmation from Sir Kiran. (This is precisely the type of case for which the Real Estate Team reference database, built per the 13/08/2026 protocol, is intended to be used going forward.)"
+   },
+   {
+    "type": "text",
+    "t": "Account Opening: VRM assists client in opening financing bank account. Mandatory before FOL."
+   },
+   {
+    "type": "text",
+    "t": "DIB Exception: No account needed; EMI debited via DDA. If client insists, bank requires STL (salary moved to DIB)."
+   },
+   {
+    "type": "text",
+    "t": "Account Opening Links: DIB (https://www.dib.ae/alt/banking-in-minutes/open-new-bank-account-in-minutes), CBD (https://www.cbd.ae/personal/bank/accounts/savings-account), RAK (https://rakbank.ae/wps/portal/retail-banking/accounts/personal/current-account), Mashreq (https://digital-prd2.mashreq.com/casa/homepage - Select Salary transfer \"No\", Purpose \"Saving\"). ADCB requires visiting nearest branch with new SC + ID + Original Passport."
+   }
+  ]
+ },
+ "dib-salary-transfer-letter-stl-format": {
+  "heading": "4.7 DIB Salary Transfer Letter (STL) Format",
+  "h2": "SECTION 4: STAGE 2 — Valuation, Inspection & Account Opening SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "(If client is opening DIB account and transferring salary)"
+   },
+   {
+    "type": "text",
+    "t": "Date: [Date]"
+   },
+   {
+    "type": "text",
+    "t": "The Manager"
+   },
+   {
+    "type": "text",
+    "t": "Dubai Islamic Bank"
+   },
+   {
+    "type": "text",
+    "t": "Dubai"
+   },
+   {
+    "type": "text",
+    "t": "Subject: Salary Transfer Letter"
+   },
+   {
+    "type": "text",
+    "t": "This is to certify that Mr [Name] of [Nationality] holding passport Number [Number] has been working with us since [Date], his current designation is [Designation], and he is a confirmed employee. He is drawing a monthly salary of AED [Amount]/- ([Amount in Words] Dirhams only)."
+   },
+   {
+    "type": "text",
+    "t": "His monthly salary will be credited to the account number AE [IBAN] with Dubai Islamic bank. We undertake not to transfer his monthly to any other bank unless we obtain a letter of clearance from you."
+   },
+   {
+    "type": "text",
+    "t": "If the employee resigns or is terminated, we will transfer the final settlement to the employee's account with your bank, after recovering our dues, if any."
+   },
+   {
+    "type": "text",
+    "t": "This salary certificate has been issued upon the request of Mr. [Name] for whatever purpose it may serve. However, Mr. [Name] will not take any responsibility, whatsoever, in consequence of providing this letter."
+   },
+   {
+    "type": "text",
+    "t": "Thank you,"
+   },
+   {
+    "type": "text",
+    "t": "[Signature]"
+   },
+   {
+    "type": "text",
+    "t": "Name & Designation of signing person."
+   }
+  ]
+ },
+ "transaction-types-overview": {
+  "heading": "5.1 Transaction Types Overview",
+  "h2": "SECTION 5: STAGE 3 — Final Offer Letter (FOL) & Loan Booking SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "First Sale / Direct from Developer: Under construction or ready, bought directly."
+   },
+   {
+    "type": "text",
+    "t": "Resale / Secondary Market: Buying from an individual (ready)."
+   },
+   {
+    "type": "text",
+    "t": "Pure Buyout: Switching finance banks."
+   },
+   {
+    "type": "text",
+    "t": "Buyout + Equity Release: Moving finance and taking cash out."
+   },
+   {
+    "type": "text",
+    "t": "Equity Release / Refinance: Cash out from fully paid, completed property."
+   }
+  ]
+ },
+ "general-fol-conversion-verification-procedure": {
+  "heading": "5.2 General FOL Conversion & Verification Procedure",
+  "h2": "SECTION 5: STAGE 3 — Final Offer Letter (FOL) & Loan Booking SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "Process Flow: Valuation Received + Account Opened -> Fill FOL Conversion Table -> Submit to Banker with Pre-Approval Conditions -> Follow up (TAT: 4-5 Days) -> FOL Received -> Internal Verification -> Discrepancies? YES: Request Revised FOL / NO: Proceed to Contract Signing"
+   },
+   {
+    "type": "text",
+    "t": "FOL Conversion Details: While valuation is ongoing, SPO sends FOL conversion to VRM mentioning required details based on bank policy. VRM confirms client details (finance amount, tenor, ROI, EMI, life/property insurance) and sends FOL request back to SPO with client confirmation snapshot."
+   },
+   {
+    "type": "text",
+    "t": "Follow-up: After 2 days ask for update. If delay >3 working days, escalate. Yash (SPO TL) sends pending cases list to banks daily."
+   },
+   {
+    "type": "text",
+    "t": "FOL Verification (Strict Rechecking) — owned by Vaibhavi (Section 1.3):"
+   },
+   {
+    "type": "text",
+    "t": "Property Address Matching: Cross-check Title Deed, Valuation Report, and FOL. Exact matches on: Unit No, Door No, Floor No, Bldg No, Plot No, Municipality No, Sector/Community/Street, City, Country."
+   },
+   {
+    "type": "text",
+    "t": "Financials & Charges: Verify MOU/SPA Price, Finance Amount, Extra Finance, Down Payment, Valuation Amount, LTV %, Tenor, Rate, EMI, Property Insurance %, Processing Fee %, Life Insurance %."
+   },
+   {
+    "type": "text",
+    "t": "Notification & Client Explanation Call: Once proper FOL received, email client with account funding details (down payment, processing fees, life/property insurance). Schedule appointment for final signatures."
+   },
+   {
+    "type": "text",
+    "t": "Best Practice call sequence: 1) Congratulate client. 2) Explain Loan Amount, Rate, Tenure, EMI. 3) Explain Total Contribution Required (Down payment + DLD/ADREC fees + Trustee fees + NOC + Valuation + Insurance + Processing). 4) Confirm Funds Availability & Preferred Signing Date. 5) Send FOL copy, Cost sheet, and Transfer timeline."
+   }
+  ]
+ },
+ "comprehensive-fol-loan-booking-document-matrix": {
+  "heading": "5.3 Comprehensive FOL & Loan Booking Document Matrix",
+  "h2": "SECTION 5: STAGE 3 — Final Offer Letter (FOL) & Loan Booking SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "The following matrix details the exact documents required during the Pre-FOL, Post-FOL, and Loan Booking stages for various transaction types across major banks (ADIB, CBD, DIB, ENBD, Mashreq, HSBC)."
+   },
+   {
+    "type": "table",
+    "head": [
+     "Transaction Type",
+     "Pre-FOL Stage (During Valuation)",
+     "Post-FOL Stage (Signing & Booking)"
+    ],
+    "rows": [
+     [
+      "Primary",
+      "SPA, Updated SOA, Title Deed, BCC / Handover Notice",
+      "Recheck FOL details. Client signs FOL. Simultaneously apply for Liability Letter (if seller mortgage case)."
+     ],
+     [
+      "Primary Handover",
+      "Title Deed, Search Certificate, SPA, BCC, Handover Notice, Updated SOA",
+      "DDA activation. File goes for Cleaning Process."
+     ],
+     [
+      "Resale",
+      "MOU, Title Deed, Search Certificate, Seller KYC",
+      "FOL signed. DDA activation. Share Liability Letter & inform bank for loan booking & settlement. Wait for Mortgage Release letter."
+     ],
+     [
+      "Resale Handover",
+      "Title Deed, Search Certificate, SPA, Updated SOA, MOU, Seller KYC",
+      "Same as Resale."
+     ],
+     [
+      "Pure Buyout",
+      "Title Deed, Salary Certificate",
+      "FOL signed, DDA activated, Liability letter shared. Settlement done. Wait for Mortgage Release. Move to Final Transfer."
+     ],
+     [
+      "Pure Equity",
+      "Equity Undertaking, BOQ, Renovation contract, Title Deed, Salary Certificate",
+      "Post-transfer and Title Deed shared with bank, bank processes Equity Release to be deposited/transferred into Client's account."
+     ],
+     [
+      "Buyout + Equity",
+      "Title Deed, Salary Certificate, BOQ, Renovation contract",
+      "Same as Pure Buyout + Pure Equity."
+     ]
+    ]
+   },
+   {
+    "type": "text",
+    "t": "Pre-FOL, Post-FOL & Loan Booking Procedural Details:"
+   },
+   {
+    "type": "text",
+    "t": "1. Pre-FOL: While in the valuation stage, once the inspection is completed, SPO needs to send the FOL conversion with the Team Virtue. Once the valuation amount is received, Team Virtue shares the FOL Conversion with SPO. SPO checks the FOL conversion with bank rates, verifies details, and shares them with the bank. Client confirmation on the FOL Conversion is mandatory before sending it to the bank. Usually, most banks take 3-4 days for FOL. During the valuation stage, the client needs to open a Bank Account (except DIB) and keep the account funded as per the required bank amount."
+   },
+   {
+    "type": "text",
+    "t": "2. Post-FOL: Once the FOL is received, recheck the FOL details: Name of client (Co-Applicant/Borrower if any), ROI, Tenor, Finance Amount, Credit conditions, property address, LTV, etc. If the FOL details are correct, ask the client for FOL signing with a co-applicant or co-borrower (if any). Simultaneously, ask the client to apply for the Liability Letter if required (Seller Mortgage case and Buyout)."
+   },
+   {
+    "type": "text",
+    "t": "3. Loan Booking & Disbursal: Once FOL signing is done, the next procedure is DDA (Direct Debit Authority) activation and Loan Booking. The DDA authorizes the bank to automatically deduct the monthly EMI. In cash seller cases, the file goes directly for the Cleaning Process; meanwhile, SPO takes the DDA Activation confirmation. In buyout and seller mortgage cases, SPO shares the liability letter and informs the bank for loan booking and settlement. Once settlement is done, SPO waits for the Mortgage Release letter, and then the case moves to the Final Transfer stage. Disbursal is the actual release of funds to seller, developer, or existing bank."
+   }
+  ]
+ },
+ "specific-document-checklists-cbd-dib": {
+  "heading": "5.4 Specific Document Checklists (CBD & DIB)",
+  "h2": "SECTION 5: STAGE 3 — Final Offer Letter (FOL) & Loan Booking SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "A. CBD Resale Specific Document Checklists:"
+   },
+   {
+    "type": "text",
+    "t": "FOL Conversion Request: Valid MOU, Buyer/Seller IDs, Valid SC, Liability Outstanding letter. AUH: Mortgage Search Cert (15 days). DXB: Not needed. Self-Employed: MOA. MOU Seller is Co: Trade License."
+   },
+   {
+    "type": "text",
+    "t": "FOL Contract Signing: Editable App Form with KFS/FTS, Original PP & EID, Original Valid SC, Original Undertaking & Liability Letter. Crucial: MOU must be valid until Loan Booking."
+   },
+   {
+    "type": "text",
+    "t": "Loan Booking: Original Liability Letter, Original Undertaking Letter, CBD Account funded, Name/Amount confirmation for MC."
+   },
+   {
+    "type": "text",
+    "t": "B. DIB Document Checklists:"
+   },
+   {
+    "type": "text",
+    "t": "Primary / Direct Purchase: FOL Request (Finance amount, Tenure, LTV, Rate, Extra Finance, Seller Mortgage details). Signed DIB App. Property Docs (Updated SOA, SPA, BCC, Handover Notice). Salary Cert. Self-Employed: MOA & Trade License."
+   },
+   {
+    "type": "text",
+    "t": "Contract Signing: Original PP & EID, Original Salary Cert, Original SPA, Cheque Book. Share Insurance & DDA Form."
+   },
+   {
+    "type": "text",
+    "t": "Loan Booking: Developer Account Details, Current SOA. No DIB account needed (EMI via DDA). Buyer prepares MC for self-contribution + transfer charges."
+   },
+   {
+    "type": "text",
+    "t": "Resale / Secondary Market: FOL Request Details, Signed DIB App, Title Deed, Floor Plan, updated MOU, Seller ID/Trade License. Salary Cert. AUH: Mortgage Search Cert (15 days)."
+   },
+   {
+    "type": "text",
+    "t": "Contract Signing: Original PP & EID, Original Salary Cert, Original MOU/SPA, Cheque Book. Share Insurance & DDA Form."
+   },
+   {
+    "type": "text",
+    "t": "Loan Booking: Original Liability Letter (if seller has mortgage). AUH: Property Verification Cert. No DIB account needed."
+   }
+  ]
+ },
+ "liabilities-settlement-clearances-soa-updates": {
+  "heading": "5.5 Liabilities, Settlement, Clearances & SOA Updates",
+  "h2": "SECTION 5: STAGE 3 — Final Offer Letter (FOL) & Loan Booking SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "Liability Letter: Issued by seller's mortgage bank stating outstanding loan. Valid 5-10 days depending on bank. Name must match MOU/ID. For buyer buyout, only original liability needed."
+   },
+   {
+    "type": "text",
+    "t": "HSBC Liability Letter Rule: Ask seller to apply via mobile app/online banking. If addressed to Mashreq/DLD and carries the digital line at the bottom (\"issued digital\"), no wet sign needed. If no line, seller must visit branch for wet stamp. For DLD, select \"Courts and government agencies\" and type \"Dubai Land Department\"."
+   },
+   {
+    "type": "text",
+    "t": "Cheque Settlement Workflow:"
+   },
+   {
+    "type": "text",
+    "t": "1. Bank prepares MC to Seller's Bank. If finance amount < outstanding, buyer prepares MC to financing bank."
+   },
+   {
+    "type": "text",
+    "t": "2. Coordinate appointment with Bank PRO, Real Estate, and Seller."
+   },
+   {
+    "type": "text",
+    "t": "3. On scheduled day, get confirmation from RE/Seller/PRO that settlement is done."
+   },
+   {
+    "type": "text",
+    "t": "4. Next day, email bank requesting Settlement Cheque Copy."
+   },
+   {
+    "type": "text",
+    "t": "Clearance Letter Process: Once settlement cheque copy is available, email Bank Help Desk for Clearance Letter. Chase seller through RE as seller receives SMS once ready. Once confirmed, inform bank so PRO can collect. Wait 7-10 working days."
+   },
+   {
+    "type": "text",
+    "t": "Brokerage Clarification Rule: If clearance letter is already attested, ADCB broker is NOT required. Only SCB needed."
+   },
+   {
+    "type": "text",
+    "t": "Updated SOA / BCC / Handover Notice: For primary transactions. Once FOL received, request Updated SOA for Disbursal. SOA must be valid at handover. (ADCB requires SOA validity of 7 days only to book loan). Inform bank of beneficiary. Ask developer what buyer needs for Title Deed issuance. (Email developer e.g., Aldar to confirm if BCC/Handover Notice is missing for legacy projects)."
+   }
+  ]
+ },
+ "power-of-attorney-poa-developer-noc": {
+  "heading": "5.6 Power of Attorney (POA) & Developer NOC",
+  "h2": "SECTION 5: STAGE 3 — Final Offer Letter (FOL) & Loan Booking SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "POA Check: Obtain POA passport, visa, EID (front/back) for legal approval (1-2 days in advance). Check if MC is under POA holder or seller name (Only CBD/DIB issue such cheques). POA must be specific to unit, within 3 years. For ADM, explicitly mentioned."
+   },
+   {
+    "type": "text",
+    "t": "Developer NOC: After FOL (if cash seller) or after settlement (if mortgage seller), ask RE agent to process Developer NOC. Validity: Generally 1 month (Manazel/Aldar 30 days, Emaar 15 days, Nakheel 5 days)."
+   }
+  ]
+ },
+ "nakheel-specific-primary-handover-process-dubai": {
+  "heading": "5.7 Nakheel Specific Primary / Handover Process (Dubai)",
+  "h2": "SECTION 5: STAGE 3 — Final Offer Letter (FOL) & Loan Booking SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "1. Email customersupport@nakheel.com for Pre-Title Deed, Handover Notice, SOA."
+   },
+   {
+    "type": "text",
+    "t": "2. Bank valuation requested via email to Nakheel."
+   },
+   {
+    "type": "text",
+    "t": "3. After bank approval, submit signed/stamped Mortgage Contract and MC copy to Nakheel. NOC issued in 1 day (valid 5 days)."
+   },
+   {
+    "type": "text",
+    "t": "4. Register mortgage at DLD Trustee Office. Mortgaged Pre-TD issued."
+   },
+   {
+    "type": "text",
+    "t": "5. Book key handover via Nakheel App. Bring original MC for final payment. Settle outstanding dues. All owners present (or notarized POA)."
+   }
+  ]
+ },
+ "preparation-coordination": {
+  "heading": "6.1 Preparation & Coordination",
+  "h2": "SECTION 6: STAGE 4 — Final Transfer & Disbursal SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "Check all required documents thoroughly. If any documents nearing expiry (Developer NOC, Valuation Reports, MOU, FOL, KYC of Buyer/Seller, Clearance Documents, Liability Letter)."
+   },
+   {
+    "type": "text",
+    "t": "Settlement Coordination Protocol: At the day of settlement, ask the bank for the Number and Name of the Bank PRO doing settlement with seller's bank. Also need name/number from seller's side. Share details on comms group and email."
+   },
+   {
+    "type": "text",
+    "t": "Once Transfer Date confirmed (Request Day + Buffer 2 Days), send email to all parties containing all calculations for buyer."
+   },
+   {
+    "type": "text",
+    "t": "Email must include: Date, Time, Location, Attendees (Buyer, Seller, Real Estate, Bank PRO). Note: CBD PRO NOT required for Dubai, IS required for Abu Dhabi."
+   },
+   {
+    "type": "text",
+    "t": "Documents to carry: Original Passport, Original EID, Cash/Debit/Credit Card, Manager's Cheque."
+   },
+   {
+    "type": "text",
+    "t": "Abu Dhabi Specific Rules: UAE Pass active. Dress code strictly enforced (No sleeveless, shorts, slippers)."
+   }
+  ]
+ },
+ "final-transfer-document-checklist-matrix": {
+  "heading": "6.2 Final Transfer Document Checklist Matrix",
+  "h2": "SECTION 6: STAGE 4 — Final Transfer & Disbursal SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "The following checklist outlines the exact documents required at the Trustee/Municipality office based on transaction type."
+   },
+   {
+    "type": "table",
+    "head": [
+     "Transaction Type",
+     "Required Documents for Final Transfer"
+    ],
+    "rows": [
+     [
+      "1. Primary",
+      "FOL, SPA, Mortgage Documents signed by the client."
+     ],
+     [
+      "2. Primary Handover",
+      "FOL, SPA, Mortgage Documents signed by the client."
+     ],
+     [
+      "3. Resale",
+      "NOC from Developer, Form F / MOU, FOL, Manager's Cheques (Seller, DLD, Broker, NOC fees), Signed Mortgage Documents."
+     ],
+     [
+      "4. Pure Buyout",
+      "Existing Mortgage Liability Letter, Original Title Deed, FOL from New Bank, Mortgage Release Documents."
+     ],
+     [
+      "5. Pure Equity",
+      "Original Title Deed, FOL, Equity Disbursement Documents."
+     ],
+     [
+      "6. Buyout Plus Equity",
+      "Existing Mortgage Liability Letter, Original Title Deed, FOL, Mortgage Release Documents."
+     ]
+    ]
+   },
+   {
+    "type": "text",
+    "t": "Transfer Process Flows by Transaction Type:"
+   },
+   {
+    "type": "text",
+    "t": "Resale Transaction: Manager's Cheques Issuance -> Transfer Appointment -> Existing Mortgage Settlement -> Ownership Transfer -> New Mortgage Registration -> New Title Deed Issuance."
+   },
+   {
+    "type": "text",
+    "t": "Buyout plus equity: Existing Mortgage Settlement -> Mortgage Release -> New Mortgage Registration -> Updated Title Deed -> Equity Disbursement -> Transaction Completion."
+   },
+   {
+    "type": "text",
+    "t": "Primary Handover Transaction: Payment to Developer -> Title Deed Issuance -> Property Handover -> Transaction Completion."
+   },
+   {
+    "type": "text",
+    "t": "Important Dubai vs Abu Dhabi Process Differences:"
+   },
+   {
+    "type": "text",
+    "t": "Dubai transactions are generally processed through DLD Trustee Offices."
+   },
+   {
+    "type": "text",
+    "t": "Abu Dhabi transactions are processed through ADM or ADGM, depending on the property location."
+   },
+   {
+    "type": "text",
+    "t": "For a Primary transaction, after the loan is booked, the bank will issue the manager's cheque to the developer. Upon receipt of the payment, the developer will initiate the process of issuing the Title Deed."
+   }
+  ]
+ },
+ "manager-s-cheque-mc-preparation-rules": {
+  "heading": "6.3 Manager's Cheque (MC) Preparation Rules",
+  "h2": "SECTION 6: STAGE 4 — Final Transfer & Disbursal SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "A Manager's Cheque is a guarantee cheque issued by the bank by blocking available funds from a current or savings account. It bears authorized bank personnel's signatures. Think of it as: Customer's Money + Bank Guarantee = Manager's Cheque."
+   },
+   {
+    "type": "text",
+    "t": "Client Communication Template for MC Preparation:"
+   },
+   {
+    "type": "text",
+    "t": "\"Please prepare the Manager's Cheque amount to the seller AED - [Amount]/- Under the name of - [Seller's Full Name]."
+   },
+   {
+    "type": "text",
+    "t": "(Managers cheque is a guarantee cheque issued by the bank by blocking your available fund from current or savings account. This cheque is different to normal cheque which you issue, you sign. Managers cheque is a cheque which will be issued by the respective bank in which you are having the saving in UAE and the cheque will have the bank authorized person signatures)."
+   },
+   {
+    "type": "text",
+    "t": "Cheque to be issued under the name of '[Seller's Full Name]'. Please show your bank, from which you are issuing the cheque, the seller's Emirates ID to ensure the cheque is proper.\""
+   }
+  ]
+ },
+ "standard-payment-rules-extra-finance-protocols": {
+  "heading": "6.4 Standard Payment Rules & Extra Finance Protocols",
+  "h2": "SECTION 6: STAGE 4 — Final Transfer & Disbursal SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "Dubai (DLD) Payment Rules: No cash. Debit/Credit Card or MC accepted. Single Swipe Rule: One swipe only. (If paying 4% transfer fee without bank support, client can swipe 2% on one card, 2% on another - no other combinations). Extra Finance Rule: If bank brings MC for extra finance, client mandatorily prepares MC to DLD for 4% transfer fee. No card payment allowed."
+   },
+   {
+    "type": "text",
+    "t": "Abu Dhabi (ADM) Payment Rules: Debit/Credit Card or MC. Avoid cash. Note: ADM charges extra AED 3/- per card swipe."
+   }
+  ]
+ },
+ "bank-specific-transfer-pro-timings-dib-focus": {
+  "heading": "6.5 Bank-Specific Transfer & PRO Timings (DIB Focus)",
+  "h2": "SECTION 6: STAGE 4 — Final Transfer & Disbursal SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "DIB Transfer Timings:"
+   },
+   {
+    "type": "text",
+    "t": "If transfer in ADM: Scheduled strictly on Mondays and Wednesdays."
+   },
+   {
+    "type": "text",
+    "t": "If transfer in ADGM: Scheduled strictly on Thursdays."
+   },
+   {
+    "type": "text",
+    "t": "General Timings: Ownership transfer happens strictly from 10:00 AM to 12:00 Noon (Mon-Thu). On Friday: 9:30 AM to 11:00 AM (due to Friday prayers)."
+   },
+   {
+    "type": "text",
+    "t": "DIB PRO Schedule: Bank PRO comes only on Monday & Wednesday. Must ask bank for PRO Name & Contact beforehand."
+   },
+   {
+    "type": "text",
+    "t": "Shyam: 0507155982"
+   },
+   {
+    "type": "text",
+    "t": "Hamad: +971 50 533 5345 / +971 56 340 5087"
+   },
+   {
+    "type": "text",
+    "t": "Jibran Wani: +971 56 997 1458"
+   },
+   {
+    "type": "text",
+    "t": "DIB Pre-Transfer Rule: Need to ask Cheque Copies from bank before transfer schedule. Buyers need to prepare manager cheques as per seller's EID."
+   }
+  ]
+ },
+ "2025-settlement-important-protocols-matrix": {
+  "heading": "6.6 2025 Settlement Important Protocols Matrix",
+  "h2": "SECTION 6: STAGE 4 — Final Transfer & Disbursal SOP",
+  "blocks": [
+   {
+    "type": "table",
+    "head": [
+     "Bank",
+     "Settlement / Cheque Preparation Rule"
+    ],
+    "rows": [
+     [
+      "Arab Bank",
+      "On the settlement cheque, bank MUST mention the seller's account number, full name, and Arab bank name. Inform the Bank RM before the cheque is prepared. Same rule applies in buyout cases."
+     ],
+     [
+      "Al Hilal Bank",
+      "A covering letter MUST go along with the settlement cheque. This letter has to be signed by a registered signatory with the Central Bank (not just anyone from the bank)."
+     ]
+    ]
+   }
+  ]
+ },
+ "operational-scenarios-fund-flow-logic-all-transaction-types": {
+  "heading": "6.7 Operational Scenarios & Fund Flow Logic (All Transaction Types)",
+  "h2": "SECTION 6: STAGE 4 — Final Transfer & Disbursal SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "Scenario A: Resale / Cash Seller"
+   },
+   {
+    "type": "text",
+    "t": "With Bank Funded Account: Property 1M, Bank Finance 800K, Buyer funded 200K in account. Bank prepares MC of 1M under Seller's Name."
+   },
+   {
+    "type": "text",
+    "t": "Without Funded Account: Buyer didn't fund self-contribution. Bank prepares MC of 800K under Seller. Buyer prepares separate MC of 200K under Seller."
+   },
+   {
+    "type": "text",
+    "t": "Scenario B: Resale / Seller Has Mortgage (Liability)"
+   },
+   {
+    "type": "text",
+    "t": "With Bank Funded Account: Property 1M, Bank Finance 800K, Seller Liability 600K. Buyer funds 200K. Bank prepares MC of 1M. At transfer, Bank settles Seller's 600K liability directly to Seller's Bank. Remaining 400K MC given to Seller."
+   },
+   {
+    "type": "text",
+    "t": "Without Funded Account: Buyer doesn't fund. Bank prepares MC of 800K + Buyer prepares 200K. Bank settles 600K to Seller's Bank, remaining 200K to Seller."
+   },
+   {
+    "type": "text",
+    "t": "Scenario C: Pure Buyout or Equity Release"
+   },
+   {
+    "type": "text",
+    "t": "Standard: Valuation 1M, Finance 600K, Liability 600K. Bank prepares MC of 600K to settle liability at Seller's previous bank. If extra equity, bank credits remaining funds to client's account post-transfer."
+   },
+   {
+    "type": "text",
+    "t": "RAK Bank Note: Equity release of AED 500K in customer accounts has been stopped. However, payments can be made directly to contractors."
+   },
+   {
+    "type": "text",
+    "t": "Scenario D: Direct from Developer"
+   },
+   {
+    "type": "text",
+    "t": "Bank Cheque Calculation: Bank prepares MC based on SOA. If SPA 1M, Finance 800K, SOA Balance 800K, Bank prepares MC 800K to Developer. If SOA Balance 900K, Buyer funds 100K to account, Bank prepares MC 900K to Developer."
+   },
+   {
+    "type": "text",
+    "t": "Scenario E: Extra Finance Scenarios (Resale Cash & Mortgage Seller)"
+   },
+   {
+    "type": "text",
+    "t": "Note: When buyer wants extra finance, bank covers transfer fees and RE commissions (without VAT) based on LTV."
+   },
+   {
+    "type": "text",
+    "t": "Resale Cash Seller: If MOU 1M, Finance 800K, Buyer funds self-contribution + Extra Finance/Associated Fees, Bank prepares MC for Total Amount (MOU + Transfer Fee + RE Commission). If Buyer didn't fund, Buyer prepares difference for charges, Bank prepares what it covers."
+   },
+   {
+    "type": "text",
+    "t": "Resale Mortgage Seller: Same logic, but Bank settles Seller's liability first, then gives remaining balance to Seller. Difference amount for Transfer Fees/RE Commission either covered by Bank (if account funded) or separate MC by Buyer."
+   },
+   {
+    "type": "text",
+    "t": "ADIB Specific: Gives extra finance to seller directly (no MC to DLD/ADM/RE)."
+   }
+  ]
+ },
+ "dubai-dld-fee-structure-matrix-primary-purchase": {
+  "heading": "A. Dubai (DLD) Fee Structure Matrix - Primary Purchase",
+  "h2": "SECTION 6: STAGE 4 — Final Transfer & Disbursal SOP",
+  "blocks": [
+   {
+    "type": "table",
+    "head": [
+     "Charge / Fee",
+     "UAE National (85% LTV)",
+     "Expat (80% LTV)",
+     "Non-Resident (50% LTV)",
+     "Payment Method"
+    ],
+    "rows": [
+     [
+      "Self Contribution",
+      "15% of Prop Value",
+      "20% of Prop Value",
+      "50% of Prop Value",
+      "MC to Developer"
+     ],
+     [
+      "Real Estate Agency Fee",
+      "2% + VAT",
+      "2% + VAT",
+      "2% + VAT",
+      "MC to RE Company"
+     ],
+     [
+      "DLD Transfer Fee",
+      "4% of Prop Value",
+      "4% of Prop Value",
+      "4% of Prop Value",
+      "MC to DLD / Card"
+     ],
+     [
+      "DLD Trustee Fee",
+      "AED 4,200 (incl. VAT)",
+      "AED 4,200 (incl. VAT)",
+      "AED 4,200 (incl. VAT)",
+      "MC to DLD / Card"
+     ],
+     [
+      "Mortgage Reg. Fee",
+      "0.25% of Finance",
+      "0.25% of Finance",
+      "0.25% of Finance",
+      "Card"
+     ],
+     [
+      "Title Deed / Knowledge",
+      "AED 870",
+      "AED 870",
+      "AED 870",
+      "Card"
+     ],
+     [
+      "Bank Processing Fee",
+      "0% to 0.525%+VAT",
+      "0% to 0.525%+VAT",
+      "0% to 1.05%+VAT",
+      "Cash/Transfer to Bank"
+     ],
+     [
+      "Valuation Fee",
+      "AED 2,500 - 3,150",
+      "AED 2,500 - 3,150",
+      "AED 2,500 - 3,150",
+      "To Bank"
+     ],
+     [
+      "Brokerage Consultancy",
+      "AED 2,625 (Nil if 85%+Extra)",
+      "AED 2,625 (Nil if 80%+Extra)",
+      "AED 2,625",
+      "Cash/Cheque"
+     ],
+     [
+      "Extra Finance Logic",
+      "Max 90% (85% + 5% charges)",
+      "Max 85% (80% + 5% charges)",
+      "N/A",
+      "Bank prepares MC for extra"
+     ]
+    ]
+   }
+  ]
+ },
+ "dubai-dld-fee-structure-matrix-resale-secondary-market": {
+  "heading": "B. Dubai (DLD) Fee Structure Matrix - Resale / Secondary Market",
+  "h2": "SECTION 6: STAGE 4 — Final Transfer & Disbursal SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "(Note: The Mortgage Release Fee and DLD Blocking Fee below are Resale-specific — a Primary/developer purchase has no existing seller mortgage to release.)"
+   },
+   {
+    "type": "table",
+    "head": [
+     "Charge / Fee",
+     "UAE National (85% LTV)",
+     "Expat (80% LTV)",
+     "Non-Resident (50% LTV)",
+     "Payment Method"
+    ],
+    "rows": [
+     [
+      "Self Contribution",
+      "15% of Prop Value",
+      "20% of Prop Value",
+      "50% of Prop Value",
+      "MC to Seller"
+     ],
+     [
+      "Real Estate Agency Fee",
+      "2% + VAT",
+      "2% + VAT",
+      "2% + VAT",
+      "MC to RE Company"
+     ],
+     [
+      "DLD Transfer Fee",
+      "4% of Prop Value",
+      "4% of Prop Value",
+      "4% of Prop Value",
+      "MC to DLD / Card"
+     ],
+     [
+      "DLD Trustee Fee",
+      "AED 4,200 (incl. VAT)",
+      "AED 4,200 (incl. VAT)",
+      "AED 4,200 (incl. VAT)",
+      "MC to DLD / Card"
+     ],
+     [
+      "Mortgage Reg. Fee",
+      "0.25% of Finance",
+      "0.25% of Finance",
+      "0.25% of Finance",
+      "Card"
+     ],
+     [
+      "Title Deed / Knowledge",
+      "AED 870",
+      "AED 870",
+      "AED 870",
+      "Card"
+     ],
+     [
+      "Mortgage Release Fee",
+      "AED 1,605 / 1,875 (Islamic)",
+      "AED 1,605 / 1,875 (Islamic)",
+      "AED 1,605 / 1,875 (Islamic)",
+      "Paid by Seller"
+     ],
+     [
+      "DLD Blocking Fee",
+      "AED 1,545",
+      "AED 1,545",
+      "AED 1,545",
+      "Card"
+     ]
+    ]
+   }
+  ]
+ },
+ "abu-dhabi-adm-fee-structure-matrix-primary-resale": {
+  "heading": "C. Abu Dhabi (ADM) Fee Structure Matrix - Primary & Resale",
+  "h2": "SECTION 6: STAGE 4 — Final Transfer & Disbursal SOP",
+  "blocks": [
+   {
+    "type": "table",
+    "head": [
+     "Charge / Fee",
+     "UAE National (85% LTV)",
+     "Expat (80% LTV)",
+     "Non-Resident (50% LTV)",
+     "Payment Method"
+    ],
+    "rows": [
+     [
+      "Self Contribution",
+      "15% of Prop Value",
+      "20% of Prop Value",
+      "50% of Prop Value",
+      "MC to Seller/Developer"
+     ],
+     [
+      "Real Estate Agency Fee",
+      "2.1% incl VAT",
+      "2.1% incl VAT",
+      "2.1% incl VAT",
+      "MC to RE Company"
+     ],
+     [
+      "ADM Transfer Fee",
+      "2% of Prop Value (1% for Al Reef)",
+      "2% of Prop Value (1% for Al Reef)",
+      "2% of Prop Value (1% for Al Reef)",
+      "MC to ADM / Card"
+     ],
+     [
+      "Mortgage Reg. Fee",
+      "0.1% of Finance Amount",
+      "0.1% of Finance Amount",
+      "0.1% of Finance Amount",
+      "MC to ADM / Card"
+     ],
+     [
+      "Electronic Reg. Fee",
+      "AED 1,391.25",
+      "AED 1,391.25",
+      "AED 1,391.25",
+      "Card"
+     ],
+     [
+      "NOC / Admin Fee",
+      "AED 5,250 (Manazel standard)",
+      "AED 5,250",
+      "AED 5,250",
+      "Card"
+     ],
+     [
+      "DARI Transfer Fee",
+      "AED 1,575 (Mortgage) / 1,050 (Cash)",
+      "AED 1,575 / 1,050",
+      "AED 1,575 / 1,050",
+      "Card"
+     ],
+     [
+      "Mortgage Release Fee",
+      "Fixed AED 900 (Paid by Seller)",
+      "Fixed AED 900 (Paid by Seller)",
+      "Fixed AED 900 (Paid by Seller)",
+      "Card"
+     ],
+     [
+      "Bank Processing Fee",
+      "0% to 1.05% of Finance",
+      "0% to 1.05% of Finance",
+      "0% to 1.05% of Finance",
+      "Account Funding"
+     ],
+     [
+      "Valuation Fee",
+      "AED 2,625 to 3,150",
+      "AED 2,625 to 3,150",
+      "AED 2,625 to 3,150",
+      "To Bank"
+     ]
+    ]
+   }
+  ]
+ },
+ "adgm-al-reem-al-maryah-fee-structure-matrix": {
+  "heading": "D. ADGM (Al Reem / Al Maryah) Fee Structure Matrix",
+  "h2": "SECTION 6: STAGE 4 — Final Transfer & Disbursal SOP",
+  "blocks": [
+   {
+    "type": "table",
+    "head": [
+     "Charge / Fee",
+     "All Nationalities",
+     "Payment Method"
+    ],
+    "rows": [
+     [
+      "Transfer Fee",
+      "2% of MOU",
+      "MC / Card"
+     ],
+     [
+      "Mortgage Registration",
+      "0.18% of Finance + Admin + VAT",
+      "MC / Card"
+     ],
+     [
+      "Online Reg. Fee",
+      "AED 1,050",
+      "MC / Card"
+     ]
+    ]
+   }
+  ]
+ },
+ "buyout-equity-release-fee-structure-matrix-dubai-abu-dhabi": {
+  "heading": "E. Buyout / Equity Release Fee Structure Matrix (Dubai & Abu Dhabi)",
+  "h2": "SECTION 6: STAGE 4 — Final Transfer & Disbursal SOP",
+  "blocks": [
+   {
+    "type": "table",
+    "head": [
+     "Charge / Fee",
+     "Dubai (Paid by Client)",
+     "Abu Dhabi (Paid by Client)"
+    ],
+    "rows": [
+     [
+      "Self Contribution",
+      "Nil",
+      "Nil"
+     ],
+     [
+      "Real Estate Agency Fee",
+      "Nil",
+      "Nil"
+     ],
+     [
+      "Mortgage Registration Fee",
+      "0.25% of Finance Amount",
+      "0.10% of Finance Amount"
+     ],
+     [
+      "Mortgage Release Fee",
+      "Fixed AED 1,605",
+      "Fixed AED 900"
+     ],
+     [
+      "Trustee / Electronic Reg.",
+      "AED 4,200 (incl. 5% VAT)",
+      "AED 1,391.25"
+     ],
+     [
+      "Title Deed Fees",
+      "AED 870",
+      "N/A"
+     ],
+     [
+      "Bank Processing Fee",
+      "Up to 1.05% of Finance + VAT",
+      "Up to 1.05% of Finance + VAT"
+     ],
+     [
+      "Valuation Fee",
+      "AED 2,625 - 3,150",
+      "AED 2,625 - 3,150"
+     ],
+     [
+      "Total Gross Cash Needed",
+      "~AED 12,620 (Expat) to AED 32,530 (UAE Refinance)",
+      "~AED 2,625 (if bank covers fees)"
+     ]
+    ]
+   }
+  ]
+ },
+ "dld-online-process-for-mortgage-release-registration-dubai": {
+  "heading": "6.10 DLD Online Process for Mortgage Release & Registration (Dubai)",
+  "h2": "SECTION 6: STAGE 4 — Final Transfer & Disbursal SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "For banks like DIB, final release/registration can be done online:"
+   },
+   {
+    "type": "text",
+    "t": "1. Client receives link via email/SMS (\"One step closer\")."
+   },
+   {
+    "type": "text",
+    "t": "2. Client enters EID number, waits for OTP."
+   },
+   {
+    "type": "text",
+    "t": "3. Click \"Go\" only once. Page loads slowly; multiple attempts will block it."
+   },
+   {
+    "type": "text",
+    "t": "4. Submit without selecting date/detail or uploading docs. Just click submit."
+   },
+   {
+    "type": "text",
+    "t": "5. Trustee Office sends payment link (Mortgage release AED 1,605, Mortgage reg 0.25%, Title deed/knowledge AED 870, Trustee fee AED 4,200)."
+   },
+   {
+    "type": "text",
+    "t": "6. Coordinate with client and Trustee Office until new Title Deed showing mortgage is received."
+   }
+  ]
+ },
+ "post-completion-end-to-end-process": {
+  "heading": "6.11 Post-Completion End-to-End Process",
+  "h2": "SECTION 6: STAGE 4 — Final Transfer & Disbursal SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "Send reminder to all parties for schedule."
+   },
+   {
+    "type": "text",
+    "t": "Track with agent/client to confirm successful completion."
+   },
+   {
+    "type": "text",
+    "t": "Check client for copy of new Title Deed."
+   },
+   {
+    "type": "text",
+    "t": "Huspy Portal Update: If case was submitted via Huspy, see Section 7.2 for the portal upload steps."
+   },
+   {
+    "type": "text",
+    "t": "Share Title Deed with respective Bank."
+   },
+   {
+    "type": "text",
+    "t": "Save Title Deed to G-Drive."
+   },
+   {
+    "type": "text",
+    "t": "A. Congratulate Clients: Provide them with an EMI calculation sheet."
+   },
+   {
+    "type": "text",
+    "t": "B. Quality Call: Forward file to Niraj (CC: Madam Sandra and Swathi) for QC and Quality Call."
+   },
+   {
+    "type": "text",
+    "t": "C. WhatsApp Group Management: Close the WhatsApp group involving the realtor once the transaction is completed. In cases where no realtor is involved, all HFMC staff members are removed from the group, and only Sir Kiran, the client, and the handler remain in the group to provide any required post-completion support."
+   },
+   {
+    "type": "text",
+    "t": "D. Case Closure: Move to \"WON CASES\" and closed folder. (CASE COMPLETED)"
+   }
+  ]
+ },
+ "google-drive-process-ai-rpa-compliance": {
+  "heading": "7.1 Google Drive Process & AI/RPA Compliance",
+  "h2": "SECTION 7: Digital Systems, G-Drive Taxonomy & Workbook Blueprint",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "Strict adherence to the G-Drive protocol is mandatory for traceability and upcoming AI/RPA (Robot) integration:"
+   },
+   {
+    "type": "text",
+    "t": "1. Folder Creation (VRM): Open G:\\My Drive\\Mortgage Department\\SALES PROGRESSION OFFICER\\2024 CLIENT FOLDER\\ON GOING CASES\\ -> Create Folder named DD-MM-YYYY / Client and Bank Name."
+   },
+   {
+    "type": "text",
+    "t": "2. Document Naming & Robot Compliance: Every file must be a separate PDF with a proper heading including the expiry date (e.g., Kiran - Old Passport - Exp 24-05-2024). Documents must be reduced in size before saving. No sub-folders needed if naming is strict."
+   },
+   {
+    "type": "text",
+    "t": "3. Handover: VRM emails SPO stating documents are saved in G-Drive with the exact file path. SPO picks up, moves, and deletes the created folder."
+   },
+   {
+    "type": "text",
+    "t": "4. Post-Submission (SPO): Rename main folder to Client Name (Bank). Create sub-folders: Pre-Approval, Valuation, FOL, Loan Booking, Final Transfer."
+   },
+   {
+    "type": "text",
+    "t": "5. Query Documents: VRM creates a dated folder. Once SPO emails the bank, SPO moves docs to the respective stage folder and deletes the dated folder. Ensure no created folders remain before logging off daily."
+   }
+  ]
+ },
+ "huspy-portal-submission-process-salaried-cases": {
+  "heading": "7.2 Huspy Portal Submission Process (Salaried Cases)",
+  "h2": "SECTION 7: Digital Systems, G-Drive Taxonomy & Workbook Blueprint",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "For banks like Mashreq, HSBC, SCB, ENBD, ADCB, FAB, SIB submitted via Huspy:"
+   },
+   {
+    "type": "text",
+    "t": "Step 1: Verify Docs (KYC, SC, 6-mo Bank Stmt, Payslip, TD/FOL). Ensure forms filled correctly."
+   },
+   {
+    "type": "text",
+    "t": "Step 2: Login https://identity.huspy.com/auth/login-with-pwd?redirectUrl=https://mb.huspy.com/identity . Go to Client Hub -> Add New. Fill basic details. CRITICAL: DO NOT give correct email/phone to prevent client harassment. Use dummy info. Complete Profile & Mortgage Details. Save client."
+   },
+   {
+    "type": "text",
+    "t": "Step 3: Click \"Start Collection\" -> Select Bank -> Select Checklist. Create password (e.g., abc@123) and share internally. Logout and log back in to refresh. Enter Bank's ROI manually. Upload docs -> Review & Submit. Add brief client details in \"Additional Information\" and mention RM. Click \"Submit to Huspy\". Take snapshot and email areeb@huspy.io (CC: referrals@huspy.io, SalesProgressionDL@hfmcgroupuae.com, VirtualRM@hfmcgroupuae.com)."
+   },
+   {
+    "type": "text",
+    "t": "Post-Completion Update: If a case was submitted via Huspy, once the deal closes, log in to the portal -> go to the 'Cases' tab -> search the client name -> open case details -> click 'Upload Title Deed' -> upload successfully to see the confirmation message."
+   }
+  ]
+ },
+ "recommended-master-tracking-workbook-proposed-tool": {
+  "heading": "7.3 Recommended Master Tracking Workbook (Proposed Tool)",
+  "h2": "SECTION 7: Digital Systems, G-Drive Taxonomy & Workbook Blueprint",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "This is a suggested internal tracking structure, not an existing verified system — teams may adopt it to centralize the tracking currently spread across the Pending Client List, MIS, and G-Drive."
+   },
+   {
+    "type": "table",
+    "head": [
+     "Tab",
+     "Suggested Fields"
+    ],
+    "rows": [
+     [
+      "1. Master Pipeline Tracker",
+      "Case ID, Client Name, VRM, SPO, Bank, Status, Expected TAT"
+     ],
+     [
+      "2. Stage Control & Gateway Audit",
+      "Doc Audit, DBR %, LTV %, Valuation Result, FOL Check"
+     ],
+     [
+      "3. Settlement & Disbursal Calculator",
+      "Outstanding Liability, Shortfall, MC Split, DLD/ADM Fees"
+     ],
+     [
+      "4. Bank RM Directory & TAT Performance",
+      "Bank, RM Name, Contact, Active Cases, Avg Processing TAT (populate from Section 8.5)"
+     ]
+    ]
+   }
+  ]
+ },
+ "end-to-end-mortgage-process-with-tat-monitoring": {
+  "heading": "8.1 End-to-End Mortgage Process with TAT Monitoring",
+  "h2": "SECTION 8: Appendix — Quick Reference Directories & Matrices",
+  "blocks": [
+   {
+    "type": "table",
+    "head": [
+     "Stage",
+     "Target TAT",
+     "Owner",
+     "Key Monitoring Point / Escalation Trigger"
+    ],
+    "rows": [
+     [
+      "Lead Qualification",
+      "Same Day",
+      "RM 1 / VRM",
+      "Income, liabilities, transaction type"
+     ],
+     [
+      "Document Collection",
+      "1-5 Days",
+      "RM 1 / PA",
+      "Complete document set"
+     ],
+     [
+      "Bank Submission",
+      "Same Day",
+      "SPO",
+      "File submitted correctly (Deadline 4:30 PM UAE)"
+     ],
+     [
+      "Pre-Approval",
+      "2-5 Working Days",
+      "Bank",
+      "Approval amount issued. Escalate if >5 days."
+     ],
+     [
+      "Property Identification",
+      "Client Dependent",
+      "Client/RM",
+      "Property selected"
+     ],
+     [
+      "Valuation Request",
+      "1 Day",
+      "SPO",
+      "Valuation ordered"
+     ],
+     [
+      "Valuation Completion",
+      "2-5 Working Days",
+      "Bank/Valuer",
+      "Report received. Escalate if >5 days."
+     ],
+     [
+      "Final Credit Approval",
+      "1-3 Working Days",
+      "Bank",
+      "Conditions cleared"
+     ],
+     [
+      "FOL Issuance",
+      "1-2 Working Days",
+      "Bank",
+      "FOL issued. DIB: 3-5 Days. Escalate if >3 days delay."
+     ],
+     [
+      "FOL Signing",
+      "1-5 Days",
+      "RM/Client",
+      "Signed FOL received. Escalate if not signed in 7 days."
+     ],
+     [
+      "NOC Application",
+      "3-15 Days",
+      "Seller/Developer",
+      "NOC issued. Escalate if >15 days."
+     ],
+     [
+      "Transfer Booking",
+      "1-3 Days",
+      "SPO",
+      "Appointment confirmed (Request Day + 2 Days buffer)"
+     ],
+     [
+      "Transfer Completion",
+      "Same Day",
+      "All Parties",
+      "Ownership transferred"
+     ],
+     [
+      "Loan Booking",
+      "1-3 Working Days",
+      "Bank",
+      "Loan account created, DDA active"
+     ],
+     [
+      "Disbursal",
+      "1-5 Working Days",
+      "Bank",
+      "Funds released"
+     ]
+    ]
+   },
+   {
+    "type": "text",
+    "t": "Healthy Transaction Target: 20-45 Calendar Days."
+   }
+  ]
+ },
+ "document-validity-expiry-matrix": {
+  "heading": "8.2 Document Validity / Expiry Matrix",
+  "h2": "SECTION 8: Appendix — Quick Reference Directories & Matrices",
+  "blocks": [
+   {
+    "type": "table",
+    "head": [
+     "Document",
+     "Validity Period",
+     "Special Notes"
+    ],
+    "rows": [
+     [
+      "Salary Certificate",
+      "1 Month (Calendar Days)",
+      "Must be addressed to specific bank."
+     ],
+     [
+      "FOL",
+      "30 / 60 / 90 Days",
+      "Check specific date mentioned on FOL. (CBD: 60 calendar days)"
+     ],
+     [
+      "MOU",
+      "30 Working Days + 15 Days",
+      "W/ Addendum Letter for Extension. Must be valid until Loan Booking."
+     ],
+     [
+      "SPA",
+      "N/A",
+      "-"
+     ],
+     [
+      "ADM Valuation",
+      "30 Working Days",
+      "Abu Dhabi specific. Done by seller 2 days before transfer."
+     ],
+     [
+      "SOA",
+      "Depends",
+      "Must be valid at time of handover. ADCB needs 7 days validity for booking."
+     ],
+     [
+      "Developer NOC",
+      "1 Month (General)",
+      "Manazel/Aldar: 30 Days. Emaar: 15 Days. Nakheel: 5 Days."
+     ],
+     [
+      "Mortgage Search Cert (AD)",
+      "15 Days Only",
+      "Cannot be requested early."
+     ],
+     [
+      "ID Documents",
+      "Until Transfer Day",
+      "Passport, EID, Visa must be valid."
+     ],
+     [
+      "AECB Report",
+      "30 Days",
+      "Monitor for new liabilities after issuance."
+     ],
+     [
+      "Liability Letter (HSBC)",
+      "15 Days",
+      "Digital accepted if \"issued digital\" line present."
+     ],
+     [
+      "Liability Letter (CBD)",
+      "7 Calendar Days",
+      "Letter states 7 days. Excluding VAT (VAT applicable on Early Settlement Fees)."
+     ],
+     [
+      "Liability Letter (DIB)",
+      "10 Days",
+      "Inclusive of 5% VAT where applicable."
+     ],
+     [
+      "Liability Letter (ADIB)",
+      "10 Days",
+      "Settled at all ADIB branches except Mall branches. DXB Settlement: ENBD - Dubai Hills Mall."
+     ],
+     [
+      "Liability Letter (Mashreq Conv)",
+      "14 Days",
+      "Includes early settlement fees & daily interest. Not valid for buyout."
+     ],
+     [
+      "Liability Letter (Mashreq Isl)",
+      "15 Days",
+      "Must accompany copy of letter for bank cheque settlement."
+     ],
+     [
+      "Liability Letter (FAB)",
+      "10 Days",
+      "Must occur on or before this date."
+     ],
+     [
+      "Liability Letter (RAK)",
+      "15 Days",
+      "Balances may not include transactions processed on date of letter."
+     ],
+     [
+      "Liability Letter (ADCB)",
+      "15 Days",
+      "ESF on outstanding principal is 1.05% or 10,500 (whichever lower). AUH Settlement: Abu Dhabi Co-Op Society - Electra Branch."
+     ],
+     [
+      "Liability Letter (ENBD)",
+      "15 Days",
+      "Valid at least 2 days from submission of MC. DXB Settlement: ENBD Media Branch, Dubai Hills Mall."
+     ]
+    ]
+   }
+  ]
+ },
+ "mortgage-operations-risk-dashboard": {
+  "heading": "8.3 Mortgage Operations Risk Dashboard",
+  "h2": "SECTION 8: Appendix — Quick Reference Directories & Matrices",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "Monitor these daily:"
+   },
+   {
+    "type": "text",
+    "t": "FOL Expiring in 7 Days"
+   },
+   {
+    "type": "text",
+    "t": "NOC Expiring in 7 Days"
+   },
+   {
+    "type": "text",
+    "t": "Liability Letter Expiring in 3 Days"
+   },
+   {
+    "type": "text",
+    "t": "Valuation Expiring in 15 Days"
+   },
+   {
+    "type": "text",
+    "t": "Transfer Not Scheduled"
+   },
+   {
+    "type": "text",
+    "t": "Awaiting Manager's Cheques"
+   },
+   {
+    "type": "text",
+    "t": "Awaiting Insurance"
+   },
+   {
+    "type": "text",
+    "t": "Awaiting Mortgage Registration"
+   }
+  ]
+ },
+ "dld-trustee-offices-directory-dubai": {
+  "heading": "8.4 DLD Trustee Offices Directory (Dubai)",
+  "h2": "SECTION 8: Appendix — Quick Reference Directories & Matrices",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "There is no fixed Trustee office for a particular bank in Dubai. It is based on Bank/Client convenience."
+   },
+   {
+    "type": "table",
+    "head": [
+     "Trustee Office",
+     "Address",
+     "Contact / Email",
+     "Business Hours"
+    ],
+    "rows": [
+     [
+      "Tamleek",
+      "Emaar Square Bldg 2, Level G, Office G03, Downtown.",
+      "04 425 6666 / info@tamleekpt.ae",
+      "Mon-Thu 7:30am-4:30pm, Fri 7:30am-12:30pm"
+     ],
+     [
+      "Fast Track",
+      "Al Attar Business Center, Al Barsha 1, Sheikh Zayed Rd.",
+      "04 392 9023 / info@fast-track.ae",
+      "Sun-Thu 8:00am-5:00pm"
+     ],
+     [
+      "INJAZ",
+      "Emaar Business Park 3, Ground Floor, Sheikh Zayed Rd.",
+      "04 457 1111 / cs@injazrt.ae",
+      "Mon-Thu 7:30am-4:30pm, Fri 7:30am-12:30pm"
+     ],
+     [
+      "Seal",
+      "Bldg. 1, Office 501, Emaar Square.",
+      "04 361 7776 / info@sealra.com",
+      "Mon-Thu 8:00am-4:00pm, Fri 8:00am-1:00pm"
+     ],
+     [
+      "Tawteeq",
+      "The Metropolis Tower, Business Bay.",
+      "04 330 8888 / Info@tawtheeqdxb.com",
+      "Mon-Thu 8:00am-4:00pm, Fri 8:30am-12:30pm"
+     ],
+     [
+      "Approved Property",
+      "Al Masaood Tower 2, 2nd Floor, Deira.",
+      "04 228 1818 / Info@aprllc.ae",
+      "Mon-Thu 8:00am-4:00pm, Fri 8:00am-11:00am"
+     ],
+     [
+      "Al Manara",
+      "Al Manara Centre, Sheikh Zayed Rd.",
+      "04 338 8181 / Info@almanarapt.ae",
+      "Mon-Thu 7:30am-4:30pm, Fri 8:00am-12:00pm"
+     ],
+     [
+      "OnTime",
+      "Ground Floor, Mazaya Center, Sheikh Zayed Rd.",
+      "600 57 0007 / team@ontimetrustee.com",
+      "Sun-Thu 8:00am-6:00pm"
+     ],
+     [
+      "Amana Trust",
+      "Office 523, Fairmont Hotel Office Block, Sheikh Zayed Rd.",
+      "04 327 7774 / info@atrust.ae",
+      "Mon-Thu 8:00am-4:00pm, Fri 8:00am-1:00pm"
+     ],
+     [
+      "Al Tabu",
+      "Office 7, Al Barsha Mall, Al Barsha 2.",
+      "04 263 6622 / Admin@altabu.ae",
+      "Mon-Thu 7:30am-4:00pm, Fri 7:30am-12:30pm"
+     ],
+     [
+      "Afnan",
+      "Garhoud, Dubai.",
+      "04 262 6888 / Info@afnanrt.com",
+      "Mon-Thu 8:00am-4:00pm, Fri 8:00am-12:00pm"
+     ],
+     [
+      "Dorchester",
+      "Office G09, I Rise Tower, Al Barsha Heights.",
+      "04 441 0888 / Mohamed@dorchesterprt.com",
+      "Mon-Thu 8:00am-4:00pm, Fri 8:00am-12:00pm"
+     ],
+     [
+      "Mubayaa",
+      "136 Al Wuheida Rd, Sheikh Zayed Road.",
+      "04 384 7444 / info@mubayaa.ae",
+      "Sun-Thu 8:00am-5:00pm"
+     ]
+    ]
+   }
+  ]
+ },
+ "bank-rm-channel-partner-routing-list": {
+  "heading": "8.5 Bank RM & Channel Partner Routing List",
+  "h2": "SECTION 8: Appendix — Quick Reference Directories & Matrices",
+  "blocks": [
+   {
+    "type": "table",
+    "head": [
+     "Bank Name",
+     "Relationship Manager",
+     "Channel Partner"
+    ],
+    "rows": [
+     [
+      "Arab Bank",
+      "Pradipta Saha / Sourav",
+      "Direct"
+     ],
+     [
+      "Al Hilal Bank",
+      "Khouloud Azouzi",
+      "Prypco"
+     ],
+     [
+      "DIB",
+      "Babar / Nawzat",
+      "Direct"
+     ],
+     [
+      "ADIB",
+      "Mohd Zaffar (AUH) / Ali Riaz (DXB) / Rami Jrab",
+      "Direct"
+     ],
+     [
+      "Mashreq Bank",
+      "Samiksha Awasthi / Praveen",
+      "Huspy"
+     ],
+     [
+      "RAK Bank",
+      "Siji Kunjukutty / Brian Christy",
+      "Direct"
+     ],
+     [
+      "FAB Bank",
+      "Khouloud Azouzi",
+      "Prypco"
+     ],
+     [
+      "NBF",
+      "Eranga / Ranjeew / Harendra",
+      "Direct"
+     ],
+     [
+      "CBD",
+      "Khouloud Azouzi",
+      "Prypco"
+     ],
+     [
+      "HSBC Bank",
+      "Khouloud Azouzi / Dinesh",
+      "Prypco"
+     ],
+     [
+      "SCB Bank",
+      "Bilal / Khouloud Azouzi",
+      "Prypco"
+     ],
+     [
+      "ENBD",
+      "-",
+      "Prypco"
+     ],
+     [
+      "SIB",
+      "-",
+      "Huspy"
+     ]
+    ]
+   }
+  ]
+ },
+ "key-developer-directory-abu-dhabi-dubai": {
+  "heading": "8.6 Key Developer Directory (Abu Dhabi & Dubai)",
+  "h2": "SECTION 8: Appendix — Quick Reference Directories & Matrices",
+  "blocks": [
+   {
+    "type": "table",
+    "head": [
+     "Developer",
+     "Address",
+     "Contact / Email",
+     "Business Hours"
+    ],
+    "rows": [
+     [
+      "Aldar Properties",
+      "Yas Mall, Abu Dhabi.",
+      "800 25327 / customercare@aldar.com",
+      "9 AM to 5 PM Mon-Fri"
+     ],
+     [
+      "Manazel Real Estate",
+      "Prestige Tower 17, 14th Floor, MBZ City, AUH.",
+      "02 6444466",
+      "Mon-Thu 8:00am-4:00pm, Fri 8:00am-12:00pm"
+     ],
+     [
+      "Imkan",
+      "Warehouse 434 A, Mina Zoned, AUH.",
+      "800 46526",
+      "Mon-Thu 8:30am-4:30pm, Fri 8:30am-12:30pm"
+     ],
+     [
+      "Nakheel",
+      "King Salman St, Al Sufouh 2, Dubai.",
+      "04 390 3333",
+      "Mon-Thu 8:00am-5:00pm, Fri 8:00am-12:00pm / 2pm-5pm"
+     ],
+     [
+      "Emaar (HQ)",
+      "Level 7, Emaar Business Park 1, Dubai Hills Estate.",
+      "04 567 2030",
+      "-"
+     ],
+     [
+      "Emaar (AUH)",
+      "Al Nahda Tower, Ground Floor, Corniche - Muroor Rd, AUH.",
+      "02 410 1000",
+      "-"
+     ],
+     [
+      "Sobha Realty",
+      "Sobha Sapphire Bldg, Business Bay, Dubai.",
+      "04 423 8064 / helpdesk@sobharealty.com",
+      "-"
+     ],
+     [
+      "NIC",
+      "P.O. Box 46872, Abu Dhabi.",
+      "02 681 8900 / info@nicuae.ae",
+      "Mon-Fri 8:00am-5:00pm"
+     ],
+     [
+      "Wasl Properties",
+      "114 Sheikh Sabah Al Ahmad St, Bur Dubai.",
+      "04 398 6666 / info@wasl.ae",
+      "8 AM to 5 PM Mon-Fri"
+     ],
+     [
+      "Dubai Properties",
+      "www.dp.ae",
+      "800 37823 / customersupport@dp.ae",
+      "-"
+     ],
+     [
+      "Ellington Properties",
+      "16th Floor, Burlington Tower, Business Bay.",
+      "800 8288 / customercare@ellingtonproperties.ae",
+      "-"
+     ],
+     [
+      "Jubail Island",
+      "Jubail Island, Abu Dhabi.",
+      "056 536 0663 / handover@jubailisland.ae",
+      "9 AM-5 PM Mon-Thu, Fri 9am-1pm, Sun 10am-5pm"
+     ]
+    ]
+   }
+  ]
+ },
+ "municipality-dari-locations-abu-dhabi": {
+  "heading": "8.7 Municipality & DARI Locations (Abu Dhabi)",
+  "h2": "SECTION 8: Appendix — Quick Reference Directories & Matrices",
+  "blocks": [
+   {
+    "type": "table",
+    "head": [
+     "Location",
+     "Address",
+     "Contact / Hours"
+    ],
+    "rows": [
+     [
+      "ADM (New Location - Transfers)",
+      "Next to International Community School, Al Danah.",
+      "02 301 7200 / Mon-Thu 7am-4pm, Fri 7am-12:30pm"
+     ],
+     [
+      "ADM (Gate 8 - Old Location)",
+      "45 Dr Abdulrahman Makhlouf St, Al Danah.",
+      "For opening accounts only."
+     ],
+     [
+      "DARI Office",
+      "Yas Mall, Yas Island, Abu Dhabi.",
+      "600 523 333 / support@dari.ae / Mon-Thu 8am-4pm, Fri 8am-12pm"
+     ],
+     [
+      "ADGM Transfer Office",
+      "9th Floor, Al Khatem Tower, Al Maryah Island.",
+      "-"
+     ]
+    ]
+   }
+  ]
+ },
+ "bank-transfer-addresses-abu-dhabi-dubai": {
+  "heading": "8.8 Bank Transfer Addresses (Abu Dhabi & Dubai)",
+  "h2": "SECTION 8: Appendix — Quick Reference Directories & Matrices",
+  "blocks": [
+   {
+    "type": "table",
+    "head": [
+     "Bank",
+     "Abu Dhabi Branch / Settlement",
+     "Dubai Branch / Settlement"
+    ],
+    "rows": [
+     [
+      "ADIB",
+      "Al Bateen Branch",
+      "Building 6, Emaar Square, Downtown / Emaar Business Park"
+     ],
+     [
+      "ADCB",
+      "AUH Settlement: Abu Dhabi Co-Op Society - Electra Branch",
+      "Bank Street / Khalid Bin Waleed St, Al Mankool"
+     ],
+     [
+      "BOB",
+      "Al Jazeera Tower, Hamdan Street",
+      "-"
+     ],
+     [
+      "CBD",
+      "Zayed The First St",
+      "Al Quoz Branch"
+     ],
+     [
+      "DIB",
+      "Salam Street, Al Danah",
+      "Deira Clock Tower"
+     ],
+     [
+      "ENBD",
+      "-",
+      "Nad Al Sheba Head Office / Al Barsha 2"
+     ],
+     [
+      "HSBC",
+      "-",
+      "HSBC Tower, Downtown Dubai"
+     ],
+     [
+      "Mashreq",
+      "Blue Tower, Khalifa Street",
+      "Burjuman / Internet City"
+     ],
+     [
+      "NBF",
+      "-",
+      "-"
+     ],
+     [
+      "RAK",
+      "-",
+      "Dubai Silicon Oasis"
+     ]
+    ]
+   }
+  ]
+ },
+ "employer-specific-id-requirements-salaried-clients": {
+  "heading": "8.9 Employer-Specific ID Requirements (Salaried Clients)",
+  "h2": "SECTION 8: Appendix — Quick Reference Directories & Matrices",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "If the client works for any of the following entities, ensure the specific ID document is collected in addition to standard KYC:"
+   },
+   {
+    "type": "table",
+    "head": [
+     "Employer",
+     "Category",
+     "Required Additional Document"
+    ],
+    "rows": [
+     [
+      "Cleveland Clinic Abu Dhabi",
+      "Semi-Gov",
+      "Office ID"
+     ],
+     [
+      "ADNOC",
+      "Semi-Gov",
+      "Office ID"
+     ],
+     [
+      "Global Aerospace Logistics (GAL)",
+      "Gov",
+      "Office ID"
+     ],
+     [
+      "One Investment Management (ONE M)",
+      "Freezone",
+      "Office ID"
+     ],
+     [
+      "Abu Dhabi Media Office",
+      "Gov",
+      "Office ID"
+     ],
+     [
+      "Zayed Higher Organization for People of Determination",
+      "Gov",
+      "Office ID"
+     ],
+     [
+      "Commercial Bank of Dubai (CBD)",
+      "Gov",
+      "Office ID"
+     ],
+     [
+      "Crown Plaza Hotel",
+      "Private",
+      "Office ID"
+     ],
+     [
+      "Etihad Airways",
+      "Private",
+      "Office ID"
+     ],
+     [
+      "Fakih Fertility Centre",
+      "Private",
+      "Labor Card & Contract"
+     ],
+     [
+      "ETG - Agri Commodities (Dubai)",
+      "Freezone",
+      "Office ID"
+     ],
+     [
+      "ETG - Agri Commodities (RAK)",
+      "Industrial",
+      "Labor Card & Contract"
+     ],
+     [
+      "Abu Dhabi Grammar School (Canada)",
+      "Private",
+      "Labour Card"
+     ],
+     [
+      "Burjeel Hospital",
+      "Private",
+      "Labour Card"
+     ]
+    ]
+   }
+  ]
+ },
+ "governance-disclaimer": {
+  "heading": "SECTION 9: Governance Disclaimer",
+  "h2": "SECTION 9: Governance Disclaimer",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "DISCLAIMER & REGULATORY NOTICE: Dubai Land Department (DLD), Abu Dhabi Municipality (ADM), and ADGM have the authority to modify charges and fees at their discretion without prior notice. Always verify current rates prior to final transfer scheduling."
+   },
+   {
+    "type": "text",
+    "t": "This Guidebook itself is subject to the same principle: as procedures, personnel, and bank policies evolve, this document must be reviewed and updated by the team to remain an accurate operational reference, in line with the note set out in the Preface and Document Control section."
+   }
+  ]
+ },
+ "transfer-template-ashraf": {
+  "heading": "Transfer charges template — Ashraf (buyout, Abu Dhabi)",
+  "h2": "SECTION 6: STAGE 4 — Final Transfer & Disbursal SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "Good Day"
+   },
+   {
+    "type": "text",
+    "t": "Hope you're doing well!!!"
+   },
+   {
+    "type": "text",
+    "t": "Please find the details for your transfer scheduled confirmed on:"
+   },
+   {
+    "type": "text",
+    "t": "Date: To be confirmed"
+   },
+   {
+    "type": "text",
+    "t": "Time: To be confirmed"
+   },
+   {
+    "type": "text",
+    "t": "Location: To be confirmed"
+   },
+   {
+    "type": "text",
+    "t": "Documents to be carried:"
+   },
+   {
+    "type": "text",
+    "t": "Original Passport and Emirates ID"
+   },
+   {
+    "type": "text",
+    "t": "Cash/Debit/Credit Card for Payments"
+   },
+   {
+    "type": "text",
+    "t": "Proper Dress Code (No Sleeveless and Shorts Allowed)"
+   },
+   {
+    "type": "text",
+    "t": "UAE pass to be active."
+   },
+   {
+    "type": "text",
+    "t": "Sir For your Preparation in Advance Please See the Below Approximately Charges at the Time of Final Transfer in Abu Dhabi Municipality,"
+   },
+   {
+    "type": "table",
+    "head": [
+     "Abu Dhabi Municipality",
+     "Charges",
+     "Payment Methods"
+    ],
+    "rows": [
+     [
+      "Mortgage Registration Fees (0.1% of the Finance Amount)",
+      "AED 1750.00",
+      "Cash, Credit / Debit card"
+     ],
+     [
+      "Mortgage Release Fees (Fixed fee)",
+      "AED 900",
+      "Cash, Credit / Debit card"
+     ],
+     [
+      "Electronic Administration Service Allowance (Fixed fee including 5% VAT)",
+      "AED 420",
+      "Cash, Credit / Debit card"
+     ],
+     [
+      "TOTAL",
+      "AED 3070.00"
+     ]
+    ]
+   },
+   {
+    "type": "text",
+    "t": "NOTE: On Debit and credit card, they charge extra AED 3/- per swipe."
+   },
+   {
+    "type": "text",
+    "t": "Please feel free to contact me for any further queries you may have."
+   }
+  ]
+ },
+ "transfer-template-daniil": {
+  "heading": "Transfer charges template — Daniil (resale, Abu Dhabi)",
+  "h2": "SECTION 6: STAGE 4 — Final Transfer & Disbursal SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "Dear All,"
+   },
+   {
+    "type": "text",
+    "t": "Warm greetings! Hope this email finds you well."
+   },
+   {
+    "type": "text",
+    "t": "Please find the details for your final transfer scheduled on:"
+   },
+   {
+    "type": "text",
+    "t": "Date: To be confirm"
+   },
+   {
+    "type": "text",
+    "t": "Time: To be confirm"
+   },
+   {
+    "type": "text",
+    "t": "Location: To be confirm"
+   },
+   {
+    "type": "text",
+    "t": "Attendees:"
+   },
+   {
+    "type": "text",
+    "t": "Mr. Daniil Troshkov - Buyer"
+   },
+   {
+    "type": "text",
+    "t": "Mr. Naweed Merza Abbas Baig - Seller"
+   },
+   {
+    "type": "text",
+    "t": "Crompton Partners Estate Agents LLC - Agent"
+   },
+   {
+    "type": "text",
+    "t": "Documents to be carried:"
+   },
+   {
+    "type": "text",
+    "t": "Original Passport and Emirates ID"
+   },
+   {
+    "type": "text",
+    "t": "Cash/Debit/Credit Card for Payments"
+   },
+   {
+    "type": "text",
+    "t": "Proper Dress Code (No Sleeveless and Shorts Allowed)"
+   },
+   {
+    "type": "text",
+    "t": "UAE pass to be active."
+   },
+   {
+    "type": "text",
+    "t": "Financial Summary:"
+   },
+   {
+    "type": "text",
+    "t": "MOU Price/Purchase Price: AED 7,90,000/-"
+   },
+   {
+    "type": "text",
+    "t": "ADM Valuation Price: AED [Insert]"
+   },
+   {
+    "type": "text",
+    "t": "Market Value: AED 850,000/-"
+   },
+   {
+    "type": "text",
+    "t": "Bank Finance / FOL Price: AED 6,32,000"
+   },
+   {
+    "type": "text",
+    "t": "Sir Daniil, kindly note that Bank will bring the balance amount cheque under the name of seller Mr. Naweed Merza Abbas Baig on the day of transfer."
+   },
+   {
+    "type": "text",
+    "t": "Sir Daniil, for your preparation in advance please find the below details to be Paid on the day of Transfer:"
+   },
+   {
+    "type": "table",
+    "head": [
+     "Details",
+     "Charges",
+     "Payment Methods"
+    ],
+    "rows": [
+     [
+      "Self-Contribution",
+      "158,000.00",
+      "Under the name of Mr. Martin Thomas Curtis"
+     ],
+     [
+      "ADM Transfer Fees (2% of ADM Valuation Price or MOU Price Whichever is higher)",
+      "15,800.00",
+      "Under the name Abu Dhabi Municipality"
+     ],
+     [
+      "Real Estate Agency Fee (2% of Property Price + 5% VAT)",
+      "16,590.00",
+      "Under the name of Crompton Partners Estate Agents LLC"
+     ],
+     [
+      "ADM Mortgage registration fee (0.1% of the finance amount)",
+      "632.00",
+      "Cash, Credit / Debit card"
+     ],
+     [
+      "ADM Electronic Registration Fee",
+      "420.00",
+      "Cash, Credit / Debit card"
+     ],
+     [
+      "TOTAL",
+      "AED 191,442.00"
+     ]
+    ]
+   },
+   {
+    "type": "text",
+    "t": "Naweed Merza Abbas Baig, for your preparation in advance please find the below details to be Paid on the day of Transfer:"
+   },
+   {
+    "type": "table",
+    "head": [
+     "Details",
+     "Charges",
+     "Payment Methods"
+    ],
+    "rows": [
+     [
+      "Abu Dhabi Mortgage Release fee",
+      "AED 900.00",
+      "Cash, Credit / Debit card"
+     ]
+    ]
+   }
+  ]
+ },
+ "transfer-template-flavio": {
+  "heading": "Transfer charges template — Flavio (resale, Abu Dhabi)",
+  "h2": "SECTION 6: STAGE 4 — Final Transfer & Disbursal SOP",
+  "blocks": [
+   {
+    "type": "text",
+    "t": "Dear All,"
+   },
+   {
+    "type": "text",
+    "t": "Warm greetings! Hope this email finds you well."
+   },
+   {
+    "type": "text",
+    "t": "Please find the details for your final transfer scheduled on:"
+   },
+   {
+    "type": "text",
+    "t": "Date: To be confirm"
+   },
+   {
+    "type": "text",
+    "t": "Time: To be confirm"
+   },
+   {
+    "type": "text",
+    "t": "Location: To be confirm"
+   },
+   {
+    "type": "text",
+    "t": "Attendees:"
+   },
+   {
+    "type": "text",
+    "t": "Mr. Flavio Prudencio - Buyer"
+   },
+   {
+    "type": "text",
+    "t": "Mr. Martin Thomas Curtis - Seller"
+   },
+   {
+    "type": "text",
+    "t": "Crompton Partners Estate Agents LLC - Agent"
+   },
+   {
+    "type": "text",
+    "t": "Documents to be carried:"
+   },
+   {
+    "type": "text",
+    "t": "Original Passport and Emirates ID"
+   },
+   {
+    "type": "text",
+    "t": "Cash/Debit/Credit Card for Payments"
+   },
+   {
+    "type": "text",
+    "t": "Proper Dress Code (No Sleeveless and Shorts Allowed)"
+   },
+   {
+    "type": "text",
+    "t": "UAE pass to be active."
+   },
+   {
+    "type": "text",
+    "t": "Financial Summary:"
+   },
+   {
+    "type": "text",
+    "t": "MOU Price/Purchase Price: AED 1,600,000 /-"
+   },
+   {
+    "type": "text",
+    "t": "ADM Valuation Price: AED [Insert]"
+   },
+   {
+    "type": "text",
+    "t": "Market Value: AED 1,520,000/-"
+   },
+   {
+    "type": "text",
+    "t": "Bank Finance / FOL Price: AED 1,264,640 (Loan Amount AED 1,216,000 plus Extra Finance of AED 48,640)"
+   },
+   {
+    "type": "text",
+    "t": "Sir Flavio, kindly note that Bank will bring the balance amount cheque under the name of seller Mr. Martin Thomas Curtis on the day of transfer."
+   },
+   {
+    "type": "text",
+    "t": "Sir Flavio, for your preparation in advance please find the below details to be Paid on the day of Transfer:"
+   },
+   {
+    "type": "table",
+    "head": [
+     "Details",
+     "Charges",
+     "Payment Methods"
+    ],
+    "rows": [
+     [
+      "Self-Contribution",
+      "384,000.00",
+      "Under the name of Mr. Martin Thomas Curtis"
+     ],
+     [
+      "ADM Transfer Fees (2% of ADM Valuation Price or MOU Price Whichever is higher)",
+      "6080.00",
+      "Under the name Abu Dhabi Municipality"
+     ],
+     [
+      "Real Estate Agency Fee (2% of Property Price + 5% VAT)",
+      "7600.00",
+      "Under the name of Deals Experts Real Estate"
+     ],
+     [
+      "ADM Mortgage registration fee (0.1% of the finance amount)",
+      "1264.64",
+      "Cash, Credit / Debit card"
+     ],
+     [
+      "ADM Electronic Registration Fee",
+      "420.00",
+      "Cash, Credit / Debit card"
+     ],
+     [
+      "TOTAL",
+      "AED 399,364.64"
+     ]
+    ]
+   },
+   {
+    "type": "text",
+    "t": "Important Bank Cheque Instructions for Transfer Day:"
+   },
+   {
+    "type": "text",
+    "t": "1. On the day transfer, RAK Bank will bring Manager's Cheque in the Amount of AED 24,320/- under the name of ABU DHABI MUNICIPALITY"
+   },
+   {
+    "type": "text",
+    "t": "2. On the day transfer, RAK Bank will bring Manager's cheque in the Amount of AED 24,320/- under the name of Deals Experts Real Estate."
+   },
+   {
+    "type": "text",
+    "t": "Martin Thomas Curtis, for your preparation in advance please find the below details to be Paid on the day of Transfer:"
+   },
+   {
+    "type": "table",
+    "head": [
+     "Details",
+     "Charges",
+     "Payment Methods"
+    ],
+    "rows": [
+     [
+      "Abu Dhabi Mortgage Release fee",
+      "AED 900.00",
+      "Cash, Credit / Debit card"
+     ]
+    ]
+   },
+   {
+    "type": "text",
+    "t": "Note: Managers cheque is a guarantee cheque, demand draft prepared by the bank which has your money. It is signed by the bank authorized person by debiting the money from your account. It is not a normal cheque."
+   },
+   {
+    "type": "text",
+    "t": "If any payment through debit or credit card - then it will be just one swipe, it cannot be multiple swipe. Please speak to your bank in advance about the swipe to ensure - debit card or credit card is not having one swipe limit restriction."
+   },
+   {
+    "type": "text",
+    "t": "Please feel free to contact us for any further queries you may have."
+   }
+  ]
+ }
+}

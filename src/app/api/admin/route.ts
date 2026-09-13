@@ -3,7 +3,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { currentUser, flagsFor } from "@/lib/auth";
-import { serBank, serPartner, serStage, serMaster, serUser, serChannel } from "@/lib/ser";
+import { serBank, serPartner, serStage, serMaster, serUser, serChannel, serDocRule, serFeeRule } from "@/lib/ser";
 
 async function guard() {
   const me = await currentUser();
@@ -33,6 +33,8 @@ export async function GET(req: NextRequest) {
   if (kind === "designations") return NextResponse.json({ items: await db.designation.findMany({ orderBy: { id: "asc" } }) });
   if (kind === "channels") return NextResponse.json({ items: (await db.channelItem.findMany({ orderBy: { id: "asc" } })).map(serChannel) });
   if (kind === "sla") return NextResponse.json({ items: await db.slaRule.findMany({ orderBy: { id: "asc" } }) });
+  if (kind === "docrules") return NextResponse.json({ items: (await db.docRule.findMany({ orderBy: { id: "asc" } })).map(serDocRule) });
+  if (kind === "feerules") return NextResponse.json({ items: (await db.feeRule.findMany({ orderBy: [{ emirate: "asc" }, { sortOrder: "asc" }] })).map(serFeeRule) });
   return NextResponse.json({ error: "kind required" }, { status: 400 });
 }
 
@@ -47,7 +49,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ item: serBank(item) });
     }
     if (kind === "partner") {
-      const item = await db.partnerItem.create({ data: { kind: body.partnerKind, name: body.name, defaultSharePct: body.defaultSharePct ?? 20, active: body.active ?? true } });
+      const item = await db.partnerItem.create({ data: { kind: body.partnerKind, name: body.name, defaultSharePct: body.defaultSharePct ?? 20, password: body.password || "agent123", active: body.active ?? true } });
       return NextResponse.json({ item: serPartner(item) });
     }
     if (kind === "channel") {
@@ -68,12 +70,43 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ item: serUser(item) });
     }
     if (kind === "designation") {
-      const item = await db.designation.create({ data: { name: body.name, scope: body.scope ?? "own", issueTasks: !!body.issueTasks, admin: !!body.admin, super: !!body.super, builtIn: false } });
+      const item = await db.designation.create({ data: { name: body.name, scope: body.scope ?? "own", issueTasks: !!body.issueTasks, admin: !!body.admin, super: !!body.super, viewRevenue: !!body.viewRevenue, builtIn: false } });
       return NextResponse.json({ item });
     }
     if (kind === "sla") {
       const item = await db.slaRule.create({ data: { stage: body.stage, bank: body.bank ?? null, maxDays: body.maxDays, active: true } });
       return NextResponse.json({ item });
+    }
+    if (kind === "docrule") {
+      const item = await db.docRule.create({
+        data: {
+          name: body.name, category: body.category ?? "KYC",
+          validityDays: body.validityDays ?? 0, warnDays: body.warnDays ?? 7,
+          verifyNotes: body.verifyNotes ?? "",
+          applicableEmployment: JSON.stringify(body.applicableEmployment?.length ? body.applicableEmployment : ["all"]),
+          applicablePropertyType: JSON.stringify(body.applicablePropertyType?.length ? body.applicablePropertyType : ["any"]),
+          applicableTransaction: JSON.stringify(body.applicableTransaction?.length ? body.applicableTransaction : ["any"]),
+          applicableResidency: JSON.stringify(body.applicableResidency?.length ? body.applicableResidency : ["all"]),
+          mandatory: body.mandatory ?? true,
+          visibleToClient: body.visibleToClient ?? true,
+          clientCanUpload: body.clientCanUpload ?? true,
+          expiryTrackingRequired: body.expiryTrackingRequired ?? ((body.validityDays ?? 0) > 0 || (body.warnDays ?? 0) > 0),
+          active: body.active ?? true,
+        },
+      });
+      return NextResponse.json({ item: serDocRule(item) });
+    }
+    if (kind === "feerule") {
+      const max = await db.feeRule.aggregate({ where: { emirate: body.emirate, txnType: body.txnType }, _max: { sortOrder: true } });
+      const item = await db.feeRule.create({
+        data: {
+          emirate: body.emirate, txnType: body.txnType, label: body.label,
+          amountType: body.amountType ?? "fixed", amount: body.amount ?? 0,
+          paidBy: body.paidBy ?? "Client", note: body.note ?? "",
+          sortOrder: body.sortOrder ?? (max._max.sortOrder ?? 0) + 1, active: body.active ?? true,
+        },
+      });
+      return NextResponse.json({ item: serFeeRule(item) });
     }
     return NextResponse.json({ error: "unknown kind" }, { status: 400 });
   } catch (e) {
@@ -93,7 +126,7 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ item: serBank(item) });
     }
     if (kind === "partner") {
-      const item = await db.partnerItem.update({ where: { id: numId }, data: { name: body.name, kind: body.partnerKind, defaultSharePct: body.defaultSharePct, active: body.active } });
+      const item = await db.partnerItem.update({ where: { id: numId }, data: { name: body.name, kind: body.partnerKind, defaultSharePct: body.defaultSharePct, password: body.password || undefined, active: body.active } });
       return NextResponse.json({ item: serPartner(item) });
     }
     if (kind === "channel") {
@@ -115,12 +148,42 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ item: serUser(item) });
     }
     if (kind === "designation") {
-      const item = await db.designation.update({ where: { id: numId }, data: { name: body.name, scope: body.scope, issueTasks: !!body.issueTasks, admin: !!body.admin, super: !!body.super } });
+      const item = await db.designation.update({ where: { id: numId }, data: { name: body.name, scope: body.scope, issueTasks: !!body.issueTasks, admin: !!body.admin, super: !!body.super, viewRevenue: !!body.viewRevenue } });
       return NextResponse.json({ item });
     }
     if (kind === "sla") {
       const item = await db.slaRule.update({ where: { id: numId }, data: { stage: body.stage, bank: body.bank ?? null, maxDays: body.maxDays, active: body.active } });
       return NextResponse.json({ item });
+    }
+    if (kind === "docrule") {
+      const item = await db.docRule.update({
+        where: { id: numId },
+        data: {
+          name: body.name, category: body.category, validityDays: body.validityDays,
+          warnDays: body.warnDays, verifyNotes: body.verifyNotes,
+          ...(body.applicableEmployment ? { applicableEmployment: JSON.stringify(body.applicableEmployment) } : {}),
+          ...(body.applicablePropertyType ? { applicablePropertyType: JSON.stringify(body.applicablePropertyType) } : {}),
+          ...(body.applicableTransaction ? { applicableTransaction: JSON.stringify(body.applicableTransaction) } : {}),
+          ...(body.applicableResidency ? { applicableResidency: JSON.stringify(body.applicableResidency) } : {}),
+          ...(body.mandatory !== undefined ? { mandatory: !!body.mandatory } : {}),
+          ...(body.visibleToClient !== undefined ? { visibleToClient: !!body.visibleToClient } : {}),
+          ...(body.clientCanUpload !== undefined ? { clientCanUpload: !!body.clientCanUpload } : {}),
+          ...(body.expiryTrackingRequired !== undefined ? { expiryTrackingRequired: !!body.expiryTrackingRequired } : {}),
+          active: body.active,
+        },
+      });
+      return NextResponse.json({ item: serDocRule(item) });
+    }
+    if (kind === "feerule") {
+      const item = await db.feeRule.update({
+        where: { id: numId },
+        data: {
+          emirate: body.emirate, txnType: body.txnType, label: body.label,
+          amountType: body.amountType, amount: body.amount, paidBy: body.paidBy,
+          note: body.note, sortOrder: body.sortOrder, active: body.active,
+        },
+      });
+      return NextResponse.json({ item: serFeeRule(item) });
     }
     return NextResponse.json({ error: "unknown kind" }, { status: 400 });
   } catch (e) {
@@ -145,6 +208,8 @@ export async function DELETE(req: NextRequest) {
     else if (kind === "user") await db.user.delete({ where: { id: numId } });
     else if (kind === "designation") await db.designation.delete({ where: { id: numId } });
     else if (kind === "sla") await db.slaRule.delete({ where: { id: numId } });
+    else if (kind === "docrule") await db.docRule.delete({ where: { id: numId } });
+    else if (kind === "feerule") await db.feeRule.delete({ where: { id: numId } });
     else return NextResponse.json({ error: "unknown kind" }, { status: 400 });
     return NextResponse.json({ ok: true });
   } catch (e) {
