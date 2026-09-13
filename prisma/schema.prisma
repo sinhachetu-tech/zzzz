@@ -282,7 +282,9 @@ model BankProduct {
   paValidityDays    Int?
   folValidityDays   Int?
   valuationValidityDays Int?
-  pricingJson       String @default("{}") // structured rate quotes (see lib/bank-pricing.ts)
+  pricingJson       String @default("{}")
+  feesJson          String @default("{}") // structured bank fees (processing / settlements)
+  insuranceJson     String @default("{}") // structured insurance rates // structured rate quotes (see lib/bank-pricing.ts)
   rateTable         String @default("") // segmented pricing text (fixed/variable/buyout/equity)
   stressTest        String @default("")
   fees              String @default("")

@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { currentUser, flagsFor } from "@/lib/auth";
 import { serCase, serDocRule } from "@/lib/ser";
 import { runBankMatch, canonicalTxn } from "@/lib/bank-match";
+import { parseFees, parseInsurance, processingFeePct, lifeInsuranceMonthly, propertyInsuranceYearly } from "@/lib/bank-fees";
 import type { FeeRule } from "@/lib/types";
 
 export async function POST(req: NextRequest) {
@@ -103,7 +104,17 @@ export async function POST(req: NextRequest) {
       emirate, feeTxn,
     },
     input,
-    results: results.map((r) => ({ ...r, logoUrl: logoFor(r.bankName), commission: mode === "internal" ? commission[r.bankProductId] ?? null : null })),
+    results: results.map((r) => {
+      const prod = products.find((pp) => pp.id === r.bankProductId);
+      const fees = parseFees((prod as unknown as { feesJson?: string })?.feesJson ?? "{}");
+      const ins = parseInsurance((prod as unknown as { insuranceJson?: string })?.insuranceJson ?? "{}");
+      const procPct = processingFeePct(fees, feeTxn);
+      const processingFee = procPct != null ? Math.round((input.loanAmount * procPct) / 100) : null;
+      const lifeMonthly = lifeInsuranceMonthly(ins, input.loanAmount);
+      const propertyYearly = propertyInsuranceYearly(ins, input.propertyValue);
+      return { ...r, logoUrl: logoFor(r.bankName), commission: mode === "internal" ? commission[r.bankProductId] ?? null : null,
+        bankCosts: { processingFeePct: procPct, processingFee, lifeMonthly, propertyYearly } };
+    }),
     costs: {
       equity,
       transferFees: clientTransferFees,

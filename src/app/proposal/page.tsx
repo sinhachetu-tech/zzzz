@@ -26,6 +26,7 @@ interface ProposalResult {
   monthlyEmi: number | null;
   reasons: string[];
   commission: { gross: number; partnerCut: number; net: number; ratePct: number; partnerSharePct: number } | null;
+  bankCosts: { processingFeePct: number | null; processingFee: number | null; lifeMonthly: number | null; propertyYearly: number | null };
 }
 interface ProposalData {
   mode: "client" | "internal";
@@ -128,6 +129,13 @@ export default function ProposalPage() {
               <span>EMI on requested: {fmt(r.monthlyEmi)}</span>
               {r.reasons.length > 0 && <span style={{ color: "var(--coral)" }}>{r.reasons.join(" · ")}</span>}
             </div>
+            {r.bankCosts && (r.bankCosts.processingFee != null || r.bankCosts.lifeMonthly != null) && (
+              <div className="flex flex-wrap gap-x-4 gap-y-1 mono text-[11px] mt-1.5" style={{ color: "var(--ink-dim)" }}>
+                {r.bankCosts.processingFee != null && <span>bank processing fee: {fmt(r.bankCosts.processingFee)}{r.bankCosts.processingFeePct != null ? " (" + r.bankCosts.processingFeePct + "%)" : ""}</span>}
+                {r.bankCosts.lifeMonthly != null && <span>life insurance: ~{fmt(r.bankCosts.lifeMonthly)}/mo</span>}
+                {r.bankCosts.propertyYearly != null && <span>property insurance: ~{fmt(r.bankCosts.propertyYearly)}/yr</span>}
+              </div>
+            )}
           </div>
         ))}
 
