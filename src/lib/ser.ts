@@ -1,7 +1,7 @@
 // Serialization: Prisma row → API DTO matching the original HFMC types.
 import type {
   Activity, BankItem, BulletinItem, CasePartner, Instruction, LoanCase,
-  BankProduct, CaseDocument, DocRule, FeeRule, MasterItem, PartnerItem, Reply, SlaRule, StageItem, StageTransition, StageTransitionDto, Task, User,
+  BankProduct, CaseDocument, CaseUpdate, DocRule, FeeRule, MasterItem, PartnerItem, Reply, SlaRule, StageItem, StageTransition, StageTransitionDto, Task, User,
 } from "./types";
 
 type PrismaUser = {
@@ -374,5 +374,19 @@ export function serFeeRule(f: PrismaFeeRuleRow): FeeRule {
     id: f.id, emirate: f.emirate as FeeRule["emirate"], txnType: f.txnType as FeeRule["txnType"],
     label: f.label, amountType: f.amountType as FeeRule["amountType"], amount: f.amount,
     paidBy: f.paidBy, note: f.note, sortOrder: f.sortOrder, active: f.active,
+  };
+}
+
+type PrismaCaseUpdateRow = {
+  id: number; caseId: number; date: string; note: string; onHold: boolean;
+  holdReason: string; authorId: number; createdAt: Date;
+  author?: { name: string } | null;
+};
+export function serCaseUpdate(u: PrismaCaseUpdateRow): CaseUpdate {
+  return {
+    id: u.id, caseId: u.caseId, date: u.date, note: u.note, onHold: u.onHold,
+    holdReason: u.holdReason, authorId: u.authorId,
+    authorName: (u as unknown as { author?: { name?: string } }).author?.name ?? null,
+    createdAt: u.createdAt.toISOString(),
   };
 }

@@ -1,13 +1,13 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useHfmcStore } from "@/lib/client-store";
-import type { CaseSource, LoanCase } from "@/lib/types";
+import type { CaseSource, LoanCase, User } from "@/lib/types";
 import { SOURCES } from "@/lib/types";
 import { computeEscalations, activityPerDay } from "@/lib/domain";
 import {
-  TONE_HEX, ageDays, commissionFor, downloadCSV, fmtMoney, fmtMoneyFull, fmtRate,
+  TONE_HEX, ageDays, commissionFor, downloadCSV, fmtDate, fmtMoney, fmtMoneyFull, fmtRate,
   primaryBank, todayISO,
 } from "@/lib/format";
 import { Avatar, Chip, EmptyState, SectionLabel } from "@/components/hfmc/ui";
@@ -88,11 +88,129 @@ function CountUp({ target, format }: { target: number; format?: (n: number) => s
   return <>{format ? format(v) : v}</>;
 }
 
+/* ---------- daily MIS report (team leader's register) ---------- */
+
+function DailyMisReport({ visCases, userById, toast }: {
+  visCases: LoanCase[];
+  userById: (id: number) => User | undefined;
+  toast: (kind: "success" | "error" | "info", msg: string) => void;
+}) {
+  const { caseUpdates, users, flags } = useHfmcStore();
+  const [scope, setScope] = useState<"today" | "date" | "month">("today");
+  const [dateVal, setDateVal] = useState(todayISO());
+  const [monthVal, setMonthVal] = useState(todayISO().slice(0, 7));
+  const [team, setTeam] = useState("all");
+  const [activeOnly, setActiveOnly] = useState(true);
+
+  const teams = useMemo(() => [...new Set(users.map((u) => u.team))], [users]);
+  const teamsOf = (caseRow: LoanCase) => userById(caseRow.ownerId)?.team ?? "—";
+
+  const inScopeDate = (date: string) =>
+    scope === "today" ? date === todayISO() : scope === "date" ? date === dateVal : date.startsWith(monthVal);
+
+  const rows = useMemo(() => {
+    return visCases
+      .filter((c) => (activeOnly ? c.caseStatus === "Active" : true))
+      .filter((c) => team === "all" || teamsOf(c) === team)
+      .map((c) => {
+        const updates = caseUpdates
+          .filter((u) => u.caseId === c.id && inScopeDate(u.date))
+          .sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
+        const latest = updates[0] ?? null;
+        return { c, latest, updateCount: updates.length };
+      })
+      .sort((a, b) => {
+        // not-updated cases float to the top as the work list
+        const aMissing = a.latest ? 1 : 0;
+        const bMissing = b.latest ? 1 : 0;
+        return aMissing - bMissing || (b.latest?.date ?? "").localeCompare(a.latest?.date ?? "");
+      });
+  }, [visCases, caseUpdates, team, activeOnly, scope, dateVal, monthVal]);
+
+  const pending = rows.filter((r) => !r.latest && r.c.caseStatus === "Active").length;
+  const holds = rows.filter((r) => r.latest?.onHold).length;
+
+  const exportCsv = () => {
+    downloadCSV(
+      scope === "month" ? `hfmc-daily-mis-${monthVal}.csv` : `hfmc-daily-mis-${scope === "today" ? todayISO() : dateVal}.csv`,
+      ["Case #", "Customer", "Team", "Stage", "Status", "Updates in scope", "Last update date", "On hold", "Update", "Author"],
+      rows.map((r) => [
+        r.c.caseNumber, r.c.customer, teamsOf(r.c), r.c.stage, r.c.caseStatus, r.updateCount,
+        r.latest?.date ?? "", r.latest?.onHold ? "ON HOLD" : "", (r.latest?.note ?? "").replace(/\n/g, " "),
+        r.latest?.authorName ?? userById(r.latest?.authorId ?? -1)?.name ?? "",
+      ]),
+    );
+    toast("success", "Daily MIS exported.");
+  };
+
+  return (
+    <ReportCard title="Daily MIS register" sub={`Dated progress entries per case — the 3 PM discipline. ${pending} active case(s) not updated yet${holds ? ` · ${holds} on hold` : ""}.`} icon={<IClock size={15} />} span>
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <div className="flex rounded-lg overflow-hidden border" style={{ borderColor: "var(--line)" }}>
+          {(["today", "date", "month"] as const).map((s) => (
+            <button key={s} className="px-3 py-1.5 text-[12px] font-disp font-semibold transition-colors"
+              style={scope === s ? { background: "var(--amber-tint)", color: "var(--amber)" } : { color: "var(--ink-faint)" }}
+              onClick={() => setScope(s)}>
+              {s === "today" ? "Today" : s === "date" ? "By date" : "By month"}
+            </button>
+          ))}
+        </div>
+        {scope === "date" && <input className="input mono !w-auto" type="date" value={dateVal} onChange={(e) => setDateVal(e.target.value)} />}
+        {scope === "month" && <input className="input mono !w-auto" type="month" value={monthVal} onChange={(e) => setMonthVal(e.target.value)} />}
+        {(flags?.scope === "all" || flags?.super || flags?.admin) && (
+          <select className="select !w-auto" value={team} onChange={(e) => setTeam(e.target.value)}>
+            <option value="all">All teams</option>
+            {teams.map((tm) => <option key={tm} value={tm}>{tm}</option>)}
+          </select>
+        )}
+        <button className="chip transition-all" style={activeOnly ? { background: "rgba(67,214,155,0.12)", borderColor: "rgba(67,214,155,0.5)", color: "var(--mint)" } : { background: "var(--bg2)", borderColor: "var(--line)", color: "var(--ink-faint)" }}
+          onClick={() => setActiveOnly(!activeOnly)}>
+          {activeOnly ? "active only" : "all statuses"}
+        </button>
+        <button className="btn btn-ghost btn-sm ml-auto" onClick={exportCsv}><IDownload size={14} /> Export CSV</button>
+      </div>
+      {rows.length === 0 ? (
+        <p className="text-[12.5px] text-[var(--ink-faint)] m-0">No cases in scope.</p>
+      ) : (
+        <div className="overflow-x-auto max-h-[420px] overflow-y-auto">
+          <table className="tbl min-w-[760px]">
+            <thead>
+              <tr><th>Case</th><th>Customer</th><th>Team</th><th>Stage</th><th>Updates</th><th>Last update</th><th>On hold</th></tr>
+            </thead>
+            <tbody>
+              {rows.map(({ c, latest, updateCount }) => (
+                <tr key={c.id} style={!latest && c.caseStatus === "Active" ? { background: "rgba(242,115,99,0.06)" } : undefined}>
+                  <td className="mono text-[12px]" style={{ color: "var(--amber)" }}>{c.caseNumber}</td>
+                  <td className="font-medium">{c.customer}</td>
+                  <td className="text-[11.5px] text-[var(--ink-dim)]">{teamsOf(c)}</td>
+                  <td><Chip tone="slate">{c.stage}</Chip></td>
+                  <td className="mono text-center">{updateCount}</td>
+                  <td className="text-[11.5px] max-w-[340px]">
+                    {latest ? (
+                      <>
+                        <span className="mono text-[var(--ink-faint)]">{fmtDate(latest.date)}</span>
+                        <span className="block truncate" style={{ color: "var(--ink-dim)" }}>{latest.note}</span>
+                      </>
+                    ) : (
+                      <span style={{ color: "var(--coral)" }}>not updated in scope</span>
+                    )}
+                  </td>
+                  <td>{latest?.onHold ? <Chip tone="coral">hold</Chip> : <span className="text-[var(--ink-faint)] text-[11px]">—</span>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </ReportCard>
+  );
+}
+
 /* ---------- view ---------- */
 
 export default function Reports() {
   const {
-    cases, tasks, activities, banks, partners, users, stages, slaRules, flags,
+    cases, tasks, activities, banks, partners, users, stages, slaRules, flags, caseUpdates,
     nav, userById, visibleCases, visibleTasks, toast,
   } = useHfmcStore();
   const canRevenue = !!flags?.viewRevenue;
@@ -297,6 +415,8 @@ export default function Reports() {
           <KpiCard label="Net commission" value={<CountUp target={Math.round(commission.net)} format={fmtMoney} />} sub={`of ${fmtMoney(commission.gross)} gross`} tone="sky" icon={<IBank size={15} />} />
         )}
       </div>
+
+      <DailyMisReport visCases={visCases} userById={userById} toast={toast} />
 
       {/* report grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

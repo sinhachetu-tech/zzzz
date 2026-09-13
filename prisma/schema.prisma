@@ -34,6 +34,7 @@ model User {
   sessions         Session[]
   stageTransitions StageTransition[]
   vrmCases         LoanCase[] @relation("CaseVrm")
+  caseUpdateAuthors CaseUpdate[] @relation("CaseUpdateAuthor")
 }
 
 model Designation {
@@ -114,6 +115,7 @@ model LoanCase {
   clientDocuments  ClientDocument[]
   clientSessions   ClientSession[]
   vaultDocuments   CaseDocument[]
+  caseUpdates      CaseUpdate[]
 }
 
 model Task {
@@ -414,6 +416,23 @@ model ChannelItem {
 }
 
 // Stage change log — powers the client portal timeline and the Case 360 history.
+// Daily MIS log — dated progress entries per case. The latest entry is
+// denormalized onto LoanCase.statusNote for the client portal; the log builds
+// the team leader's daily register and the month-wise MIS reports.
+model CaseUpdate {
+  id        Int      @id @default(autoincrement())
+  caseId    Int
+  date      String   // MIS date (ISO)
+  note      String
+  onHold    Boolean  @default(false)
+  holdReason String  @default("")
+  authorId  Int
+  createdAt DateTime @default(now())
+
+  case LoanCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  author User @relation("CaseUpdateAuthor", fields: [authorId], references: [id])
+}
+
 model StageTransition {
   id        Int      @id @default(autoincrement())
   caseId    Int

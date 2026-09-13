@@ -8,7 +8,7 @@ import {
 import {
   serUser, serCase, serTask, serActivity, serBank, serPartner, serStage,
   serMaster, serSla, serInstruction, serBulletin, serChannel, serDocRule, serFeeRule,
-  serStageTransitionDto, serCaseDocument, serBankProduct,
+  serStageTransitionDto, serCaseDocument, serCaseUpdate, serBankProduct,
 } from "@/lib/ser";
 import { caseStatusOf } from "@/lib/format";
 
@@ -20,7 +20,7 @@ export async function GET() {
 
   const [
     users, designations, cases, tasks, activities, stages, masters, banks,
-    partners, slaRules, instructions, bulletinsRaw, channels, docRules, feeRules, stageTransitions, allDocs, bankProducts, eiborRates,
+    partners, slaRules, instructions, bulletinsRaw, channels, docRules, feeRules, stageTransitions, allDocs, bankProducts, eiborRates, caseUpdates,
   ] = await Promise.all([
     db.user.findMany({ orderBy: { id: "asc" } }),
     db.designation.findMany({ orderBy: { id: "asc" } }),
@@ -41,6 +41,7 @@ export async function GET() {
     db.caseDocument.findMany({ orderBy: [{ caseId: "asc" }, { sortOrder: "asc" }] }),
     db.bankProduct.findMany({ orderBy: [{ bankId: "asc" }, { id: "asc" }], include: { bank: { select: { name: true } } } }),
     db.eiborRate.findMany(),
+    db.caseUpdate.findMany({ orderBy: [{ date: "desc" }, { createdAt: "desc" }], take: 1000, include: { author: { select: { name: true } } } }),
   ]);
 
   const usersDto = users.map(serUser);
@@ -94,6 +95,7 @@ export async function GET() {
     docRules: docRules.map(serDocRule),
     bankProducts: bankProducts.map(serBankProduct),
     eibor: eiborRates,
+    caseUpdates: caseUpdates.map(serCaseUpdate),
     feeRules: feeRules.map(serFeeRule),
     stageTransitions: stageTransitions.map(serStageTransitionDto),
     caseDocuments: vaultDocs,

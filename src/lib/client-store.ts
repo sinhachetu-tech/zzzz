@@ -3,7 +3,7 @@
 import { create } from "zustand";
 import type {
   Activity, BankItem, BankProduct, BulletinItem, CaseDocument, CasePartner, CaseSource, ChannelItem, Designation, DocRule,
-  FeeRule, Instruction, LoanCase, MasterItem, PartnerItem, SlaRule, StageItem, StageTransitionDto, Task, User,
+  CaseUpdate, FeeRule, Instruction, LoanCase, MasterItem, PartnerItem, SlaRule, StageItem, StageTransitionDto, Task, User,
 } from "./types";
 import type { RoleFlags } from "./domain";
 
@@ -41,6 +41,7 @@ interface StateSnapshot {
   stageTransitions: StageTransitionDto[];
   caseDocuments: CaseDocument[];
   bankProducts: BankProduct[];
+  caseUpdates: CaseUpdate[];
 }
 
 interface ToastMsg {
@@ -96,6 +97,9 @@ interface HfmcState extends StateSnapshot {
   completeInstruction: (id: number) => Promise<void>;
   replyInstruction: (id: number, text: string) => Promise<void>;
 
+  // daily MIS
+  addCaseUpdate: (caseId: number, note: string, onHold: boolean, holdReason: string) => Promise<void>;
+
   // bank rules
   uploadBankLogo: (bankId: number, file: File) => Promise<void>;
   saveBankProduct: (id: number, patch: Record<string, unknown>) => Promise<void>;
@@ -121,7 +125,7 @@ interface HfmcState extends StateSnapshot {
 const empty: StateSnapshot = {
   me: null, flags: null, users: [], designations: [], cases: [], visibleCaseIds: [], tasks: [],
   visibleTaskIds: [], activities: [], stages: [], whyPending: [], waitingFor: [], banks: [],
-  partners: [], channels: [], slaRules: [], instructions: [], bulletin: [],
+  partners: [], channels: [], slaRules: [], instructions: [], bulletin: [], caseUpdates: [],
   escalations: 0, docRules: [], feeRules: [], eibor: [], stageTransitions: [], caseDocuments: [], bankProducts: [],
 };
 
@@ -238,6 +242,16 @@ export const useHfmcStore = create<HfmcState>((set, get) => ({
     await get().hydrate();
   },
 
+  addCaseUpdate: async (caseId, note, onHold, holdReason) => {
+    const res = await fetch(`/api/case-updates`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ caseId, note, onHold, holdReason }) });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      get().toast("error", e.error || "Could not save the update.");
+      return;
+    }
+    get().toast("success", "Daily update saved.");
+    await get().hydrate();
+  },
   uploadBankLogo: async (bankId, file) => {
     const fd = new FormData();
     fd.append("file", file);

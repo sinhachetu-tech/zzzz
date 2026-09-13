@@ -313,6 +313,19 @@ export interface DocRule {
   active: boolean;
 }
 
+
+export interface CaseUpdate {
+  id: number;
+  caseId: number;
+  date: string;
+  note: string;
+  onHold: boolean;
+  holdReason: string;
+  authorId: number;
+  authorName?: string | null;
+  createdAt: string;
+}
+
 export type CaseDocStatus = "Pending upload" | "Uploaded" | "Verified" | "Rejected" | "Waived";
 
 // Per-case document instance — the living vault (metadata only; file bytes are

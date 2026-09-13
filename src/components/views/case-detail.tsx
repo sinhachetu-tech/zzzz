@@ -11,6 +11,7 @@ import {
 import { Avatar, Chip, DueChip, Modal, SectionLabel, StatusChip } from "@/components/hfmc/ui";
 import { BankChips, CaseStateChip, CommissionPanel, ConfirmModal, SourceChip, WaButtons } from "@/components/hfmc/bits";
 import { DocVault } from "@/components/views/doc-vault";
+import { DailyMisTab } from "@/components/views/daily-mis";
 import { BankMatchPanel } from "@/components/views/bank-match";
 import {
   IArrowR, IBank, ICalc, ICheck, IChevronL, IClock, IFlag, IHistory, IPlus, IRobot, ISparkles, ITrash, IZap,
@@ -342,25 +343,14 @@ function MisPanel({ c }: { c: LoanCase }) {
     <div className="card p-4 anim-fade-up" style={{ borderLeft: "3px solid var(--amber)" }}>
       <div className="flex items-center gap-2 mb-3">
         <IFlag size={14} className="text-[var(--amber)]" />
-        <h3 className="font-disp font-semibold text-[13.5px] m-0">Status &amp; operations</h3>
+        <h3 className="font-disp font-semibold text-[13.5px] m-0">Case profile &amp; bank tracking</h3>
         {c.onHold && <span className="ml-auto chip" style={{ color: "var(--amber)", background: "rgba(242,176,76,0.12)", borderColor: "rgba(242,176,76,0.4)" }}>ON HOLD</span>}
       </div>
 
-      {/* status note — the most important field */}
-      <Field label="Status note" hint="auto-saves on blur">
-        <textarea
-          key={`note-${c.statusNote ?? ""}`}
-          className="textarea"
-          rows={3}
-          placeholder="Today's narrative — what's happening, what's blocking, what's next."
-          defaultValue={c.statusNote ?? ""}
-          onBlur={(e) => {
-            const v = e.target.value.trim();
-            if (v !== (c.statusNote ?? "")) save("statusNote", v);
-          }}
-        />
-      </Field>
+      {/* daily note + hold moved to the Daily MIS tab */}
 
+      <details open={!c.onHold} className="mt-1">
+        <summary className="text-[11px] text-[var(--ink-faint)] cursor-pointer select-none mb-1">Attributes — edit only when something changed</summary>
       <div className="grid grid-cols-2 gap-3 mt-3">
         <Field label="Employment profile" hint="drives the vault">
           <select className="select" value={c.employmentProfile} onChange={(e) => save("employmentProfile", e.target.value)}>
@@ -433,6 +423,8 @@ function MisPanel({ c }: { c: LoanCase }) {
           <SaveText value={c.bankRate != null ? String(c.bankRate) : ""} type="number" mono placeholder="e.g. 4.49" onSave={(v) => save("bankRate", v ? Number(v) : null)} />
         </Field>
       </div>
+
+      </details>
 
       {/* on hold toggle */}
       <div className="mt-3 pt-3" style={{ borderTop: "1px dashed var(--line)" }}>
@@ -576,11 +568,10 @@ function FolPanel({ c }: { c: LoanCase }) {
 export default function CaseDetail({ id }: { id: number }) {
   const { cases, tasks, activities, stages, banks, users, instructions, me, nav, userById, caseById, updateCase, completeTask, deleteTask, toast, flags, canInstruct } = useHfmcStore();
   const c = caseById(id);
-  const [caseTab, setCaseTab] = useState<"tasks" | "documents" | "banks" | "activity">(() => {
+  const [caseTab, setCaseTab] = useState<"daily" | "tasks" | "documents" | "banks" | "activity">(() => {
     // stage-aware default: the work of the current stage leads the page
-    if (["Document Collection", "Valuation", "MOU / FARD", "Final Approval", "Disbursement"].includes(c?.stage ?? "")) return "documents";
-    if (["Pre-Approval", "Property Identification", "Bank Submission"].includes(c?.stage ?? "")) return "banks";
-    return "tasks";
+    void c; // daily workspace leads every stage
+    return "daily";
   });
   const [showAddTask, setShowAddTask] = useState(false);
   const [showStage, setShowStage] = useState(false);
@@ -686,7 +677,7 @@ export default function CaseDetail({ id }: { id: number }) {
         {/* left: stage-aware tabs */}
         <div className="space-y-4">
           <div className="card p-2 flex gap-1.5 overflow-x-auto">
-            {([["tasks", "Tasks"], ["documents", "Documents"], ["banks", "Banks & proposal"], ["activity", "Activity"]] as const).map(([k, label]) => (
+            {([["daily", "Daily MIS"], ["tasks", "Tasks"], ["documents", "Documents"], ["banks", "Banks & proposal"], ["activity", "Activity"]] as const).map(([k, label]) => (
               <button key={k} onClick={() => setCaseTab(k)}
                 className="chip transition-all whitespace-nowrap"
                 style={caseTab === k ? { background: "rgba(242,176,76,0.14)", borderColor: "var(--amber)", color: "var(--amber)" } : { background: "var(--bg2)", borderColor: "var(--line)", color: "var(--ink-faint)" }}>
@@ -694,6 +685,9 @@ export default function CaseDetail({ id }: { id: number }) {
               </button>
             ))}
           </div>
+          {/* daily MIS */}
+          {(caseTab === "daily") && <DailyMisTab c={c} />}
+
           {/* tasks */}
           {(caseTab === "tasks") && (<><div className="card anim-fade-up">
             <div className="flex items-center justify-between p-4 border-b" style={{ borderColor: "var(--line-soft)" }}>
