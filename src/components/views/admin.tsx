@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useHfmcStore } from "@/lib/client-store";
 import type {
-  BankItem, Designation, DocRule, FeeRule, MasterItem, PartnerItem, PartnerKind,
+  BankItem, BankProduct, Designation, DocRule, FeeRule, MasterItem, PartnerItem, PartnerKind,
   SlaRule, StageItem, User,
 } from "@/lib/types";
 import { fmtRate } from "@/lib/format";
@@ -15,7 +15,7 @@ import {
 
 /* ------------------------------ types ------------------------------ */
 
-type Tab = "users" | "designations" | "banks" | "partners" | "channels" | "stages" | "masters" | "sla" | "docrules" | "feerules";
+type Tab = "users" | "designations" | "banks" | "bankrules" | "partners" | "channels" | "stages" | "masters" | "sla" | "docrules" | "feerules";
 type MasterKind = "whyPending" | "waitingFor";
 
 const TEAMS = ["Management", "Dubai", "Abu Dhabi"];
@@ -24,6 +24,7 @@ const TAB_OPTIONS: { value: Tab; label: string }[] = [
   { value: "users", label: "Teammates" },
   { value: "designations", label: "Designations" },
   { value: "banks", label: "Banks & rates" },
+  { value: "bankrules", label: "Bank Rules" },
   { value: "partners", label: "Partners" },
   { value: "channels", label: "Channels" },
   { value: "stages", label: "Stages" },
@@ -37,7 +38,7 @@ const TAB_OPTIONS: { value: Tab; label: string }[] = [
 // New sections slot into a group — the top row stays small no matter how much grows.
 const GROUPS: { key: string; label: string; tabs: { value: Tab; label: string }[] }[] = [
   { key: "team", label: "Team & Access", tabs: TAB_OPTIONS.filter((t) => ["users", "designations"].includes(t.value)) },
-  { key: "market", label: "Marketplace", tabs: TAB_OPTIONS.filter((t) => ["banks", "partners", "channels"].includes(t.value)) },
+  { key: "market", label: "Marketplace", tabs: TAB_OPTIONS.filter((t) => ["banks", "bankrules", "partners", "channels"].includes(t.value)) },
   { key: "workflow", label: "Workflow", tabs: TAB_OPTIONS.filter((t) => ["stages", "masters", "sla"].includes(t.value)) },
   { key: "docs", label: "Docs & Fees", tabs: TAB_OPTIONS.filter((t) => ["docrules", "feerules"].includes(t.value)) },
 ];
@@ -215,6 +216,7 @@ export default function Admin() {
       {tab === "users" && <UsersTab />}
       {tab === "designations" && <DesignationsTab />}
       {tab === "banks" && <BanksTab />}
+      {tab === "bankrules" && <BankRulesTab />}
       {tab === "partners" && <PartnersTab />}
       {tab === "channels" && <ChannelsTab />}
       {tab === "stages" && <StagesTab />}
@@ -788,6 +790,7 @@ function BanksTab() {
                       >
                         <IPencil size={13} /> Edit
                       </button>
+                      <LogoUpload bankId={b.id} hasLogo={b.hasLogo} />
                       <button className="btn btn-danger btn-sm !px-2" onClick={() => setDeleting(b)} title="Delete">
                         <ITrash size={13} />
                       </button>
@@ -2335,6 +2338,191 @@ function FeeRulesTab() {
         body={`"${deleting?.label ?? ""}" (${deleting?.emirate ?? ""} · ${deleting?.txnType ?? ""}) will no longer appear in transfer quotes.`}
         confirmLabel="Delete"
       />
+    </div>
+  );
+}
+
+/* ------------------------------ bank rules (rule engine phase 0) ------------------------------ */
+
+function LogoUpload({ bankId, hasLogo }: { bankId: number; hasLogo: boolean }) {
+  const { uploadBankLogo } = useHfmcStore();
+  const [busy, setBusy] = useState(false);
+  return (
+    <label className="btn btn-ghost btn-sm !px-2" title="Upload logo (PNG/JPG/SVG, ≤1 MB)" style={{ cursor: busy ? "wait" : "pointer" }}>
+      {hasLogo ? "Logo ✓" : "Logo"}
+      <input
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={async (e) => {
+          const f = e.target.files?.[0];
+          e.target.value = "";
+          if (!f) return;
+          setBusy(true);
+          await uploadBankLogo(bankId, f);
+          setBusy(false);
+        }}
+      />
+    </label>
+  );
+}
+
+const NUM_FIELDS: { key: keyof BankProduct; label: string; suffix?: string }[] = [
+  { key: "maxLtvNational", label: "Max LTV · nationals", suffix: "%" },
+  { key: "maxLtvExpatriate", label: "Max LTV · expats", suffix: "%" },
+  { key: "tenorYears", label: "Max tenor", suffix: "y" },
+  { key: "minLoan", label: "Min loan", suffix: " AED" },
+  { key: "maxLoan", label: "Max loan", suffix: " AED" },
+  { key: "minSalary", label: "Min salary", suffix: " AED" },
+  { key: "totalTatDays", label: "Total TAT", suffix: " wd" },
+  { key: "paTatDays", label: "PA TAT", suffix: " wd" },
+  { key: "paValidityDays", label: "PA validity", suffix: " d" },
+  { key: "folValidityDays", label: "FOL validity", suffix: " d" },
+  { key: "valuationValidityDays", label: "Valuation validity", suffix: " d" },
+];
+
+const TEXT_BLOCKS: { key: keyof BankProduct; label: string }[] = [
+  { key: "rateTable", label: "Pricing (fixed / variable / segments)" },
+  { key: "stressTest", label: "Stress test for DSR" },
+  { key: "fees", label: "Fees (processing / valuation / settlements)" },
+  { key: "insurance", label: "Insurance" },
+  { key: "eligibility", label: "Eligibility (salary / bonus / rental / restrictions)" },
+  { key: "documents", label: "Documents" },
+];
+
+function BankRulesTab() {
+  const { bankProducts, banks, saveBankProduct, toast } = useHfmcStore();
+  const [bankFilter, setBankFilter] = useState<string>("DIB");
+  const [editing, setEditing] = useState<BankProduct | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const bankList = useMemo(() => {
+    const withProducts = new Set(bankProducts.map((p) => p.bankName));
+    return [...banks.map((b) => b.name), ...withProducts].filter((v, i, a) => a.indexOf(v) === i);
+  }, [banks, bankProducts]);
+  const rows = useMemo(
+    () => bankProducts.filter((p) => p.bankName === bankFilter),
+    [bankProducts, bankFilter],
+  );
+
+  return (
+    <div className="card anim-fade-up">
+      <CardHeader
+        title="Bank rule products"
+        sub="Decoded from the rates & policy workbooks. Draft → approve workflow: approved rules feed the eligibility engine. DIB + ENBD are the phase-0 banks."
+        action={
+          <select className="select !w-auto" value={bankFilter} onChange={(e) => setBankFilter(e.target.value)}>
+            {bankList.map((b) => <option key={b} value={b}>{b}</option>)}
+          </select>
+        }
+      />
+      {rows.length === 0 ? (
+        <EmptyState icon={<IBank size={20} />} title={`No products decoded for ${bankFilter}`} body="Phase 0 covers DIB and Emirates NBD — more banks follow as their workbooks are decoded." />
+      ) : (
+        <div className="p-4 space-y-3">
+          {rows.map((p) => (
+            <div key={p.id} className="rounded-xl border p-4" style={{ borderColor: "var(--line)" }}>
+              <div className="flex flex-wrap items-center gap-2 mb-2.5">
+                <span className="font-disp font-semibold text-[14px]">{p.name}</span>
+                <Chip tone="slate">{p.sheet}</Chip>
+                {p.program && <Chip tone="sky">{p.program}</Chip>}
+                <Chip tone={p.status === "approved" ? "mint" : "amber"}>{p.status}</Chip>
+                {p.approvedBy && <span className="text-[10.5px] text-[var(--ink-faint)]">by {p.approvedBy}</span>}
+                <div className="ml-auto flex gap-1.5">
+                  <button className="btn btn-ghost btn-sm" onClick={() => setEditing(p)}>
+                    <IPencil size={13} /> Edit
+                  </button>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1.5 mono text-[12px]">
+                {p.maxLtvNational != null && <span>LTV national: <strong>{p.maxLtvNational}%</strong></span>}
+                {p.maxLtvExpatriate != null && <span>LTV expat: <strong>{p.maxLtvExpatriate}%</strong></span>}
+                {p.tenorYears != null && <span>Tenor: <strong>{p.tenorYears}y</strong></span>}
+                {p.minLoan != null && <span>Min loan: <strong>{p.minLoan.toLocaleString()}</strong></span>}
+                {p.maxLoan != null && <span>Max loan: <strong>{p.maxLoan.toLocaleString()}</strong></span>}
+                {p.minSalary != null && <span>Min salary: <strong>{p.minSalary.toLocaleString()}</strong></span>}
+                {p.totalTatDays != null && <span>Total TAT: <strong>{p.totalTatDays} wd</strong></span>}
+                {p.folValidityDays != null && <span>FOL validity: <strong>{p.folValidityDays}d</strong></span>}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2.5">
+                <DetailBlock label="Pricing" text={p.rateTable} />
+                <DetailBlock label="Stress test" text={p.stressTest} />
+                <DetailBlock label="Fees" text={p.fees} />
+                <DetailBlock label="Eligibility" text={p.eligibility} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {editing && (
+        <Modal
+          title={`Edit rules · ${editing.bankName} · ${editing.name}`}
+          sub="Changes apply immediately to the rule engine when status is approved."
+          onClose={() => setEditing(null)}
+          width={640}
+          footer={
+            <>
+              <button className="btn btn-ghost" onClick={() => setEditing(null)} disabled={busy}>Cancel</button>
+              <button className="btn btn-ghost" disabled={busy} onClick={async () => { setBusy(true); await saveBankProduct(editing.id, { status: "draft" }); setEditing({ ...editing, status: "draft" }); setBusy(false); }}>
+                Move to draft
+              </button>
+              <button
+                className="btn btn-primary"
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  const patch: Record<string, unknown> = { ...editing, status: "approved" };
+                  delete patch.axes;
+                  await saveBankProduct(editing.id, patch);
+                  setBusy(false);
+                  setEditing(null);
+                }}
+              >
+                <ICheck size={15} /> Approve & save
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {NUM_FIELDS.map((f) => (
+                <Field key={String(f.key)} label={f.label}>
+                  <input
+                    className="input mono"
+                    type="number"
+                    value={(editing[f.key] as number | null) ?? ""}
+                    onChange={(e) => setEditing({ ...editing, [f.key]: e.target.value === "" ? null : Number(e.target.value) })}
+                  />
+                </Field>
+              ))}
+            </div>
+            {TEXT_BLOCKS.map((b) => (
+              <Field key={String(b.key)} label={b.label}>
+                <textarea
+                  className="textarea"
+                  rows={4}
+                  value={String(editing[b.key] ?? "")}
+                  onChange={(e) => setEditing({ ...editing, [b.key]: e.target.value })}
+                />
+              </Field>
+            ))}
+            <Field label="Notes">
+              <input className="input" value={editing.notes} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} />
+            </Field>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function DetailBlock({ label, text }: { label: string; text: string }) {
+  if (!text) return null;
+  return (
+    <div className="rounded-lg px-3 py-2" style={{ background: "var(--tint)" }}>
+      <div className="text-[10px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)]">{label}</div>
+      <p className="text-[11.5px] text-[var(--ink-dim)] m-0 mt-1 whitespace-pre-wrap leading-snug">{text.slice(0, 600)}{text.length > 600 ? "…" : ""}</p>
     </div>
   );
 }

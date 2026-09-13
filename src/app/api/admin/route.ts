@@ -174,6 +174,18 @@ export async function PATCH(req: NextRequest) {
       });
       return NextResponse.json({ item: serDocRule(item) });
     }
+    if (kind === "bankproduct") {
+      const data: Record<string, unknown> = {};
+      const numFields = ["maxLtvNational","maxLtvExpatriate","minLoan","maxLoan","tenorYears","minSalary","totalTatDays","paTatDays","paValidityDays","folValidityDays","valuationValidityDays"] as const;
+      for (const f of numFields) if (body[f] !== undefined) data[f] = body[f] === null || body[f] === "" ? null : Number(body[f]);
+      for (const f of ["rateTable","stressTest","fees","insurance","eligibility","documents","notes","effectiveDate"]) if (body[f] !== undefined) data[f] = body[f];
+      if (body.status !== undefined) {
+        data.status = body.status;
+        if (body.status === "approved") { data.approvedBy = g.me.name; data.effectiveDate = data.effectiveDate ?? new Date().toISOString().slice(0,10); }
+      }
+      const item = await db.bankProduct.update({ where: { id: numId }, data });
+      return NextResponse.json({ item });
+    }
     if (kind === "feerule") {
       const item = await db.feeRule.update({
         where: { id: numId },

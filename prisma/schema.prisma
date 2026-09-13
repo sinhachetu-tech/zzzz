@@ -235,10 +235,67 @@ model MasterItem {
 }
 
 model BankItem {
-  id        Int      @id @default(autoincrement())
-  name      String   @unique
-  ratePct   Float    @default(0)
-  active    Boolean  @default(true)
+  id        Int     @id @default(autoincrement())
+  name      String  @unique
+  ratePct   Float   @default(0)
+  active    Boolean @default(true)
+  // professional profile
+  logoData  Bytes?
+  logoType  String?
+  posPoints String  @default("") // negotiating intel — positives
+  negPoints String  @default("") // negotiating intel — negatives
+  website   String?
+
+  products BankProduct[]
+}
+
+// Bank rule product — one row per (bank x segment x product kind), decoded from
+// the rates/policy workbooks. Typed headline fields feed the eligibility engine;
+// axesJson keeps every raw axis verbatim. Versioned: imports create new versions,
+// humans approve them (status draft → approved).
+model BankProduct {
+  id        Int     @id @default(autoincrement())
+  bankId    Int
+  name      String  // e.g. "Salaried · Conventional"
+  sheet     String  // source sheet: Salaried | Self Employed | NR | Commercial Property | Low Doc
+  employment String // Salaried | Self-Employed | Salaried or Self-Employed
+  residency String  // Resident | Non-Resident
+  financeType String @default("Residential") // Residential | Commercial
+  program   String  @default("") // e.g. Low-Doc
+  loanKind  String  @default("") // Conventional | Islamic | mixed
+
+  // typed headline fields (parsed from axes — engine inputs)
+  maxLtvNational    Int?
+  maxLtvExpatriate  Int?
+  minLoan           Int?
+  maxLoan           Int?
+  tenorYears        Int?
+  minSalary         Int?
+  totalTatDays      Int?
+  paTatDays         Int?
+  paValidityDays    Int?
+  folValidityDays   Int?
+  valuationValidityDays Int?
+  rateTable         String @default("") // segmented pricing text (fixed/variable/buyout/equity)
+  stressTest        String @default("")
+  fees              String @default("")
+  insurance         String @default("")
+  eligibility       String @default("") // min salary/service/bonus/rental notes
+  documents         String @default("")
+  notes             String @default("")
+  axesJson          String @default("{}") // full raw axes, verbatim
+
+  // versioning workflow
+  version      Int    @default(1)
+  status       String @default("approved") // draft | approved
+  effectiveDate String?
+  approvedBy   String?
+  sourceFiles  String @default("")
+  active       Boolean @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  bank BankItem @relation(fields: [bankId], references: [id], onDelete: Cascade)
 }
 
 model PartnerItem {

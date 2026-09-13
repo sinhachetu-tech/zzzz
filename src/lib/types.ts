@@ -203,6 +203,49 @@ export interface BankItem {
   id: number;
   name: string;
   ratePct: number;
+  hasLogo: boolean;
+  posPoints: string;
+  negPoints: string;
+  website: string;
+  active: boolean;
+}
+
+// Bank rule product — decoded from the rates/policy workbooks, versioned.
+export interface BankProduct {
+  id: number;
+  bankId: number;
+  bankName: string;
+  name: string;
+  sheet: string;
+  employment: string;
+  residency: string;
+  financeType: string;
+  program: string;
+  loanKind: string;
+  maxLtvNational: number | null;
+  maxLtvExpatriate: number | null;
+  minLoan: number | null;
+  maxLoan: number | null;
+  tenorYears: number | null;
+  minSalary: number | null;
+  totalTatDays: number | null;
+  paTatDays: number | null;
+  paValidityDays: number | null;
+  folValidityDays: number | null;
+  valuationValidityDays: number | null;
+  rateTable: string;
+  stressTest: string;
+  fees: string;
+  insurance: string;
+  eligibility: string;
+  documents: string;
+  notes: string;
+  axes: Record<string, string>;
+  version: number;
+  status: "draft" | "approved";
+  effectiveDate: string | null;
+  approvedBy: string | null;
+  sourceFiles: string;
   active: boolean;
 }
 

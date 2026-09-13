@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import type {
-  Activity, BankItem, BulletinItem, CaseDocument, CasePartner, CaseSource, ChannelItem, Designation, DocRule,
+  Activity, BankItem, BankProduct, BulletinItem, CaseDocument, CasePartner, CaseSource, ChannelItem, Designation, DocRule,
   FeeRule, Instruction, LoanCase, MasterItem, PartnerItem, SlaRule, StageItem, StageTransitionDto, Task, User,
 } from "./types";
 import type { RoleFlags } from "./domain";
@@ -39,6 +39,7 @@ interface StateSnapshot {
   feeRules: FeeRule[];
   stageTransitions: StageTransitionDto[];
   caseDocuments: CaseDocument[];
+  bankProducts: BankProduct[];
 }
 
 interface ToastMsg {
@@ -94,6 +95,10 @@ interface HfmcState extends StateSnapshot {
   completeInstruction: (id: number) => Promise<void>;
   replyInstruction: (id: number, text: string) => Promise<void>;
 
+  // bank rules
+  uploadBankLogo: (bankId: number, file: File) => Promise<void>;
+  saveBankProduct: (id: number, patch: Record<string, unknown>) => Promise<void>;
+
   // document vault
   addAdhocDoc: (caseId: number, input: { title: string; category: string; mandatory: boolean; visibleToClient: boolean; clientCanUpload: boolean; notes?: string }) => Promise<void>;
   saveDoc: (id: number, patch: Record<string, unknown>) => Promise<void>;
@@ -116,7 +121,7 @@ const empty: StateSnapshot = {
   me: null, flags: null, users: [], designations: [], cases: [], visibleCaseIds: [], tasks: [],
   visibleTaskIds: [], activities: [], stages: [], whyPending: [], waitingFor: [], banks: [],
   partners: [], channels: [], slaRules: [], instructions: [], bulletin: [],
-  escalations: 0, docRules: [], feeRules: [], stageTransitions: [], caseDocuments: [],
+  escalations: 0, docRules: [], feeRules: [], stageTransitions: [], caseDocuments: [], bankProducts: [],
 };
 
 let toastSeq = 1;
@@ -232,6 +237,31 @@ export const useHfmcStore = create<HfmcState>((set, get) => ({
     await get().hydrate();
   },
 
+  uploadBankLogo: async (bankId, file) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    const res = await fetch(`/api/banks/${bankId}/logo`, { method: "POST", body: fd });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      get().toast("error", e.error || "Logo upload failed.");
+      return;
+    }
+    get().toast("success", "Logo uploaded.");
+    await get().hydrate();
+  },
+  saveBankProduct: async (id, patch) => {
+    const res = await fetch("/api/admin", {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind: "bankproduct", id, ...patch }),
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      get().toast("error", e.error || "Could not save product rules.");
+      return;
+    }
+    get().toast("success", "Bank product rules saved.");
+    await get().hydrate();
+  },
   addAdhocDoc: async (caseId, input) => {
     const res = await fetch("/api/documents", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ caseId, ...input }),

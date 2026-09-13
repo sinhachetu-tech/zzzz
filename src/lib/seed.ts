@@ -1,6 +1,7 @@
 // Seed data for HFMC — mirrors the original demo dataset, adapted to Prisma.
 
 import { db } from "./db";
+import { BANK_PRODUCTS_SEED, BANK_INTEL } from "./bank-rules-seed-data";
 
 const DAY = 86400000;
 const ts = (daysBack: number, hourJitter = 0) =>
@@ -356,7 +357,7 @@ export async function seedDatabase() {
 // document validity rules, transfer fee matrices and stage TATs without a
 // wipe. Create-if-missing only: never overwrites admin edits.
 async function ensureSopMasterData() {
-  let docRules = 0, feeRules = 0, slaRules = 0;
+  let docRules = 0, feeRules = 0, slaRules = 0, bankProducts = 0;
 
   if ((await db.docRule.count()) === 0) {
     for (const d of DOC_RULES) await db.docRule.create({ data: docRuleData(d) });
@@ -384,7 +385,37 @@ async function ensureSopMasterData() {
   // "Lead" stage — self-registrations from the client portal land here
   const lead = await db.stageItem.findFirst({ where: { label: "Lead" } });
   if (!lead) await db.stageItem.create({ data: { label: "Lead", active: true, sortOrder: 0 } });
-  return { ensured: { docRules, feeRules, slaRules } };
+
+  // Bank rule products — phase 0 banks (DIB + ENBD), decoded from the workbooks
+  if ((await db.bankProduct.count()) === 0) {
+    for (const p of BANK_PRODUCTS_SEED) {
+      const bank = await db.bankItem.findFirst({ where: { name: p.bankName } });
+      if (!bank) continue;
+      await db.bankProduct.create({
+        data: {
+          bankId: bank.id, name: p.name, sheet: p.sheet, employment: p.employment,
+          residency: p.residency, financeType: p.financeType, program: p.program, loanKind: p.loanKind,
+          maxLtvNational: p.maxLtvNational, maxLtvExpatriate: p.maxLtvExpatriate,
+          minLoan: p.minLoan, maxLoan: p.maxLoan, tenorYears: p.tenorYears, minSalary: p.minSalary,
+          totalTatDays: p.totalTatDays, paTatDays: p.paTatDays, paValidityDays: p.paValidityDays,
+          folValidityDays: p.folValidityDays, valuationValidityDays: p.valuationValidityDays,
+          rateTable: p.rateTable, stressTest: p.stressTest, fees: p.fees, insurance: p.insurance,
+          eligibility: p.eligibility, documents: p.documents, axesJson: p.axesJson,
+          sourceFiles: p.sourceFiles, status: "approved", approvedBy: "Excel import (Sep 2026)",
+          effectiveDate: "2026-09-01",
+        },
+      });
+    }
+    bankProducts = BANK_PRODUCTS_SEED.length;
+  }
+  // negotiating intel onto the bank profile
+  for (const [bankName, it] of Object.entries(BANK_INTEL)) {
+    const bank = await db.bankItem.findFirst({ where: { name: bankName } });
+    if (bank && !bank.posPoints && !bank.negPoints) {
+      await db.bankItem.update({ where: { id: bank.id }, data: { posPoints: it.pos, negPoints: it.neg } });
+    }
+  }
+  return { ensured: { docRules, feeRules, slaRules, bankProducts } };
 }
 
 function docRuleData(d: DbDocRule) {

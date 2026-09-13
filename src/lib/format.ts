@@ -103,7 +103,7 @@ export const fmtMoneyCompact = fmtMoney;
 
 /* ---------------- commission engine ---------------- */
 
-export function rateFor(banks: BankItem[], name: string | null | undefined): number {
+export function rateFor(banks: { name: string; ratePct: number }[], name: string | null | undefined): number {
   if (!name) return 0;
   return banks.find((b) => b.name === name)?.ratePct ?? 0;
 }
@@ -126,7 +126,7 @@ export interface CommissionBreakdown {
   net: number;                 // what HFMC keeps
 }
 
-export function commissionFor(c: LoanCase, banks: BankItem[]): CommissionBreakdown {
+export function commissionFor(c: LoanCase, banks: { name: string; ratePct: number }[]): CommissionBreakdown {
   const bank = c.wonBank ?? c.banks[0] ?? null;
   const ratePct = rateFor(banks, bank);
   const gross = commissionOf(ratePct, c.loanAmount);

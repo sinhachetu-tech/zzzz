@@ -1,7 +1,7 @@
 // Serialization: Prisma row → API DTO matching the original HFMC types.
 import type {
   Activity, BankItem, BulletinItem, CasePartner, Instruction, LoanCase,
-  CaseDocument, DocRule, FeeRule, MasterItem, PartnerItem, Reply, SlaRule, StageItem, StageTransition, StageTransitionDto, Task, User,
+  BankProduct, CaseDocument, DocRule, FeeRule, MasterItem, PartnerItem, Reply, SlaRule, StageItem, StageTransition, StageTransitionDto, Task, User,
 } from "./types";
 
 type PrismaUser = {
@@ -132,9 +132,39 @@ export function serActivity(a: PrismaActivity): Activity {
   };
 }
 
-type PrismaBank = { id: number; name: string; ratePct: number; active: boolean };
+type PrismaBank = { id: number; name: string; ratePct: number; active: boolean; logoData?: Uint8Array | Buffer | null; posPoints?: string | null; negPoints?: string | null; website?: string | null };
 export function serBank(b: PrismaBank): BankItem {
-  return { id: b.id, name: b.name, ratePct: b.ratePct, active: b.active };
+  return { id: b.id, name: b.name, ratePct: b.ratePct, hasLogo: !!b.logoData, posPoints: b.posPoints ?? "", negPoints: b.negPoints ?? "", website: b.website ?? "", active: b.active };
+}
+
+type PrismaBankProduct = {
+  id: number; bankId: number; name: string; sheet: string; employment: string; residency: string;
+  financeType: string; program: string; loanKind: string;
+  maxLtvNational: number | null; maxLtvExpatriate: number | null;
+  minLoan: number | null; maxLoan: number | null; tenorYears: number | null; minSalary: number | null;
+  totalTatDays: number | null; paTatDays: number | null; paValidityDays: number | null;
+  folValidityDays: number | null; valuationValidityDays: number | null;
+  rateTable: string; stressTest: string; fees: string; insurance: string;
+  eligibility: string; documents: string; notes: string; axesJson: string;
+  version: number; status: string; effectiveDate: string | null; approvedBy: string | null;
+  sourceFiles: string; active: boolean;
+};
+
+export function serBankProduct(p: PrismaBankProduct): BankProduct {
+  let axes: Record<string, string> = {};
+  try { axes = JSON.parse(p.axesJson); } catch { axes = {}; }
+  return {
+    id: p.id, bankId: p.bankId, bankName: (p as unknown as { bank?: { name?: string } }).bank?.name ?? "", name: p.name, sheet: p.sheet, employment: p.employment,
+    residency: p.residency, financeType: p.financeType, program: p.program, loanKind: p.loanKind,
+    maxLtvNational: p.maxLtvNational, maxLtvExpatriate: p.maxLtvExpatriate,
+    minLoan: p.minLoan, maxLoan: p.maxLoan, tenorYears: p.tenorYears, minSalary: p.minSalary,
+    totalTatDays: p.totalTatDays, paTatDays: p.paTatDays, paValidityDays: p.paValidityDays,
+    folValidityDays: p.folValidityDays, valuationValidityDays: p.valuationValidityDays,
+    rateTable: p.rateTable, stressTest: p.stressTest, fees: p.fees, insurance: p.insurance,
+    eligibility: p.eligibility, documents: p.documents, notes: p.notes, axes,
+    version: p.version, status: p.status as BankProduct["status"], effectiveDate: p.effectiveDate,
+    approvedBy: p.approvedBy, sourceFiles: p.sourceFiles, active: p.active,
+  };
 }
 
 type PrismaPartner = { id: number; kind: string; name: string; defaultSharePct: number; active: boolean };
