@@ -96,6 +96,12 @@ export async function runBankMatch(input: MatchInput): Promise<MatchResult[]> {
       continue;
     }
 
+    if (p.minSalary != null && input.monthlyIncome < p.minSalary) {
+      const minMsg = "monthly income below the bank minimum of AED " + p.minSalary.toLocaleString();
+      results.push({ ...baseResult(p, dto.bankName, p.name), reasons: [minMsg] });
+      continue;
+    }
+
     const pricing = parsePricing(p.pricingJson);
     const quote = resolveQuote(pricing, { stl: input.stl, termYears: input.termYears, ftv: p.maxLtvExpatriate ?? 80, txn });
     if (!quote) {

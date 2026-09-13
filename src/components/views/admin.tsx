@@ -9,6 +9,8 @@ import type {
 import { fmtRate } from "@/lib/format";
 import { Avatar, Chip, EmptyState, Modal, Seg } from "@/components/hfmc/ui";
 import { ConfirmModal } from "@/components/hfmc/bits";
+import { parsePricing, resolveQuote, rateSchedule, type ProductPricing } from "@/lib/bank-pricing";
+import { emi, loanForEmi } from "@/lib/calc";
 import {
   IBank, ICheck, IPencil, IPlus, IShield, ITrash, ITrophy, IUsers, IX,
 } from "@/components/icons";
@@ -2367,27 +2369,28 @@ function LogoUpload({ bankId, hasLogo }: { bankId: number; hasLogo: boolean }) {
   );
 }
 
-const NUM_FIELDS: { key: keyof BankProduct; label: string; suffix?: string }[] = [
-  { key: "maxLtvNational", label: "Max LTV · nationals", suffix: "%" },
-  { key: "maxLtvExpatriate", label: "Max LTV · expats", suffix: "%" },
-  { key: "tenorYears", label: "Max tenor", suffix: "y" },
-  { key: "minLoan", label: "Min loan", suffix: " AED" },
-  { key: "maxLoan", label: "Max loan", suffix: " AED" },
-  { key: "minSalary", label: "Min salary", suffix: " AED" },
-  { key: "totalTatDays", label: "Total TAT", suffix: " wd" },
-  { key: "paTatDays", label: "PA TAT", suffix: " wd" },
-  { key: "paValidityDays", label: "PA validity", suffix: " d" },
-  { key: "folValidityDays", label: "FOL validity", suffix: " d" },
-  { key: "valuationValidityDays", label: "Valuation validity", suffix: " d" },
+type FieldRole = "engine" | "planned";
+const NUM_FIELDS: { key: keyof BankProduct; label: string; suffix?: string; role: FieldRole; help: string }[] = [
+  { key: "maxLtvNational", label: "Max LTV · nationals", suffix: "%", role: "engine", help: "Highest finance allowed on the property value for UAE Nationals. The engine caps the loan at this % of the property." },
+  { key: "maxLtvExpatriate", label: "Max LTV · expats", suffix: "%", role: "engine", help: "Same cap for expatriate clients — usually the binding limit for them." },
+  { key: "tenorYears", label: "Max tenor", suffix: "y", role: "engine", help: "Longest loan duration. A longer tenor means a smaller EMI, so a bigger loan passes the DBR check." },
+  { key: "minLoan", label: "Min loan", suffix: " AED", role: "engine", help: "Requests below this are refused by the bank." },
+  { key: "maxLoan", label: "Max loan", suffix: " AED", role: "engine", help: "Requests above this need an exception approval." },
+  { key: "minSalary", label: "Min salary", suffix: " AED", role: "engine", help: "Below this monthly salary the bank will not consider the client." },
+  { key: "totalTatDays", label: "Total TAT", suffix: " wd", role: "planned", help: "Working days from submission to transfer — shown on timelines; not used in math yet." },
+  { key: "paTatDays", label: "PA TAT", suffix: " wd", role: "planned", help: "Pre-approval turnaround — shown on timelines; not used in math yet." },
+  { key: "paValidityDays", label: "PA validity", suffix: " d", role: "planned", help: "How long the pre-approval letter stays valid." },
+  { key: "folValidityDays", label: "FOL validity", suffix: " d", role: "planned", help: "How long the final offer letter stays valid." },
+  { key: "valuationValidityDays", label: "Valuation validity", suffix: " d", role: "planned", help: "How long the valuation report stays valid." },
 ];
 
-const TEXT_BLOCKS: { key: keyof BankProduct; label: string }[] = [
-  { key: "rateTable", label: "Pricing (fixed / variable / segments)" },
-  { key: "stressTest", label: "Stress test for DSR" },
-  { key: "fees", label: "Fees (processing / valuation / settlements)" },
-  { key: "insurance", label: "Insurance" },
-  { key: "eligibility", label: "Eligibility (salary / bonus / rental / restrictions)" },
-  { key: "documents", label: "Documents" },
+const TEXT_BLOCKS: { key: keyof BankProduct; label: string; hint: string; engineReady: boolean }[] = [
+  { key: "rateTable", label: "Pricing — source text", hint: "The verbatim sheet text. Kept for humans to verify; the engine reads the structured quotes above.", engineReady: true },
+  { key: "stressTest", label: "Stress test — source text", hint: "Verbatim sheet text. The engine computes stress from the quote formula + the live EIBOR table.", engineReady: true },
+  { key: "fees", label: "Fees (processing / settlements)", hint: "Text only today — not part of any calculation. Will become structured fee rows.", engineReady: false },
+  { key: "insurance", label: "Insurance", hint: "Text only today — not part of cost-to-close yet.", engineReady: false },
+  { key: "eligibility", label: "Eligibility (salary / bonus / rental / restrictions)", hint: "Text only — the structured version lives in the Affordability fields above.", engineReady: false },
+  { key: "documents", label: "Documents", hint: "Text only — the Doc Vault is the structured home for document requirements.", engineReady: false },
 ];
 
 function BankRulesTab() {
@@ -2469,7 +2472,8 @@ function BankRulesTab() {
               </button>
               <button
                 className="btn btn-primary"
-                disabled={busy}
+                disabled={busy || productIssues(editing).filter((i) => i.blocking).length > 0}
+                title={productIssues(editing).filter((i) => i.blocking).map((i) => i.msg).join("; ") || "Approve these rules"}
                 onClick={async () => {
                   setBusy(true);
                   const patch: Record<string, unknown> = { ...editing, status: "approved" };
@@ -2485,31 +2489,45 @@ function BankRulesTab() {
           }
         >
           <div className="space-y-3">
+            <FieldRowBadge role="engine" text="Green fields feed Bank Match and the final proposal. Amber fields are displayed but not calculated yet." />
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {NUM_FIELDS.map((f) => (
-                <Field key={String(f.key)} label={f.label}>
+                <Field key={String(f.key)} label={`${f.label} · ${f.suffix ?? ""}`}>
                   <input
                     className="input mono"
                     type="number"
                     value={(editing[f.key] as number | null) ?? ""}
                     onChange={(e) => setEditing({ ...editing, [f.key]: e.target.value === "" ? null : Number(e.target.value) })}
                   />
+                  <p className="text-[10px] text-[var(--ink-faint)] m-0 mt-1 leading-snug">
+                    <FieldRoleDot role={f.role} /> {f.help}
+                  </p>
                 </Field>
               ))}
             </div>
+            <div className="rounded-lg p-3" style={{ background: "var(--bg2)" }}>
+              <div className="text-[10px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)] mb-1.5">
+                Live check — reference client (AED 20k salary, STL, 2.5M property, resale)
+              </div>
+              <LivePreview editing={editing} />
+            </div>
             {TEXT_BLOCKS.map((b) => (
-              <Field key={String(b.key)} label={b.label}>
+              <Field key={String(b.key)} label={`${b.label} · ${b.engineReady ? "engine ✓" : "display only"}`}>
                 <textarea
                   className="textarea"
                   rows={4}
                   value={String(editing[b.key] ?? "")}
                   onChange={(e) => setEditing({ ...editing, [b.key]: e.target.value })}
                 />
+                <p className="text-[10px] text-[var(--ink-faint)] m-0 mt-1 leading-snug">
+                  <FieldRoleDot role={b.engineReady ? "engine" : "display"} /> {b.hint}
+                </p>
               </Field>
             ))}
             <Field label="Notes">
               <input className="input" value={editing.notes} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} />
             </Field>
+            <FieldIssues editing={editing} />
           </div>
         </Modal>
       )}
@@ -2524,5 +2542,103 @@ function DetailBlock({ label, text }: { label: string; text: string }) {
       <div className="text-[10px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)]">{label}</div>
       <p className="text-[11.5px] text-[var(--ink-dim)] m-0 mt-1 whitespace-pre-wrap leading-snug">{text.slice(0, 600)}{text.length > 600 ? "…" : ""}</p>
     </div>
+  );
+}
+
+/* ---------------- rule-editor guardrails (layman-safe editing) ---------------- */
+
+function FieldRoleDot({ role }: { role: FieldRole | "display" | "engine" }) {
+  const color = role === "engine" ? "var(--mint)" : role === "planned" ? "var(--amber)" : "var(--ink-faint)";
+  return <span className="inline-block rounded-full align-middle" style={{ width: 7, height: 7, background: color, marginRight: 4 }} />;
+}
+
+function FieldRowBadge({ role, text }: { role: FieldRole; text: string }) {
+  return (
+    <p className="text-[11px] text-[var(--ink-dim)] m-0">
+      <FieldRoleDot role={role} /> {text}
+    </p>
+  );
+}
+
+interface ProductIssue { msg: string; blocking: boolean }
+
+function productIssues(editing: BankProduct): ProductIssue[] {
+  const issues: ProductIssue[] = [];
+  if (editing.maxLtvNational != null && (editing.maxLtvNational <= 0 || editing.maxLtvNational > 100))
+    issues.push({ msg: `Max LTV (nationals) ${editing.maxLtvNational}% looks wrong — LTV is between 1 and 100.`, blocking: true });
+  if (editing.maxLtvExpatriate != null && (editing.maxLtvExpatriate <= 0 || editing.maxLtvExpatriate > 100))
+    issues.push({ msg: `Max LTV (expats) ${editing.maxLtvExpatriate}% looks wrong — LTV is between 1 and 100.`, blocking: true });
+  if (editing.tenorYears != null && (editing.tenorYears <= 0 || editing.tenorYears > 30))
+    issues.push({ msg: `Tenor ${editing.tenorYears}y looks wrong — mortgages run 1 to 30 years.`, blocking: true });
+  if (editing.minLoan != null && editing.maxLoan != null && editing.minLoan > editing.maxLoan)
+    issues.push({ msg: "Min loan is larger than max loan — swap them.", blocking: true });
+  let quotes = 0;
+  try {
+    const parsed = JSON.parse(editing.pricingJson as string);
+    quotes = parsed?.quotes?.length ?? 0;
+    for (const q of parsed?.quotes ?? []) {
+      if (q.rateType === "FIXED" && (q.ratePct == null || q.ratePct <= 0 || q.ratePct > 20))
+        issues.push({ msg: `A quote has rate ${q.ratePct}% — rates are small numbers like 3.95, not 39.5 or 0.0395.`, blocking: true });
+      if (q.rateType !== "FIXED" && (q.marginPct == null || q.marginPct < 0 || q.marginPct > 15))
+        issues.push({ msg: `A variable quote has margin ${q.marginPct}% — margins are small numbers like 1 or 1.49.`, blocking: true });
+    }
+  } catch {
+    issues.push({ msg: "The pricing JSON is not valid — use the guided quote editor or fix the JSON.", blocking: true });
+  }
+  if (quotes === 0)
+    issues.push({ msg: "No structured quotes yet — without them the engine cannot price this bank at all.", blocking: true });
+  if (editing.minSalary != null && editing.minSalary > 0 && editing.minSalary < 1000)
+    issues.push({ msg: `Min salary ${editing.minSalary} looks too small — salaries are monthly in AED (e.g. 10000, not 10).`, blocking: true });
+  if (!editing.fees) issues.push({ msg: "Fees are text only — they are not part of cost calculations yet.", blocking: false });
+  if (!editing.insurance) issues.push({ msg: "Insurance is text only — not part of cost-to-close yet.", blocking: false });
+  return issues;
+}
+
+function FieldIssues({ editing }: { editing: BankProduct }) {
+  const issues = productIssues(editing);
+  if (issues.length === 0) return null;
+  return (
+    <div className="rounded-lg p-3 space-y-1.5" style={{ background: "rgba(242,176,76,0.06)" }}>
+      <div className="text-[10px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)]">
+        Before approving — {issues.filter((i) => i.blocking).length} blocking, {issues.filter((i) => !i.blocking).length} advisory
+      </div>
+      {issues.map((i, idx) => (
+        <p key={idx} className="text-[11.5px] m-0 leading-snug" style={{ color: i.blocking ? "var(--coral)" : "var(--ink-faint)" }}>
+          {i.blocking ? "✕" : "ℹ"} {i.msg}
+        </p>
+      ))}
+    </div>
+  );
+}
+
+function LivePreview({ editing }: { editing: BankProduct }) {
+  const { eibor } = useHfmcStore();
+  const curve: Record<string, number> = Object.fromEntries(eibor.map((e) => [e.tenor, e.ratePct]));
+  // reference client: 20k salary, 3k EMIs, 100k card limits, STL, 3y, 2.5M property, resale
+  const INCOME = 20000, EMIS = 3000, CARDS = 100000, PROPERTY = 2500000;
+  let pricing: ProductPricing | null = null;
+  try {
+    const parsed = JSON.parse(editing.pricingJson);
+    pricing = parsed?.quotes ? parsed : null;
+  } catch { pricing = null; }
+  const quote = pricing ? resolveQuote(pricing, { stl: true, termYears: 3, ftv: editing.maxLtvExpatriate ?? 80, txn: "Resale" }) : null;
+  const schedule = quote ? rateSchedule(quote, curve) : null;
+  const rate = schedule?.stressRatePct ?? null;
+  const card = (CARDS * (editing.cardRulePct ?? 5)) / 100;
+  const available = Math.round((INCOME * (editing.dbrPct ?? 50)) / 100 - EMIS - card);
+  const maxByDbr = rate != null && editing.tenorYears && available > 0 ? Math.round(loanForEmi(available, rate, editing.tenorYears)) : null;
+  const maxByLtv = editing.maxLtvExpatriate != null ? Math.round((PROPERTY * editing.maxLtvExpatriate) / 100) : null;
+  const eligible = [maxByDbr, maxByLtv].filter((x): x is number => x != null && x > 0);
+  const final = eligible.length ? Math.min(...eligible) : null;
+  if (!quote || rate == null) {
+    return <p className="text-[12px] m-0" style={{ color: "var(--coral)" }}>No matching 3-year quote for the reference client — this bank would be skipped.</p>;
+  }
+  return (
+    <p className="text-[12px] m-0" style={{ color: "var(--ink)" }}>
+      The reference client gets <strong style={{ color: "var(--mint)" }}>{final ? "AED " + final.toLocaleString() : "—"}</strong>
+      {" "}from this bank at <strong style={{ color: "var(--amber)" }}>{rate.toFixed(2)}% stressed</strong>
+      {" "}({quote.rateType === "FIXED" ? `intro ${quote.ratePct}% for ${quote.termYears}y` : "day-1 variable"}), EMI {Math.round(emi(1500000, rate, editing.tenorYears ?? 25)).toLocaleString()}/mo on a 1.5M loan.
+      {" "}Card rule {editing.cardRulePct ?? 5}% → {Math.round(card).toLocaleString()}/mo counted.
+    </p>
   );
 }
