@@ -25,6 +25,10 @@ interface MatchResult {
   cardObligation: number | null;
   dbrPctUsed: number | null;
   eligibleIncome: number | null;
+  schedule: { introRatePct: number | null; introTermYears: number | null; followOnRatePct: number | null; stressRatePct: number | null } | null;
+  introEmi: number | null;
+  followOnEmi: number | null;
+  stressEmi: number | null;
 }
 
 const VERDICT: Record<string, { tone: "mint" | "amber" | "coral"; label: string }> = {
@@ -157,14 +161,39 @@ export function BankMatchPanel({ c }: { c: LoanCase }) {
                       {r.verdict === "not_eligible" ? "" : fmt(r.eligibleLoan)}
                     </span>
                   </div>
+                  {r.schedule && (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2 mono text-[11.5px]">
+                      <div className="rounded px-2 py-1" style={{ background: "var(--bg2)" }}>
+                        <span className="text-[var(--ink-faint)]">1 · intro</span><br />
+                        {r.introEmi != null
+                          ? <><strong style={{ color: "var(--mint)" }}>{fmt(r.introEmi)}</strong>/mo{r.schedule.introTermYears ? <span className="text-[var(--ink-faint)]"> · {r.schedule.introRatePct}% for {r.schedule.introTermYears}y</span> : null}</>
+                          : "—"}
+                      </div>
+                      <div className="rounded px-2 py-1" style={{ background: "var(--bg2)" }}>
+                        <span className="text-[var(--ink-faint)]">2 · after intro</span><br />
+                        {r.followOnEmi != null
+                          ? <><strong>{fmt(r.followOnEmi)}</strong>/mo{r.schedule.followOnRatePct != null ? <span className="text-[var(--ink-faint)]"> · {r.schedule.followOnRatePct.toFixed(2)}%</span> : null}</>
+                          : "—"}
+                      </div>
+                      <div className="rounded px-2 py-1" style={{ background: "var(--amber-tint)" }}>
+                        <span className="text-[var(--amber)]">3 · stress (qualifies)</span><br />
+                        {r.stressEmi != null
+                          ? <><strong style={{ color: "var(--amber)" }}>{fmt(r.stressEmi)}</strong>/mo{r.schedule.stressRatePct != null ? <span className="text-[var(--ink-faint)]"> · {r.schedule.stressRatePct.toFixed(2)}%</span> : null}</>
+                          : "—"}
+                      </div>
+                    </div>
+                  )}
+                  {r.schedule?.introRatePct != null && r.introEmi != null && r.followOnEmi != null && r.followOnEmi > r.introEmi && (
+                    <p className="text-[11px] m-0 mt-1" style={{ color: "var(--coral)" }}>
+                      payment shock: EMI rises by {fmt(r.followOnEmi - r.introEmi)}/mo ({Math.round(((r.followOnEmi - r.introEmi) / r.introEmi) * 100)}%) when the intro period ends
+                    </p>
+                  )}
                   {r.assessmentRatePct != null && (
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1 mono text-[11.5px] mt-1.5" style={{ color: "var(--ink-dim)" }}>
-                      <span>rate: <strong style={{ color: "var(--amber)" }}>{r.assessmentRatePct.toFixed(2)}%</strong> stressed</span>
-                      {r.quote?.ratePct != null && <span>fixed: {r.quote.ratePct}% / {r.quote.term}y</span>}
-                      <span>EMI @ requested: {fmt(r.monthlyEmi)}</span>
                       {r.maxLoanByDbr != null && <span>DBR cap: {fmt(r.maxLoanByDbr)} @ {r.dbrPctUsed}%</span>}
-                      {r.cardObligation != null && <span>card @ {r.cardObligation.toLocaleString()}/mo</span>}
                       {r.maxLoanByLtv != null && <span>LTV cap: {fmt(r.maxLoanByLtv)}</span>}
+                      {r.cardObligation != null && <span>card @ {r.cardObligation.toLocaleString()}/mo</span>}
+                      <span>eligible: <strong style={{ color: "var(--mint)" }}>{fmt(r.eligibleLoan)}</strong></span>
                     </div>
                   )}
                   {r.reasons.length > 0 && (

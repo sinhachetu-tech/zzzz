@@ -70,24 +70,8 @@ export function resolveQuote(pricing: ProductPricing | null, req: QuoteMatchInpu
  * client at. Fixed quotes use follow-on (variable) rate; variable quotes use
  * margin + current EIBOR. This is what keeps stress tests alive when EIBOR moves.
  */
-export function assessmentRate(
-  q: RateQuote,
-  eibor: EiborCurve,
-): number | null {
-  const eiborFor = (tenor: EiborTenor) => eibor[tenor] ?? null;
-  if (q.rateType === "FIXED") {
-    const va = q.variableAfter;
-    if (!va) return q.ratePct ?? null;
-    const base = eiborFor(va.basis);
-    if (base == null) return q.ratePct ?? null;
-    const rate = va.marginPct + base;
-    return va.floorPct != null ? Math.max(rate, va.floorPct) : rate;
-  }
-  const tenor = q.rateType.replace("_EIBOR", "") as EiborTenor;
-  const base = eiborFor(tenor);
-  if (base == null) return null;
-  const rate = (q.marginPct ?? 0) + base;
-  return q.floorPct != null ? Math.max(rate, q.floorPct) : rate;
+export function assessmentRate(q: RateQuote, eibor: EiborCurve): number | null {
+  return rateSchedule(q, eibor).stressRatePct;
 }
 
 /** Parse "pricingJson" safely. */
@@ -99,4 +83,38 @@ export function parsePricing(json: string | null | undefined): ProductPricing | 
   } catch {
     return null;
   }
+}
+
+/* ---------------- three-rate schedule ---------------- */
+
+export interface RateSchedule {
+  introRatePct: number | null;   // what the client pays during the fixed period
+  introTermYears: number | null; // null/0 = no intro period (day-1 variable)
+  followOnRatePct: number | null; // what they pay after intro (margin + current EIBOR, floored)
+  stressRatePct: number | null;  // what the bank qualifies them at (DSR assessment)
+}
+
+/** The complete rate story for one quote at today's EIBOR. */
+export function rateSchedule(q: RateQuote, eibor: EiborCurve): RateSchedule {
+  const eiborFor = (tenor: EiborTenor) => eibor[tenor] ?? null;
+  const varRate = (basis: EiborTenor, margin: number | null | undefined, floor: number | null | undefined): number | null => {
+    const base = eiborFor(basis);
+    if (base == null) return null;
+    const rate = (margin ?? 0) + base;
+    return floor != null ? Math.max(rate, floor) : rate;
+  };
+  if (q.rateType === "FIXED") {
+    const va = q.variableAfter;
+    const followOn = va ? varRate(va.basis.replace("_EIBOR", "") as EiborTenor, va.marginPct, va.floorPct) : (q.ratePct ?? null);
+    return {
+      introRatePct: q.ratePct ?? null,
+      introTermYears: q.termYears ?? null,
+      followOnRatePct: followOn,
+      stressRatePct: followOn, // banks qualify at the follow-on rate
+    };
+  }
+  // day-1 variable: intro == follow-on == stress
+  const tenor = q.rateType.replace("_EIBOR", "") as EiborTenor;
+  const rate = varRate(tenor, q.marginPct, q.floorPct);
+  return { introRatePct: rate, introTermYears: 0, followOnRatePct: rate, stressRatePct: rate };
 }

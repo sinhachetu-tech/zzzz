@@ -2,7 +2,7 @@
 // bank product: resolves the pricing quote, computes the DSR-stressed maximum
 // loan by DBR and by LTV, and explains the verdict per bank.
 import { db } from "@/lib/db";
-import { parsePricing, resolveQuote, assessmentRate, type EiborCurve, type RateQuote } from "@/lib/bank-pricing";
+import { parsePricing, resolveQuote, assessmentRate, rateSchedule, type EiborCurve, type RateQuote, type RateSchedule } from "@/lib/bank-pricing";
 import { emi, loanForEmi } from "@/lib/calc";
 import type { BankProduct } from "@/lib/types";
 
@@ -37,6 +37,10 @@ export interface MatchResult {
   cardObligation: number | null;
   dbrPctUsed: number | null;
   eligibleIncome: number | null;
+  schedule: RateSchedule | null;   // intro / follow-on / stress rates
+  introEmi: number | null;         // client pays this during the intro period
+  followOnEmi: number | null;      // client pays this after the intro ends
+  stressEmi: number | null;        // the payment the bank qualifies them at
 }
 
 const MAX_DBR = 0.5; // CBUAE ceiling; bank-specific DBR overrides come later
@@ -71,7 +75,7 @@ function productApplies(p: BankProduct, input: MatchInput): string | null {
 }
 
 function baseResult(p: { id: number }, bankName: string, productName: string): MatchResult {
-  return { bankProductId: p.id, bankName, productName, verdict: "not_eligible", reasons: [], quote: null, assessmentRatePct: null, monthlyEmi: null, maxLoanByDbr: null, maxLoanByLtv: null, eligibleLoan: null, ltvPct: null, cardObligation: null, dbrPctUsed: null, eligibleIncome: null };
+  return { bankProductId: p.id, bankName, productName, verdict: "not_eligible", reasons: [], quote: null, assessmentRatePct: null, monthlyEmi: null, maxLoanByDbr: null, maxLoanByLtv: null, eligibleLoan: null, ltvPct: null, cardObligation: null, dbrPctUsed: null, eligibleIncome: null, schedule: null, introEmi: null, followOnEmi: null, stressEmi: null };
 }
 
 export async function runBankMatch(input: MatchInput): Promise<MatchResult[]> {
@@ -117,6 +121,10 @@ export async function runBankMatch(input: MatchInput): Promise<MatchResult[]> {
 
     let maxLoanByDbr: number | null = null;
     let monthlyEmi: number | null = null;
+    let introEmi: number | null = null;
+    let followOnEmi: number | null = null;
+    let stressEmi: number | null = null;
+    const schedule: RateSchedule | null = rateSchedule(quote, eibor);
     if (rate != null && p.tenorYears) {
       const availableEmi = Math.round((eligibleIncome * dbrPct) / 100 - input.existingEmis - cardObligation);
       if (availableEmi <= 0) {
@@ -124,6 +132,9 @@ export async function runBankMatch(input: MatchInput): Promise<MatchResult[]> {
       } else {
         maxLoanByDbr = Math.round(loanForEmi(availableEmi, rate, p.tenorYears));
         monthlyEmi = Math.round(emi(input.loanAmount, rate, p.tenorYears));
+        stressEmi = monthlyEmi; // payment at the qualifying (stress) rate
+        if (schedule?.introRatePct != null) introEmi = Math.round(emi(input.loanAmount, schedule.introRatePct, p.tenorYears));
+        if (schedule?.followOnRatePct != null) followOnEmi = Math.round(emi(input.loanAmount, schedule.followOnRatePct, p.tenorYears));
       }
     }
 
@@ -156,7 +167,7 @@ export async function runBankMatch(input: MatchInput): Promise<MatchResult[]> {
       reasons.push(`max eligible finance is AED ${eligibleLoan.toLocaleString()} — AED ${(input.loanAmount - eligibleLoan).toLocaleString()} short of request`);
     }
 
-    results.push({ bankProductId: p.id, bankName: dto.bankName, productName: p.name, verdict, reasons, quote, assessmentRatePct: rate, monthlyEmi, maxLoanByDbr, maxLoanByLtv, eligibleLoan, ltvPct, cardObligation, dbrPctUsed: dbrPct, eligibleIncome });
+    results.push({ bankProductId: p.id, bankName: dto.bankName, productName: p.name, verdict, reasons, quote, assessmentRatePct: rate, monthlyEmi, maxLoanByDbr, maxLoanByLtv, eligibleLoan, ltvPct, cardObligation, dbrPctUsed: dbrPct, eligibleIncome, schedule, introEmi, followOnEmi, stressEmi });
   }
 
   const rank = { eligible: 0, conditions: 1, not_eligible: 2 };
