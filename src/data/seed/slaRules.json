@@ -1,0 +1,56 @@
+[
+ {
+  "stage": "WhatsApp Group Creation",
+  "bank": null,
+  "maxDays": 1,
+  "active": true
+ },
+ {
+  "stage": "Document Collection",
+  "bank": null,
+  "maxDays": 5,
+  "active": true
+ },
+ {
+  "stage": "Pre-Approval",
+  "bank": null,
+  "maxDays": 5,
+  "active": true
+ },
+ {
+  "stage": "Property Identification",
+  "bank": null,
+  "maxDays": 7,
+  "active": true
+ },
+ {
+  "stage": "MOU / FARD",
+  "bank": null,
+  "maxDays": 10,
+  "active": true
+ },
+ {
+  "stage": "Bank Submission",
+  "bank": null,
+  "maxDays": 1,
+  "active": true
+ },
+ {
+  "stage": "Valuation",
+  "bank": null,
+  "maxDays": 5,
+  "active": true
+ },
+ {
+  "stage": "Final Approval",
+  "bank": null,
+  "maxDays": 3,
+  "active": true
+ },
+ {
+  "stage": "Disbursement",
+  "bank": null,
+  "maxDays": 3,
+  "active": true
+ }
+]

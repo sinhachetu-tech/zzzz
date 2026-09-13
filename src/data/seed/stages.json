@@ -1,0 +1,42 @@
+[
+ {
+  "label": "Lead",
+  "sortOrder": 0
+ },
+ {
+  "label": "WhatsApp Group Creation",
+  "sortOrder": 1
+ },
+ {
+  "label": "Document Collection",
+  "sortOrder": 2
+ },
+ {
+  "label": "Pre-Approval",
+  "sortOrder": 3
+ },
+ {
+  "label": "Property Identification",
+  "sortOrder": 4
+ },
+ {
+  "label": "MOU / FARD",
+  "sortOrder": 5
+ },
+ {
+  "label": "Bank Submission",
+  "sortOrder": 6
+ },
+ {
+  "label": "Valuation",
+  "sortOrder": 7
+ },
+ {
+  "label": "Final Approval",
+  "sortOrder": 8
+ },
+ {
+  "label": "Disbursement",
+  "sortOrder": 9
+ }
+]

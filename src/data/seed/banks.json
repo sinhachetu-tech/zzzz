@@ -1,0 +1,62 @@
+[
+ {
+  "name": "ENBD",
+  "ratePct": 0.85,
+  "active": true
+ },
+ {
+  "name": "ADCB",
+  "ratePct": 1,
+  "active": true
+ },
+ {
+  "name": "FAB",
+  "ratePct": 0.9,
+  "active": true
+ },
+ {
+  "name": "Mashreq",
+  "ratePct": 0.95,
+  "active": true
+ },
+ {
+  "name": "HSBC",
+  "ratePct": 1.1,
+  "active": true
+ },
+ {
+  "name": "SCB",
+  "ratePct": 1,
+  "active": true
+ },
+ {
+  "name": "CBD",
+  "ratePct": 0.9,
+  "active": true
+ },
+ {
+  "name": "DIB",
+  "ratePct": 0.8,
+  "active": true
+ },
+ {
+  "name": "ADIB",
+  "ratePct": 0.85,
+  "active": true
+ },
+ {
+  "name": "UAB",
+  "ratePct": 0.9,
+  "active": true
+ },
+ {
+  "name": "RAK Bank",
+  "ratePct": 1,
+  "active": true
+ },
+ {
+  "name": "NBF",
+  "ratePct": 1.05,
+  "active": true
+ }
+]

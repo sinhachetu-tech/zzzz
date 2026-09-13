@@ -1,0 +1,74 @@
+[
+ {
+  "name": "Super Admin",
+  "scope": "all",
+  "issueTasks": true,
+  "admin": true,
+  "super": true,
+  "viewRevenue": true,
+  "builtIn": true
+ },
+ {
+  "name": "Head of Company",
+  "scope": "all",
+  "issueTasks": true,
+  "admin": true,
+  "super": false,
+  "viewRevenue": true,
+  "builtIn": true
+ },
+ {
+  "name": "PA to HoC",
+  "scope": "all",
+  "issueTasks": true,
+  "admin": false,
+  "super": false,
+  "viewRevenue": false,
+  "builtIn": true
+ },
+ {
+  "name": "Mortgage Head",
+  "scope": "all",
+  "issueTasks": true,
+  "admin": true,
+  "super": false,
+  "viewRevenue": true,
+  "builtIn": true
+ },
+ {
+  "name": "Team Leader SPO",
+  "scope": "team",
+  "issueTasks": true,
+  "admin": false,
+  "super": false,
+  "viewRevenue": false,
+  "builtIn": true
+ },
+ {
+  "name": "Team Leader VRM",
+  "scope": "team",
+  "issueTasks": true,
+  "admin": false,
+  "super": false,
+  "viewRevenue": false,
+  "builtIn": true
+ },
+ {
+  "name": "SPO",
+  "scope": "own",
+  "issueTasks": false,
+  "admin": false,
+  "super": false,
+  "viewRevenue": false,
+  "builtIn": true
+ },
+ {
+  "name": "VRM",
+  "scope": "own",
+  "issueTasks": false,
+  "admin": false,
+  "super": false,
+  "viewRevenue": false,
+  "builtIn": true
+ }
+]

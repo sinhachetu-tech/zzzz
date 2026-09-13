@@ -1,0 +1,142 @@
+[
+ {
+  "caseId": 1,
+  "description": "Collect KYC & income documents",
+  "ownerId": 5,
+  "createdBy": 4,
+  "waitingFor": "Client",
+  "whyPending": "Documents awaited",
+  "dueDate": 2,
+  "status": "Open"
+ },
+ {
+  "caseId": 1,
+  "description": "Create WhatsApp group with client",
+  "ownerId": 5,
+  "createdBy": 5,
+  "waitingFor": "Internal",
+  "whyPending": "Internal review",
+  "dueDate": -2,
+  "status": "Open"
+ },
+ {
+  "caseId": 3,
+  "description": "Submit to Mashreq pre-approval",
+  "ownerId": 7,
+  "createdBy": 4,
+  "waitingFor": "Bank",
+  "whyPending": "Bank query raised",
+  "dueDate": 1,
+  "status": "Open"
+ },
+ {
+  "caseId": 3,
+  "description": "Verify agent share agreement",
+  "ownerId": 4,
+  "createdBy": 4,
+  "waitingFor": "Partner",
+  "whyPending": "Internal review",
+  "dueDate": 4,
+  "status": "Open"
+ },
+ {
+  "caseId": 4,
+  "description": "Chase bank valuation report",
+  "ownerId": 8,
+  "createdBy": 6,
+  "waitingFor": "Valuer",
+  "whyPending": "Valuation pending",
+  "dueDate": 0,
+  "status": "Open"
+ },
+ {
+  "caseId": 5,
+  "description": "Run affordability calculator",
+  "ownerId": 5,
+  "createdBy": 5,
+  "waitingFor": "Internal",
+  "whyPending": "Internal review",
+  "dueDate": -1,
+  "status": "Open"
+ },
+ {
+  "caseId": 7,
+  "description": "Draft MOU and send to client",
+  "ownerId": 7,
+  "createdBy": 6,
+  "waitingFor": "Client",
+  "whyPending": "Documents awaited",
+  "dueDate": 3,
+  "status": "Open"
+ },
+ {
+  "caseId": 9,
+  "description": "Follow up RAK Bank final offer letter",
+  "ownerId": 4,
+  "createdBy": 4,
+  "waitingFor": "Bank",
+  "whyPending": "Bank query raised",
+  "dueDate": 5,
+  "status": "Open"
+ },
+ {
+  "caseId": 9,
+  "description": "Confirm property valuation matches sale price",
+  "ownerId": 4,
+  "createdBy": 1,
+  "waitingFor": "Internal",
+  "whyPending": "Valuation pending",
+  "dueDate": 2,
+  "status": "Open"
+ },
+ {
+  "caseId": 10,
+  "description": "Shortlist properties in budget",
+  "ownerId": 5,
+  "createdBy": 5,
+  "waitingFor": "Client",
+  "whyPending": "Client decision",
+  "dueDate": 7,
+  "status": "Open"
+ },
+ {
+  "caseId": 11,
+  "description": "Submit application to Mashreq",
+  "ownerId": 7,
+  "createdBy": 4,
+  "waitingFor": "Bank",
+  "whyPending": "Documents awaited",
+  "dueDate": 4,
+  "status": "Open"
+ },
+ {
+  "caseId": 12,
+  "description": "Onboard client to portal",
+  "ownerId": 8,
+  "createdBy": 8,
+  "waitingFor": "Internal",
+  "whyPending": "Internal review",
+  "dueDate": 6,
+  "status": "Open"
+ },
+ {
+  "caseId": 2,
+  "description": "Coordinate disbursement with developer",
+  "ownerId": 4,
+  "createdBy": 1,
+  "waitingFor": "Developer",
+  "whyPending": "NOC pending",
+  "dueDate": -30,
+  "status": "Done"
+ },
+ {
+  "caseId": 6,
+  "description": "Obtain final NOC from developer",
+  "ownerId": 6,
+  "createdBy": 3,
+  "waitingFor": "Developer",
+  "whyPending": "NOC pending",
+  "dueDate": -40,
+  "status": "Done"
+ }
+]

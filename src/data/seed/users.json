@@ -1,0 +1,102 @@
+[
+ {
+  "id": 11,
+  "name": "Salem Al Marri",
+  "email": "super@meridian.ae",
+  "password": "super123",
+  "role": "Super Admin",
+  "team": "Management",
+  "active": true,
+  "createdAt": "2025-05-01T07:57:53.590Z"
+ },
+ {
+  "id": 1,
+  "name": "Rashid Al Falasi",
+  "email": "head@meridian.ae",
+  "password": "admin123",
+  "role": "Head of Company",
+  "team": "Management",
+  "active": true,
+  "createdAt": "2025-08-09T07:57:53.590Z"
+ },
+ {
+  "id": 2,
+  "name": "Layla Al Hashimi",
+  "email": "pa@meridian.ae",
+  "password": "demo123",
+  "role": "PA to HoC",
+  "team": "Management",
+  "active": true,
+  "createdAt": "2025-08-19T07:57:53.590Z"
+ },
+ {
+  "id": 3,
+  "name": "Omar Al Suwaidi",
+  "email": "omar@meridian.ae",
+  "password": "demo123",
+  "role": "Mortgage Head",
+  "team": "Management",
+  "active": true,
+  "createdAt": "2025-09-18T07:57:53.590Z"
+ },
+ {
+  "id": 4,
+  "name": "Imran Khan",
+  "email": "imran@meridian.ae",
+  "password": "demo123",
+  "role": "Team Leader SPO",
+  "team": "Dubai",
+  "active": true,
+  "createdAt": "2025-11-17T07:57:53.590Z"
+ },
+ {
+  "id": 5,
+  "name": "Aisha Al Zaabi",
+  "email": "aisha@meridian.ae",
+  "password": "demo123",
+  "role": "SPO",
+  "team": "Dubai",
+  "active": true,
+  "createdAt": "2026-01-16T07:57:53.590Z"
+ },
+ {
+  "id": 6,
+  "name": "Fatima Al Mansoori",
+  "email": "fatima@meridian.ae",
+  "password": "demo123",
+  "role": "Team Leader VRM",
+  "team": "Abu Dhabi",
+  "active": true,
+  "createdAt": "2026-01-26T07:57:53.590Z"
+ },
+ {
+  "id": 7,
+  "name": "Khalid Al Nahyan",
+  "email": "khalid@meridian.ae",
+  "password": "demo123",
+  "role": "VRM",
+  "team": "Abu Dhabi",
+  "active": true,
+  "createdAt": "2026-03-17T07:57:53.590Z"
+ },
+ {
+  "id": 8,
+  "name": "Priya Sharma",
+  "email": "priya@meridian.ae",
+  "password": "demo123",
+  "role": "SPO",
+  "team": "Dubai",
+  "active": true,
+  "createdAt": "2026-05-16T07:57:53.590Z"
+ },
+ {
+  "id": 9,
+  "name": "Ahmed Al Maktoum",
+  "email": "ahmed@meridian.ae",
+  "password": "demo123",
+  "role": "VRM",
+  "team": "Abu Dhabi",
+  "active": true,
+  "createdAt": "2026-06-15T07:57:53.591Z"
+ }
+]

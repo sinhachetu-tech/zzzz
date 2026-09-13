@@ -1,0 +1,46 @@
+{
+ "DIB": {
+  "pos": "a. Quick Turn Around Time\nb. Staffs are based in Abu Dhabi, so process happens from Abu Dhabi Office. All document signing will happen in Abu Dhabi Office.\nValuation amount receives in 24 hours\nWe can proceed with the pre-approval and valuation in parallel.\nExpats-Salaried: 65 Years - Expats-Salaried: Increased to 70 years subject to below conditions: Length of Service for at least 2 years in UAE Salary greater or equal to AED 40,000 per month Age at application be 50 years\nAge at maturity is 70 years with the following conditions: a. Salary for Non-Golden Visa Holders should be AED 40,000 or more & for Golden Visa Holders, AED 30,000 or more. b. To avail a maximum of 80% financing (Finance to Value Ratio - FTV), the age of the customer must be 55 years or less at the time of applying for the finance. c. To avail a maximum of 70% financing (Finance to Value Ratio - FTV), the age of the customer must be between 55 years and 58 years at the time of applying for the finance and the finance tenure needs to be aligned to ensure that the Debt Burden Ratio (DBR) is maximized to 50%. d. Length of Service should be greater than 2 years. e. Mandatory Insurance coverage for Life is required including Permanent and Total Disability (PTD) until 70 years.",
+  "neg": "a. Service is Poor. But considering this is not a Salary Transfer Bank, service really don’t matter.\nb. Partial payment is not free. Every partial payment will have penalty of 1% plus VAT of the partial paid amount."
+ },
+ "CBD": {
+  "pos": "a. Insurance premium is cheaper\nb. Partial payment of 15% of the loan outstanding every year on year is free. Partial payment over 15% of the loan outstanding of the particular year will have penalty of 1% plus VAT",
+  "neg": "a. Service is ok ok depending on the staff in the branc. But considering this is not a Salary Transfer Bank, service really don’t matter.\nb. Don’t have Home Loan Processing Staff in Abu Dhabi.\nc. All signatures need to be done in Dubai Office\nd. Processing fees minimum of AED 3,150/-\ne. Process takes time - not one of the best turn around time\nCBD will not consider bonus as part of their income calculation.\nCBD (Due to staffing issue) - There are complications from bank on providing finance for Reem island project"
+ },
+ "ADIB": {
+  "pos": "a. Partial payment of 25% of the loan outstanding every year on year is free. Partial payment over 25% of the loan outstanding of the particular year will have penalty of 1% plus VAT",
+  "neg": "a. Service is Poor. But considering this is not a Salary Transfer Bank, service really don’t matter.\nb. Process takes time - not one of the best turn around time\nc. Processing fees minimum of AED 5,250/-"
+ },
+ "FAB": {
+  "pos": "a. Life insurance premium is cheaper\nb. Interest rate on first three and 5 years is cheaper",
+  "neg": "a. Service is Poor.\nb. Process takes time - not one of the best turn around time\nc. Considering this is your salary transfer bank, end of service benefit will come to the same account as per the UAE company and banks policy. The moment, end of service benefit hit your account, bank will freeze all your relation immediately. Bank might take your end of service benefit depending upon how risky your profile is in the future plus bank might ask for guarantor etc\nd. Property insurance premium is expensive\ne. Partial payment is not free. Every partial payment will have penalty of 1% plus VAT of the partial paid amount."
+ },
+ "SCB": {
+  "pos": "a. Process is quick\nb. Partial payment of 30% of the loan outstanding every year on year is free. Partial payment over 30% of the loan outstanding of the particular year will have penalty of 1% plus VAT\nc. Follow on rate is quite aggressive",
+  "neg": "a. Branches are limited - One bank branch in Abu Dhabi and One bank branch in Dubai\nThere are complications from banks on providing finance for Reem island project - SCB wont do handover payment due to their policy issue"
+ },
+ "HSBC": {
+  "pos": "a. Process is quick\nb. Partial payment of 25% of the loan outstanding every year on year is free. Partial payment over 25% of the loan outstanding of the particular year will have penalty of 1% plus VAT",
+  "neg": "a. Branches are limited - One bank branch in Abu Dhabi and One bank branch in Dubai\nThere are complications from banks on providing finance for Reem island project - HSBC wont do handover payment due to their policy issue"
+ },
+ "RAK Bank": {
+  "pos": "",
+  "neg": "a. Branches are limited - One bank branch in Abu Dhabi and One bank branch in Dubai\nb. Process is not one of the best and one of the worst. It is in between.\nc. Partial payment in the first 2 years is not free. After fixed rate period, Partial payment of 25% of the loan outstanding every year on year is free. Partial payment over 25% of the loan outstanding of the particular year will have penalty of 1% plus VAT\nRAK bank Effective from today there is no processing fee for salaried. For self employed, pro fee is 0.50% of loan amount + VAT And for non resident and AIP processing fee is 1% of loan amount + VAT\nThere are complications from banks on providing finance for Reem island project - RAK bank wont do finance as project listing is pending\n5% of the credit limit will now be considered for debt burden ratio (DBR) calculations."
+ },
+ "Mashreq": {
+  "pos": "cheque book are not needed. Mashreq cheque book is not needed. Bank will have a dummy cheque from bank side for you to sign\nWe can proceed with the pre-approval and valuation in parallel.",
+  "neg": "Service is Poor. Process takes time - not one of the best turn around time\nThere are complications from banks on providing finance for Reem island project - Mashreq wont do handover payment due to their policy issue"
+ },
+ "Arab Bank": {
+  "pos": "",
+  "neg": ""
+ },
+ "ENBD": {
+  "pos": "Free Partial payment for upto 25% / 30% can be offered\nNil / No Life Insurance and External Life insurance Assignment (Met life / Zurich / Friends provident) subject to approval with no extra cost\nFlexible on Property Insurance Charges\nFlying pay for Pilots & Cabin Crew – 100% add back of average of latest 6 months\nClient working in Approved List of Employers can be financed with only - 01 Month LOS\nSecurity cheque is not required from the customers\nValidity duration of Pre-Approval is 90 Days from the day of Issuance\nValidity duration of Sanction / Final offer Letter -- 60 days subject to 120 days from the date of Pre-approval.\nValidity duration of Valuation is 90 days",
+  "neg": ""
+ },
+ "NBF": {
+  "pos": "NBF now cnsider 1.fixed Bonus , 2. Fixed Education Allowance, 3. Airfare Allowance, 4. Incentives/ Commissions.\nLTV increase to 80% for Buyout + Equity Release (applicable for first property only)",
+  "neg": ""
+ }
+}

@@ -1,0 +1,38 @@
+[
+ {
+  "kind": "Agent",
+  "name": "Faisal Properties",
+  "defaultSharePct": 20,
+  "active": true
+ },
+ {
+  "kind": "Agent",
+  "name": "Gulf Real Estate",
+  "defaultSharePct": 15,
+  "active": true
+ },
+ {
+  "kind": "Broker",
+  "name": "Prime Mortgage Brokers",
+  "defaultSharePct": 30,
+  "active": true
+ },
+ {
+  "kind": "Broker",
+  "name": "Emirates Finance Hub",
+  "defaultSharePct": 25,
+  "active": true
+ },
+ {
+  "kind": "Referral",
+  "name": "Dr. Saeed (existing client)",
+  "defaultSharePct": 10,
+  "active": true
+ },
+ {
+  "kind": "Referral",
+  "name": "Mr. Tariq (lawyer)",
+  "defaultSharePct": 10,
+  "active": true
+ }
+]

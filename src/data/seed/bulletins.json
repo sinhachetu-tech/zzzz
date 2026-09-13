@@ -1,0 +1,44 @@
+[
+ {
+  "issuedBy": 1,
+  "task": "Push Mohammed Al Mansoori (HFMC-0001) — documents 2 days overdue.",
+  "caseId": 1,
+  "targets": [
+   4,
+   5
+  ]
+ },
+ {
+  "issuedBy": 1,
+  "task": "Confirm Mashreq submission status for John Mathews (HFMC-0003).",
+  "caseId": 3,
+  "targets": [
+   7
+  ]
+ },
+ {
+  "issuedBy": 3,
+  "task": "All SPOs: clear your Open queue before EOD — 3 files are At Risk.",
+  "caseId": null,
+  "targets": [
+   5,
+   8
+  ]
+ },
+ {
+  "issuedBy": 4,
+  "task": "Rahul Verma (HFMC-0005) — run affordability and report back.",
+  "caseId": 5,
+  "targets": [
+   5
+  ]
+ },
+ {
+  "issuedBy": 6,
+  "task": "Aisha Al Suwaidi (HFMC-0004) valuation due today — escalate if no response.",
+  "caseId": 4,
+  "targets": [
+   8
+  ]
+ }
+]

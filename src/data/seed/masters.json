@@ -1,0 +1,20 @@
+{
+ "whyPending": [
+  "Documents awaited",
+  "Bank query raised",
+  "Valuation pending",
+  "Internal review",
+  "Client decision",
+  "Title deed pending",
+  "NOC pending",
+  "Salary transfer pending"
+ ],
+ "waitingFor": [
+  "Client",
+  "Bank",
+  "Internal",
+  "Partner",
+  "Developer",
+  "Valuer"
+ ]
+}
