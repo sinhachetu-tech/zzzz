@@ -233,11 +233,11 @@ async function ensureMasterData() {
   for (const p of BANK_PRODUCTS_ALL) {
     let bank = await db.bankItem.findFirst({ where: { name: p.bankName } });
     if (!bank) bank = await db.bankItem.create({ data: { name: p.bankName, ratePct: 0, active: true } });
-    const exists = await db.bankProduct.findFirst({ where: { bankId: bank.id, name: p.name } });
+    const exists = await db.bankProduct.findFirst({ where: { bankId: bank.id, name: p.name as string } });
     if (!exists) {
       await db.bankProduct.create({
         data: {
-          bankId: bank.id, name: p.name, sheet: p.sheet as string, employment: p.employment as string,
+          bankId: bank.id, name: p.name as string, sheet: p.sheet as string, employment: p.employment as string,
           residency: p.residency as string, financeType: p.financeType as string, program: p.program as string, loanKind: p.loanKind as string,
           maxLtvNational: p.maxLtvNational as number | null, maxLtvExpatriate: p.maxLtvExpatriate as number | null,
           minLoan: p.minLoan as number | null, maxLoan: p.maxLoan as number | null,

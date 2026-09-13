@@ -9,7 +9,8 @@ import type {
 import { fmtRate } from "@/lib/format";
 import { Avatar, Chip, EmptyState, Modal, Seg } from "@/components/hfmc/ui";
 import { ConfirmModal } from "@/components/hfmc/bits";
-import { parsePricing, resolveQuote, rateSchedule, type ProductPricing } from "@/lib/bank-pricing";
+import { parsePricing, resolveQuote, rateSchedule, type ProductPricing, type RateQuote } from "@/lib/bank-pricing";
+import { parseRateTable } from "@/lib/quote-parser";
 import { emi, loanForEmi } from "@/lib/calc";
 import {
   IBank, ICheck, IPencil, IPlus, IShield, ITrash, ITrophy, IUsers, IX,
@@ -2511,6 +2512,14 @@ function BankRulesTab() {
               </div>
               <LivePreview editing={editing} />
             </div>
+
+            <QuoteRowsEditor
+              quotes={(() => {
+                try { return (JSON.parse(editing.pricingJson as string)?.quotes ?? []) as RateQuote[]; } catch { return []; }
+              })()}
+              rateTable={String(editing.rateTable ?? "")}
+              onChange={(quotes) => setEditing({ ...editing, pricingJson: JSON.stringify({ quotes }) })}
+            />
             {TEXT_BLOCKS.map((b) => (
               <Field key={String(b.key)} label={`${b.label} · ${b.engineReady ? "engine ✓" : "display only"}`}>
                 <textarea
@@ -2640,5 +2649,101 @@ function LivePreview({ editing }: { editing: BankProduct }) {
       {" "}({quote.rateType === "FIXED" ? `intro ${quote.ratePct}% for ${quote.termYears}y` : "day-1 variable"}), EMI {Math.round(emi(1500000, rate, editing.tenorYears ?? 25)).toLocaleString()}/mo on a 1.5M loan.
       {" "}Card rule {editing.cardRulePct ?? 5}% → {Math.round(card).toLocaleString()}/mo counted.
     </p>
+  );
+}
+
+/* ---------------- guided quote rows editor (phase 4 human side) ---------------- */
+
+const TXN_OPTIONS = ["any", "Resale", "Primary Handover", "Buyout", "Equity Release", "Buyout + Equity Release", "Land", "Self Construction", "LAP"];
+
+function QuoteRowsEditor({ quotes, rateTable, onChange }: {
+  quotes: RateQuote[];
+  rateTable: string;
+  onChange: (quotes: RateQuote[]) => void;
+}) {
+  const update = (i: number, patch: Partial<RateQuote>) =>
+    onChange(quotes.map((q, idx) => (idx === i ? { ...q, ...patch } : q)));
+  const remove = (i: number) => onChange(quotes.filter((_, idx) => idx !== i));
+  const add = () =>
+    onChange([...quotes, { stl: true, termYears: 3, rateType: "FIXED", ratePct: undefined, txn: "any", note: "" }]);
+
+  const autoDraft = () => {
+    const parsed = parseRateTable(rateTable);
+    if (parsed.length === 0) return;
+    // strip confidence/sourceLine — keep engine fields
+    const cleanQuotes: RateQuote[] = parsed.map(({ confidence, sourceLine, ...q }) => ({ ...q, note: sourceLine }));
+    onChange(cleanQuotes);
+  };
+
+  return (
+    <div className="rounded-lg p-3 space-y-2" style={{ background: "var(--tint)" }}>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[10px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)] flex-1">
+          Pricing quotes · {quotes.length} — these are what the engine calculates with
+        </span>
+        {rateTable && (
+          <button className="btn btn-ghost btn-sm" title="Draft quotes from the source text — review each row before approving" onClick={autoDraft}>
+            Auto-draft from source text
+          </button>
+        )}
+        <button className="btn btn-ghost btn-sm" onClick={add}><IPlus size={13} /> Add quote</button>
+      </div>
+      {quotes.length === 0 && (
+        <p className="text-[11.5px] text-[var(--ink-faint)] m-0">
+          No quotes yet — use Auto-draft to pre-fill from the source text, then review each row.
+        </p>
+      )}
+      {quotes.map((q, i) => (
+        <div key={i} className="rounded-lg px-2.5 py-2 space-y-1.5" style={{ background: "var(--surface)", border: "1px solid var(--line)" }}>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <select className="select !w-auto !py-1 text-[11.5px]" value={q.stl == null ? "" : q.stl ? "stl" : "nstl"}
+              onChange={(e) => update(i, { stl: e.target.value === "" ? null : e.target.value === "stl" })}>
+              <option value="stl">STL</option>
+              <option value="nstl">NSTL</option>
+              <option value="">Both</option>
+            </select>
+            <select className="select !w-auto !py-1 text-[11.5px]" value={String(q.termYears ?? 0)}
+              onChange={(e) => update(i, { termYears: Number(e.target.value) })}>
+              <option value="0">Day-1 variable</option>
+              <option value="1">1y fixed</option>
+              <option value="2">2y fixed</option>
+              <option value="3">3y fixed</option>
+              <option value="5">5y fixed</option>
+            </select>
+            <select className="select !w-auto !py-1 text-[11.5px]" value={q.rateType}
+              onChange={(e) => update(i, { rateType: e.target.value as RateQuote["rateType"] })}>
+              <option value="FIXED">FIXED %</option>
+              <option value="1M_EIBOR">1M EIBOR + margin</option>
+              <option value="3M_EIBOR">3M EIBOR + margin</option>
+              <option value="6M_EIBOR">6M EIBOR + margin</option>
+              <option value="1Y_EIBOR">1Y EIBOR + margin</option>
+            </select>
+            {q.rateType === "FIXED" ? (
+              <input className="input mono !w-24 !py-1 text-[11.5px]" type="number" step={0.01} placeholder="rate %"
+                value={q.ratePct ?? ""} onChange={(e) => update(i, { ratePct: e.target.value === "" ? null : Number(e.target.value) })} />
+            ) : (
+              <input className="input mono !w-24 !py-1 text-[11.5px]" type="number" step={0.001} placeholder="margin %"
+                value={q.marginPct ?? ""} onChange={(e) => update(i, { marginPct: e.target.value === "" ? null : Number(e.target.value) })} />
+            )}
+            {q.rateType !== "FIXED" && (
+              <input className="input mono !w-20 !py-1 text-[11.5px]" type="number" step={0.01} placeholder="floor %"
+                value={q.floorPct ?? ""} onChange={(e) => update(i, { floorPct: e.target.value === "" ? null : Number(e.target.value) })} />
+            )}
+            <input className="input mono !w-20 !py-1 text-[11.5px]" type="number" placeholder="FTV ≤"
+              title="FTV band ceiling — blank = any"
+              value={q.ftvMax ?? ""} onChange={(e) => update(i, { ftvMax: e.target.value === "" ? null : Number(e.target.value) })} />
+            <select className="select !w-auto !py-1 text-[11.5px]" value={q.txn ?? "any"}
+              onChange={(e) => update(i, { txn: e.target.value === "any" ? null : e.target.value })}>
+              {TXN_OPTIONS.map((o) => <option key={o} value={o}>{o === "any" ? "any txn" : o}</option>)}
+            </select>
+            <button className="btn btn-ghost btn-sm !px-2 ml-auto" style={{ color: "var(--coral)" }} onClick={() => remove(i)} title="Remove quote">
+              <ITrash size={12} />
+            </button>
+          </div>
+          <input className="input !py-1 text-[11px]" placeholder="note (optional)" value={q.note ?? ""}
+            onChange={(e) => update(i, { note: e.target.value })} />
+        </div>
+      ))}
+    </div>
   );
 }
