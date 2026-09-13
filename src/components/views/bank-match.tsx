@@ -50,6 +50,7 @@ export function BankMatchPanel({ c }: { c: LoanCase }) {
   const [bonus, setBonus] = useState("");
   const [term, setTerm] = useState(3);
   const [results, setResults] = useState<MatchResult[] | null>(null);
+  const [selected, setSelected] = useState<Record<number, boolean>>({});
   const [busy, setBusy] = useState(false);
 
   const run = async () => {
@@ -75,6 +76,11 @@ export function BankMatchPanel({ c }: { c: LoanCase }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Match failed");
       setResults(data.results);
+      sessionStorage.setItem("hfmc_proposal_request", JSON.stringify({ caseId: c.id, monthlyIncome: Number(income), existingEmis: Number(emis) || 0, cardLimitsTotal: Number(cardLimits) || 0, rentalIncome: Number(rental) || 0, bonusIncome: Number(bonus) || 0, propertyValue: Number(propertyValue), loanAmount: c.loanAmount, stl, termYears: term }));
+      // preselect eligible + conditions products for the proposal
+      const pre: Record<number, boolean> = {};
+      for (const r of data.results) if (r.verdict !== "not_eligible") pre[r.bankProductId] = true;
+      setSelected(pre);
     } catch (e) {
       toast("error", e instanceof Error ? e.message : "Match failed");
     }
@@ -143,9 +149,23 @@ export function BankMatchPanel({ c }: { c: LoanCase }) {
             </select>
           </div>
         </div>
-        <button className="btn btn-primary btn-sm mt-3" onClick={run} disabled={busy}>
-          <ICalc size={14} /> {busy ? "Running…" : "Run bank match"}
-        </button>
+        <div className="flex flex-wrap gap-2 mt-3">
+          <button className="btn btn-primary btn-sm" onClick={run} disabled={busy}>
+            <ICalc size={14} /> {busy ? "Running…" : "Run bank match"}
+          </button>
+          {results && results.some((r) => selected[r.bankProductId]) && (
+            <button className="btn btn-mint btn-sm" onClick={() => {
+              const raw = sessionStorage.getItem("hfmc_proposal_request");
+              if (!raw) return;
+              const body = JSON.parse(raw);
+              body.productIds = Object.entries(selected).filter(([, v]) => v).map(([k]) => Number(k));
+              sessionStorage.setItem("hfmc_proposal_request", JSON.stringify(body));
+              window.open("/proposal", "_blank");
+            }}>
+              Generate proposal ({Object.values(selected).filter(Boolean).length})
+            </button>
+          )}
+        </div>
 
         {results && (
           <div className="space-y-2 mt-4">
@@ -154,6 +174,9 @@ export function BankMatchPanel({ c }: { c: LoanCase }) {
               return (
                 <div key={r.bankProductId} className="rounded-lg px-3 py-2.5" style={{ background: "var(--tint)", borderLeft: `3px solid var(--${v.tone})` }}>
                   <div className="flex flex-wrap items-center gap-2">
+                    {r.verdict !== "not_eligible" && (
+                      <input type="checkbox" checked={!!selected[r.bankProductId]} onChange={(e) => setSelected({ ...selected, [r.bankProductId]: e.target.checked })} title="Include in proposal" />
+                    )}
                     <span className="text-[12.5px] font-semibold">{r.bankName}</span>
                     <span className="text-[11.5px] text-[var(--ink-dim)]">{r.productName}</span>
                     <Chip tone={v.tone}>{v.label}</Chip>
