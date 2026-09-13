@@ -1,7 +1,7 @@
 // Serialization: Prisma row → API DTO matching the original HFMC types.
 import type {
   Activity, BankItem, BulletinItem, CasePartner, Instruction, LoanCase,
-  BankProduct, CaseDocument, CaseUpdate, DocRule, FeeRule, MasterItem, PartnerItem, Reply, SlaRule, StageItem, StageTransition, StageTransitionDto, Task, User,
+  BankProduct, Proposal, CaseDocument, CaseUpdate, DocRule, FeeRule, MasterItem, PartnerItem, Reply, SlaRule, StageItem, StageTransition, StageTransitionDto, Task, User,
 } from "./types";
 
 type PrismaUser = {
@@ -388,5 +388,27 @@ export function serCaseUpdate(u: PrismaCaseUpdateRow): CaseUpdate {
     holdReason: u.holdReason, authorId: u.authorId,
     authorName: (u as unknown as { author?: { name?: string } }).author?.name ?? null,
     createdAt: u.createdAt.toISOString(),
+  };
+}
+
+type PrismaProposalRow = {
+  id: number; caseId: number; productIds: string; inputs: string;
+  mode: string; status: string; version: number; createdBy: number;
+  sentAt: Date | null; decidedAt: Date | null; createdAt: Date;
+  author?: { name: string } | null;
+};
+export function serProposal(v: PrismaProposalRow): Proposal {
+  let productIds: number[] = [];
+  let inputs: Record<string, unknown> = {};
+  try { productIds = JSON.parse(v.productIds); } catch {}
+  try { inputs = JSON.parse(v.inputs); } catch {}
+  return {
+    id: v.id, caseId: v.caseId, productIds, inputs,
+    mode: v.mode as Proposal["mode"], status: v.status as Proposal["status"],
+    version: v.version, createdBy: v.createdBy,
+    authorName: (v as unknown as { author?: { name?: string } }).author?.name ?? null,
+    sentAt: v.sentAt ? v.sentAt.toISOString() : null,
+    decidedAt: v.decidedAt ? v.decidedAt.toISOString() : null,
+    createdAt: v.createdAt.toISOString(),
   };
 }

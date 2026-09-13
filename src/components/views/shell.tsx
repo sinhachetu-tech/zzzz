@@ -324,6 +324,7 @@ export default function Shell({ children }: { children: ReactNode }) {
 
   const navItems: { label: string; route: Route; icon: (p: { size?: number; className?: string }) => ReactNode; badge?: number }[] = [
     { label: "Dashboard", route: { name: "dashboard" }, icon: IGrid },
+    { label: "Leads", route: { name: "leads" }, icon: IInbox },
     { label: "Morning Bulletin", route: { name: "bulletin" }, icon: IFlag, badge: myOpenDirectives },
     { label: "Calculator", route: { name: "calculator" }, icon: ICalc },
     { label: "Task Queue", route: { name: "tasks" }, icon: ITasks },
@@ -333,6 +334,7 @@ export default function Shell({ children }: { children: ReactNode }) {
 
   const title =
     route.name === "dashboard" ? "Dashboard" :
+    route.name === "leads" ? "Leads" :
     route.name === "case" ? "Case 360" :
     route.name === "tasks" ? "Task Queue" :
     route.name === "bulletin" ? "Morning Bulletin" :

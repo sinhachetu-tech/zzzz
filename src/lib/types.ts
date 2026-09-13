@@ -326,6 +326,21 @@ export interface CaseUpdate {
   createdAt: string;
 }
 
+export interface Proposal {
+  id: number;
+  caseId: number;
+  productIds: number[];
+  inputs: Record<string, unknown>;
+  mode: "client" | "internal";
+  status: "draft" | "sent" | "won" | "lost";
+  version: number;
+  createdBy: number;
+  authorName?: string | null;
+  sentAt: string | null;
+  decidedAt: string | null;
+  createdAt: string;
+}
+
 export type CaseDocStatus = "Pending upload" | "Uploaded" | "Verified" | "Rejected" | "Waived";
 
 // Per-case document instance — the living vault (metadata only; file bytes are

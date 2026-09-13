@@ -11,6 +11,7 @@ import Bulletin from "@/components/views/bulletin";
 import Calculator from "@/components/views/calculator";
 import Reports from "@/components/views/reports";
 import Admin from "@/components/views/admin";
+import Leads from "@/components/views/leads";
 
 export default function Page() {
   const { me, loaded, hydrate, route } = useHfmcStore();
@@ -41,6 +42,7 @@ export default function Page() {
 function renderRoute(route: Route) {
   switch (route.name) {
     case "dashboard": return <Dashboard />;
+    case "leads": return <Leads />;
     case "case": return <CaseDetail id={route.id} />;
     case "tasks": return <Tasks />;
     case "bulletin": return <Bulletin />;

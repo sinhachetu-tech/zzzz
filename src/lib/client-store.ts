@@ -3,7 +3,7 @@
 import { create } from "zustand";
 import type {
   Activity, BankItem, BankProduct, BulletinItem, CaseDocument, CasePartner, CaseSource, ChannelItem, Designation, DocRule,
-  CaseUpdate, FeeRule, Instruction, LoanCase, MasterItem, PartnerItem, SlaRule, StageItem, StageTransitionDto, Task, User,
+  CaseUpdate, FeeRule, Proposal, Instruction, LoanCase, MasterItem, PartnerItem, SlaRule, StageItem, StageTransitionDto, Task, User,
 } from "./types";
 import type { RoleFlags } from "./domain";
 
@@ -42,6 +42,7 @@ interface StateSnapshot {
   caseDocuments: CaseDocument[];
   bankProducts: BankProduct[];
   caseUpdates: CaseUpdate[];
+  caseProposals: Proposal[];
 }
 
 interface ToastMsg {
@@ -52,6 +53,7 @@ interface ToastMsg {
 
 export type Route =
   | { name: "dashboard" }
+  | { name: "leads" }
   | { name: "case"; id: number }
   | { name: "tasks" }
   | { name: "bulletin" }
@@ -97,6 +99,10 @@ interface HfmcState extends StateSnapshot {
   completeInstruction: (id: number) => Promise<void>;
   replyInstruction: (id: number, text: string) => Promise<void>;
 
+  // proposals
+  saveProposal: (body: { caseId: number; productIds: number[]; inputs: Record<string, unknown>; mode: string }) => Promise<void>;
+  setProposalStatus: (id: number, status: string) => Promise<void>;
+
   // daily MIS
   addCaseUpdate: (caseId: number, note: string, onHold: boolean, holdReason: string) => Promise<void>;
 
@@ -125,7 +131,7 @@ interface HfmcState extends StateSnapshot {
 const empty: StateSnapshot = {
   me: null, flags: null, users: [], designations: [], cases: [], visibleCaseIds: [], tasks: [],
   visibleTaskIds: [], activities: [], stages: [], whyPending: [], waitingFor: [], banks: [],
-  partners: [], channels: [], slaRules: [], instructions: [], bulletin: [], caseUpdates: [],
+  partners: [], channels: [], slaRules: [], instructions: [], bulletin: [], caseUpdates: [], caseProposals: [],
   escalations: 0, docRules: [], feeRules: [], eibor: [], stageTransitions: [], caseDocuments: [], bankProducts: [],
 };
 
@@ -242,6 +248,20 @@ export const useHfmcStore = create<HfmcState>((set, get) => ({
     await get().hydrate();
   },
 
+  saveProposal: async (body) => {
+    const res = await fetch(`/api/proposals`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      get().toast("error", e.error || "Could not save proposal.");
+      return;
+    }
+    get().toast("success", "Proposal saved to the case.");
+    await get().hydrate();
+  },
+  setProposalStatus: async (id, status) => {
+    await fetch(`/api/proposals`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, status }) });
+    await get().hydrate();
+  },
   addCaseUpdate: async (caseId, note, onHold, holdReason) => {
     const res = await fetch(`/api/case-updates`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ caseId, note, onHold, holdReason }) });
     if (!res.ok) {

@@ -43,6 +43,7 @@ export default function ProposalPage() {
   const [data, setData] = useState<ProposalData | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [savedOk, setSavedOk] = useState(false);
 
   const load = async (mode: "client" | "internal") => {
     setLoading(true);
@@ -78,6 +79,16 @@ export default function ProposalPage() {
         <div className="ml-auto flex flex-wrap gap-2">
           <button className={data.mode === "client" ? "btn btn-primary btn-sm" : "btn btn-ghost btn-sm"} onClick={() => load("client")}>Client version</button>
           <button className={data.mode === "internal" ? "btn btn-primary btn-sm" : "btn btn-ghost btn-sm"} onClick={() => load("internal")}>Internal version</button>
+          <button className="btn btn-mint btn-sm" onClick={async () => {
+            const raw = sessionStorage.getItem("hfmc_proposal_request");
+            if (!raw) return;
+            const req = JSON.parse(raw);
+            const res = await fetch("/api/proposals", { method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ caseId: req.caseId, productIds: results.map((r) => r.bankProductId), inputs: req, mode: data.mode }) });
+            if (res.ok) { setSavedOk(true); setTimeout(() => setSavedOk(false), 3000); }
+          }}>
+            {savedOk ? "Saved ✓" : "Save to case"}
+          </button>
           <button className="btn btn-ghost btn-sm" onClick={() => window.print()}>🖨 Print / Save PDF</button>
         </div>
       </div>

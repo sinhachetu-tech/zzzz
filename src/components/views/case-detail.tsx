@@ -13,6 +13,7 @@ import { BankChips, CaseStateChip, CommissionPanel, ConfirmModal, SourceChip, Wa
 import { DocVault } from "@/components/views/doc-vault";
 import { DailyMisTab } from "@/components/views/daily-mis";
 import { BankMatchPanel } from "@/components/views/bank-match";
+import { ProposalHistory } from "@/components/views/proposal-history";
 import {
   IArrowR, IBank, ICalc, ICheck, IChevronL, IClock, IFlag, IHistory, IPlus, IRobot, ISparkles, ITrash, IZap,
 } from "@/components/icons";
@@ -778,6 +779,9 @@ export default function CaseDetail({ id }: { id: number }) {
 
           {/* banks */}
           {(caseTab === "banks") && <BankMatchPanel c={c} />}
+
+          {/* proposal history */}
+          <ProposalHistory c={c} />
 
           {/* activity: stage history + activity log */}
           {(caseTab === "activity") && (

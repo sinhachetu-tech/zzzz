@@ -1,5 +1,7 @@
-// Cookie-session auth for HFMC. Lightweight (demo-grade), server-side.
+// Cookie-session auth for HFMC. Server-side sessions, bcrypt password
+// verification, and a simple in-memory login throttle.
 import { cookies } from "next/headers";
+import bcrypt from "bcryptjs";
 import { db } from "./db";
 import type { User } from "./types";
 
@@ -20,10 +22,34 @@ function toSessionUser(u: {
   return { id: u.id, name: u.name, email: u.email, role: u.role, team: u.team };
 }
 
+// simple in-memory login throttle: 5 failures per email per 15 minutes
+const loginAttempts = new Map<string, { count: number; resetAt: number }>();
+function loginThrottled(email: string): boolean {
+  const rec = loginAttempts.get(email);
+  if (!rec || rec.resetAt < Date.now()) return false;
+  return rec.count >= 5;
+}
+function recordFailure(email: string) {
+  const rec = loginAttempts.get(email);
+  if (!rec || rec.resetAt < Date.now()) loginAttempts.set(email, { count: 1, resetAt: Date.now() + 15 * 60_000 });
+  else rec.count++;
+}
+
 export async function login(email: string, password: string): Promise<{ ok: true; user: SessionUser } | { ok: false; error: string }> {
-  const u = await db.user.findUnique({ where: { email: email.trim().toLowerCase() } });
+  const key = email.trim().toLowerCase();
+  if (loginThrottled(key)) return { ok: false, error: "Too many attempts — wait 15 minutes." };
+  const u = await db.user.findUnique({ where: { email: key } });
   if (!u || !u.active) return { ok: false, error: "No active user with that email." };
-  if (u.password !== password) return { ok: false, error: "Wrong password — try again." };
+  // transparent migration: plaintext (legacy seed) hashes get upgraded on first login
+  const hash = u.password.startsWith("$2") ? u.password : await bcrypt.hash(u.password, 10);
+  const okPw = await bcrypt.compare(password, hash);
+  if (!okPw) {
+    recordFailure(key);
+    return { ok: false, error: "Wrong password — try again." };
+  }
+  if (hash !== u.password) {
+    await db.user.update({ where: { id: u.id }, data: { password: hash } }).catch(() => {});
+  }
   const sid = crypto.randomUUID();
   const expiresAt = new Date(Date.now() + SESSION_TTL_DAYS * 86400000);
   await db.session.create({ data: { id: sid, userId: u.id, expiresAt } });
