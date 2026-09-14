@@ -127,7 +127,7 @@ HFMC — a UAE mortgage brokerage case tracker. Three portals:
 | Bank eligibility rules | `BankProduct` columns + `src/lib/bank-match.ts` (+ admin editor in `admin.tsx`) |
 | Fees (bank) | `src/lib/bank-fees.ts` + `feesJson` on products (Admin → Bank products) |
 | Fees (government/transfer) | `FeeRule` rows via Admin → Fee rules; shown in Calculator |
-| Daily EIBOR update | Click the header ticker (needs designation `editEibor` or admin) — paste the CBUAE row verbatim (`Date  O/N  1W  1M  3M  6M  1Y  Value Date`, tab/comma separated) or type rates; publish date shows "as on" in the band, value date = effective; 6-decimal precision everywhere |
+| Daily EIBOR update | Click the header ticker (needs designation `editEibor` or admin) — paste the CBUAE row verbatim (`Date  O/N  1W  1M  3M  6M  1Y  Value Date`, tab/comma separated) or type rates; publish date shows "as on" in the band, value date = effective; "Last edited" shows the true edit instant in the viewer's timezone; 6-decimal precision everywhere |
 | New API endpoint | new `src/app/api/<name>/route.ts`; expose to UI via `state/route.ts` + `client-store.ts` |
 | New screen/nav item | view in `src/components/views/`, add Route in `client-store.ts`, item in `shell.tsx` navItems, render in `page.tsx` |
 | Client portal | `src/app/client/*` + `src/app/api/client/*` |

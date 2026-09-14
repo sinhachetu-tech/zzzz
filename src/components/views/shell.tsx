@@ -62,6 +62,10 @@ function EiborModal({ onClose }: { onClose: () => void }) {
   const last = sorted[0];
   const updatedBy = last?.updatedBy || "—";
   const updatedOn = last?.updatedOn || "—";
+  // true edit instant, rendered in the viewer's own timezone (IST for you, GST for the UAE team)
+  const lastEditAt = last?.updatedAt
+    ? new Date(last.updatedAt).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
+    : "—";
 
   const parsePaste = () => {
     // Accepts the CBUAE publication row verbatim -
@@ -115,7 +119,7 @@ function EiborModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <Modal title="EIBOR benchmark rates" sub={`Last edited ${updatedOn} by ${updatedBy} — the engine reprices the moment you save.`} onClose={onClose} width={480}>
+    <Modal title="EIBOR benchmark rates" sub={`Last edited ${lastEditAt} by ${updatedBy} · rates as on ${updatedOn} — saving reprices every calculation.`} onClose={onClose} width={480}>
       <div className="space-y-3">
         <div className="grid grid-cols-[70px_1fr] gap-2 items-center">
           {TENOR_ORDER.map((t) => (

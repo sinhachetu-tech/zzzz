@@ -37,7 +37,7 @@ interface StateSnapshot {
   escalations: number;
   docRules: DocRule[];
   feeRules: FeeRule[];
-  eibor: { tenor: string; ratePct: number; updatedOn: string; note: string; effectiveFrom?: string | null; updatedBy?: string }[];
+  eibor: { tenor: string; ratePct: number; updatedOn: string; note: string; effectiveFrom?: string | null; updatedBy?: string; updatedAt?: string }[];
   stageTransitions: StageTransitionDto[];
   caseDocuments: CaseDocument[];
   bankProducts: BankProduct[];
