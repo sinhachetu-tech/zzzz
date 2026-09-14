@@ -134,6 +134,11 @@ HFMC — a UAE mortgage brokerage case tracker. Three portals:
 | Email integration | `src/lib/graph.ts` (read), `src/lib/email-match.ts` (match), `src/app/api/email/*` |
 | AI features | `src/app/api/ai/*` (advisor, insights=copilot, doc-read) |
 
+## Performance notes
+
+- **All store mutations re-hydrate in the background** (`get().hydrate().catch()` fire-and-forget) — the UI toasts/responds instantly; lists refresh a beat later. Don't re-add `await get().hydrate()` after mutations: with the DB far away it stalls every save for seconds.
+- **DB region matters**: the Supabase project was created in Seoul (ap-northeast-2) — a single trivial query took ~2.5s from India/UAE. Migrating the project to Mumbai (ap-south-1) is the single biggest speed win available (Supabase dashboard → project migration; backup first).
+
 ## Maintenance rules
 
 1. **Update this file in the same commit as any code change.**

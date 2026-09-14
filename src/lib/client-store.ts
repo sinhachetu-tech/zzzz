@@ -198,60 +198,60 @@ export const useHfmcStore = create<HfmcState>((set, get) => ({
       throw new Error(e.error || "Could not open case");
     }
     const { case: c } = await res.json();
-    await get().hydrate();
+    get().hydrate().catch(() => {}); // fire-and-forget — UI must not wait on the full-state reload
     return c;
   },
   updateCase: async (id, patch) => {
     await fetch(`/api/cases/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
-    await get().hydrate();
+    get().hydrate().catch(() => {}); // fire-and-forget — UI must not wait on the full-state reload
   },
   addTask: async (caseId, input) => {
     await fetch(`/api/cases/${caseId}/tasks`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) });
-    await get().hydrate();
+    get().hydrate().catch(() => {}); // fire-and-forget — UI must not wait on the full-state reload
   },
   completeTask: async (id, remarks) => {
     await fetch(`/api/tasks/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "Done", remarks }) });
-    await get().hydrate();
+    get().hydrate().catch(() => {}); // fire-and-forget — UI must not wait on the full-state reload
   },
   reopenTask: async (id) => {
     await fetch(`/api/tasks/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "Open" }) });
-    await get().hydrate();
+    get().hydrate().catch(() => {}); // fire-and-forget — UI must not wait on the full-state reload
   },
   deleteTask: async (id) => {
     await fetch(`/api/tasks/${id}`, { method: "DELETE" });
-    await get().hydrate();
+    get().hydrate().catch(() => {}); // fire-and-forget — UI must not wait on the full-state reload
   },
   createBulletin: async (input) => {
     await fetch("/api/bulletin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) });
-    await get().hydrate();
+    get().hydrate().catch(() => {}); // fire-and-forget — UI must not wait on the full-state reload
   },
   completeBulletin: async (id) => {
     await fetch(`/api/bulletin/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "complete" }) });
-    await get().hydrate();
+    get().hydrate().catch(() => {}); // fire-and-forget — UI must not wait on the full-state reload
   },
   dropBulletin: async (id) => {
     await fetch(`/api/bulletin/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "drop" }) });
-    await get().hydrate();
+    get().hydrate().catch(() => {}); // fire-and-forget — UI must not wait on the full-state reload
   },
   carryBulletin: async (id) => {
     await fetch(`/api/bulletin/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "carry" }) });
-    await get().hydrate();
+    get().hydrate().catch(() => {}); // fire-and-forget — UI must not wait on the full-state reload
   },
   replyBulletin: async (id, text) => {
     await fetch(`/api/bulletin/${id}/replies`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
-    await get().hydrate();
+    get().hydrate().catch(() => {}); // fire-and-forget — UI must not wait on the full-state reload
   },
   issueInstruction: async (input) => {
     await fetch("/api/instructions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) });
-    await get().hydrate();
+    get().hydrate().catch(() => {}); // fire-and-forget — UI must not wait on the full-state reload
   },
   completeInstruction: async (id) => {
     await fetch(`/api/instructions/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "complete" }) });
-    await get().hydrate();
+    get().hydrate().catch(() => {}); // fire-and-forget — UI must not wait on the full-state reload
   },
   replyInstruction: async (id, text) => {
     await fetch(`/api/instructions/${id}/replies`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
-    await get().hydrate();
+    get().hydrate().catch(() => {}); // fire-and-forget — UI must not wait on the full-state reload
   },
 
   saveProposal: async (body) => {
@@ -262,11 +262,11 @@ export const useHfmcStore = create<HfmcState>((set, get) => ({
       return;
     }
     get().toast("success", "Proposal saved to the case.");
-    await get().hydrate();
+    get().hydrate().catch(() => {}); // fire-and-forget — UI must not wait on the full-state reload
   },
   setProposalStatus: async (id, status) => {
     await fetch(`/api/proposals`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, status }) });
-    await get().hydrate();
+    get().hydrate().catch(() => {}); // fire-and-forget — UI must not wait on the full-state reload
   },
   addCaseUpdate: async (caseId, note, onHold, holdReason) => {
     const res = await fetch(`/api/case-updates`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ caseId, note, onHold, holdReason }) });
@@ -276,7 +276,7 @@ export const useHfmcStore = create<HfmcState>((set, get) => ({
       return;
     }
     get().toast("success", "Daily update saved.");
-    await get().hydrate();
+    get().hydrate().catch(() => {}); // fire-and-forget — UI must not wait on the full-state reload
   },
   deleteCase: async (id) => {
     const res = await fetch(`/api/cases/${id}`, { method: "DELETE" });
@@ -288,7 +288,7 @@ export const useHfmcStore = create<HfmcState>((set, get) => ({
     get().toast("success", "Deleted.");
     const r = get().route;
     if (r.name === "case" && r.id === id) get().nav({ name: "leads" });
-    await get().hydrate();
+    get().hydrate().catch(() => {}); // fire-and-forget — UI must not wait on the full-state reload
   },
   saveEibor: async (tenor, ratePct, effectiveFrom, note, publishedOn) => {
     const res = await fetch("/api/eibor", {
@@ -299,7 +299,7 @@ export const useHfmcStore = create<HfmcState>((set, get) => ({
       const e = await res.json().catch(() => ({}));
       throw new Error(e.error || "Could not save the rate.");
     }
-    await get().hydrate();
+    get().hydrate().catch(() => {}); // fire-and-forget — UI must not wait on the full-state reload
   },
   uploadBankLogo: async (bankId, file) => {
     const fd = new FormData();
@@ -311,7 +311,7 @@ export const useHfmcStore = create<HfmcState>((set, get) => ({
       return;
     }
     get().toast("success", "Logo uploaded.");
-    await get().hydrate();
+    get().hydrate().catch(() => {}); // fire-and-forget — UI must not wait on the full-state reload
   },
   saveBankProduct: async (id, patch) => {
     const res = await fetch("/api/admin", {
@@ -324,7 +324,7 @@ export const useHfmcStore = create<HfmcState>((set, get) => ({
       return;
     }
     get().toast("success", "Bank product rules saved.");
-    await get().hydrate();
+    get().hydrate().catch(() => {}); // fire-and-forget — UI must not wait on the full-state reload
   },
   addAdhocDoc: async (caseId, input) => {
     const res = await fetch("/api/documents", {
@@ -335,7 +335,7 @@ export const useHfmcStore = create<HfmcState>((set, get) => ({
       get().toast("error", e.error || "Could not add document.");
       return;
     }
-    await get().hydrate();
+    get().hydrate().catch(() => {}); // fire-and-forget — UI must not wait on the full-state reload
   },
   saveDoc: async (id, patch) => {
     const res = await fetch(`/api/documents/${id}`, {
@@ -346,11 +346,11 @@ export const useHfmcStore = create<HfmcState>((set, get) => ({
       get().toast("error", e.error || "Could not update document.");
       return;
     }
-    await get().hydrate();
+    get().hydrate().catch(() => {}); // fire-and-forget — UI must not wait on the full-state reload
   },
   deleteDoc: async (id) => {
     await fetch(`/api/documents/${id}`, { method: "DELETE" });
-    await get().hydrate();
+    get().hydrate().catch(() => {}); // fire-and-forget — UI must not wait on the full-state reload
   },
   uploadDoc: async (id, file) => {
     const fd = new FormData();
@@ -362,7 +362,7 @@ export const useHfmcStore = create<HfmcState>((set, get) => ({
       return;
     }
     get().toast("success", "Document uploaded — pending review.");
-    await get().hydrate();
+    get().hydrate().catch(() => {}); // fire-and-forget — UI must not wait on the full-state reload
   },
 
   linkEmail: async (unmatchedId, caseId) => {
@@ -370,14 +370,14 @@ export const useHfmcStore = create<HfmcState>((set, get) => ({
       method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "link", caseId }),
     });
-    await get().hydrate();
+    get().hydrate().catch(() => {}); // fire-and-forget — UI must not wait on the full-state reload
   },
   ignoreEmail: async (unmatchedId) => {
     await fetch(`/api/email/unmatched/${unmatchedId}`, {
       method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "ignore" }),
     });
-    await get().hydrate();
+    get().hydrate().catch(() => {}); // fire-and-forget — UI must not wait on the full-state reload
   },
 
   userById: (id) => get().users.find((u) => u.id === id),
