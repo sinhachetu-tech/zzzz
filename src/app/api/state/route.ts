@@ -8,7 +8,7 @@ import {
 import {
   serUser, serCase, serTask, serActivity, serBank, serPartner, serStage,
   serMaster, serSla, serInstruction, serBulletin, serChannel, serDocRule, serFeeRule,
-  serStageTransitionDto, serCaseDocument, serCaseUpdate, serProposal, serBankProduct,
+  serStageTransitionDto, serCaseDocument, serCaseUpdate, serProposal, serBankProduct, serClient,
 } from "@/lib/ser";
 import { caseStatusOf } from "@/lib/format";
 
@@ -20,7 +20,7 @@ export async function GET() {
 
   const [
     users, designations, cases, tasks, activities, stages, masters, banks,
-    partners, slaRules, instructions, bulletinsRaw, channels, docRules, feeRules, stageTransitions, allDocs, bankProducts, eiborRates, caseUpdates, caseProposals,
+    partners, slaRules, instructions, bulletinsRaw, channels, docRules, feeRules, stageTransitions, allDocs, bankProducts, eiborRates, caseUpdates, caseProposals, emails, unmatched, clients,
   ] = await Promise.all([
     db.user.findMany({ orderBy: { id: "asc" } }),
     db.designation.findMany({ orderBy: { id: "asc" } }),
@@ -43,6 +43,9 @@ export async function GET() {
     db.eiborRate.findMany(),
     db.caseUpdate.findMany({ orderBy: [{ date: "desc" }, { createdAt: "desc" }], take: 1000, include: { author: { select: { name: true } } } }),
     db.proposal.findMany({ orderBy: { version: "desc" }, include: { author: { select: { name: true } } } }),
+    db.emailLog.findMany({ orderBy: { receivedAt: "desc" }, take: 100 }).catch(() => []),
+    db.unmatchedEmail.findMany({ where: { status: "Pending" }, orderBy: { receivedAt: "desc" } }).catch(() => []),
+    db.client.findMany({ orderBy: { id: "asc" } }),
   ]);
 
   const usersDto = users.map(serUser);
@@ -101,5 +104,6 @@ export async function GET() {
     feeRules: feeRules.map(serFeeRule),
     stageTransitions: stageTransitions.map(serStageTransitionDto),
     caseDocuments: vaultDocs,
+    clients: clients.map(serClient),
   });
 }

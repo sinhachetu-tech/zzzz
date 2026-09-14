@@ -1,4 +1,5 @@
 "use client";
+import { CaseProfileEditor } from "@/components/views/case-profile-editor";
 
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
@@ -569,10 +570,10 @@ function FolPanel({ c }: { c: LoanCase }) {
 export default function CaseDetail({ id }: { id: number }) {
   const { cases, tasks, activities, stages, banks, users, instructions, me, nav, userById, caseById, updateCase, completeTask, deleteTask, toast, flags, canInstruct } = useHfmcStore();
   const c = caseById(id);
-  const [caseTab, setCaseTab] = useState<"daily" | "tasks" | "documents" | "banks" | "activity">(() => {
-    // stage-aware default: the work of the current stage leads the page
-    void c; // daily workspace leads every stage
-    return "daily";
+  const [caseTab, setCaseTab] = useState<"profile" | "daily" | "tasks" | "documents" | "banks" | "activity">(() => {
+    // stage-aware default: a fresh lead opens on its profile (that IS the lead's
+    // work); every other stage opens on the daily workspace
+    return c?.stage === "Lead" ? "profile" : "daily";
   });
   const [showAddTask, setShowAddTask] = useState(false);
   const [showStage, setShowStage] = useState(false);
@@ -678,7 +679,7 @@ export default function CaseDetail({ id }: { id: number }) {
         {/* left: stage-aware tabs */}
         <div className="space-y-4">
           <div className="card p-2 flex gap-1.5 overflow-x-auto">
-            {([["daily", "Daily MIS"], ["tasks", "Tasks"], ["documents", "Documents"], ["banks", "Banks & proposal"], ["activity", "Activity"]] as const).map(([k, label]) => (
+            {([["profile", "Lead & Applicant Profile"], ["daily", "Daily MIS"], ["tasks", "Tasks"], ["documents", "Documents"], ["banks", "Banks & proposal"], ["activity", "Activity"]] as const).map(([k, label]) => (
               <button key={k} onClick={() => setCaseTab(k)}
                 className="chip transition-all whitespace-nowrap"
                 style={caseTab === k ? { background: "rgba(242,176,76,0.14)", borderColor: "var(--amber)", color: "var(--amber)" } : { background: "var(--bg2)", borderColor: "var(--line)", color: "var(--ink-faint)" }}>
@@ -686,6 +687,9 @@ export default function CaseDetail({ id }: { id: number }) {
               </button>
             ))}
           </div>
+          {/* profile */}
+          {(caseTab === "profile") && <CaseProfileEditor c={c} />}
+
           {/* daily MIS */}
           {(caseTab === "daily") && <DailyMisTab c={c} />}
 
@@ -820,6 +824,7 @@ export default function CaseDetail({ id }: { id: number }) {
           {showPreApproval && <PreApprovalPanel c={c} />}
           {showFol && <FolPanel c={c} />}
           <CaseCopilot caseId={c.id} />
+          <ClientFileCard c={c} />
           <CommissionPanel c={c} />
           <div className="card p-4">
             <h3 className="font-disp font-semibold text-[13.5px] m-0 mb-3">Banks in play</h3>
@@ -902,6 +907,62 @@ export default function CaseDetail({ id }: { id: number }) {
   );
 
   function completeInstruction(id: number) { return useHfmcStore.getState().completeInstruction(id); }
+}
+
+/* Client file card — the person behind this case, and every other
+   engagement we have with them (past mortgages, a second-party role,
+   future buyouts / insurance work all land on the same record). */
+function ClientFileCard({ c }: { c: LoanCase }) {
+  const { clients, cases, nav } = useHfmcStore();
+  const client = clients.find((cl) => cl.id === c.clientId) ?? null;
+  const second = clients.find((cl) => cl.id === c.secondPartyClientId) ?? null;
+  const engagements = client
+    ? cases.filter((k) => k.id !== c.id && (k.clientId === client.id || k.secondPartyClientId === client.id))
+    : [];
+
+  if (!client) return null;
+
+  return (
+    <div className="card p-4 anim-fade-up">
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <h3 className="font-disp font-semibold text-[13.5px] m-0">Client file</h3>
+        {engagements.length > 0 && <Chip tone="amber">repeat client</Chip>}
+      </div>
+      <div className="flex items-center gap-2.5">
+        <Avatar name={client.fullName} size={34} />
+        <div className="min-w-0">
+          <div className="text-[13px] font-medium truncate">{client.fullName}</div>
+          <div className="text-[10.5px] text-[var(--ink-faint)]">
+            {client.phone ? `+${client.phone}` : "no phone"} · {client.residency}
+            {client.eidNo ? " · EID on record" : ""}
+          </div>
+        </div>
+      </div>
+      {(client.monthlySalary > 0 || client.employmentProfile) && (
+        <div className="mt-2.5 pt-2.5 text-[11.5px] text-[var(--ink-dim)]" style={{ borderTop: "1px dashed var(--line)" }}>
+          {client.employmentProfile}{client.companyName ? ` · ${client.companyName}` : ""}
+          {client.monthlySalary > 0 && ` · latest salary AED ${client.monthlySalary.toLocaleString()}`}
+        </div>
+      )}
+      {engagements.length > 0 && (
+        <div className="mt-2.5 pt-2.5 space-y-1" style={{ borderTop: "1px dashed var(--line)" }}>
+          <div className="text-[10.5px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)]">Other engagements</div>
+          {engagements.slice(0, 5).map((k) => (
+            <button key={k.id} className="block text-left text-[11.5px] hover:underline" style={{ color: "var(--ink-dim)" }}
+              onClick={() => nav({ name: "case", id: k.id })}>
+              {k.caseNumber} · {k.customer} · {k.stage} · {k.caseStatus}
+            </button>
+          ))}
+        </div>
+      )}
+      {second && (
+        <div className="mt-2.5 pt-2.5 text-[11.5px] text-[var(--ink-faint)]" style={{ borderTop: "1px dashed var(--line)" }}>
+          Second party: <span className="text-[var(--ink-dim)]">{second.fullName}</span>
+          {second.eidNo ? " · EID on record" : ""}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function DoneModal({ t, onClose, onDone }: { t: Task; onClose: () => void; onDone: (remarks: string) => void }) {

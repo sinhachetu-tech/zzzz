@@ -8,7 +8,7 @@ import { EMPLOYMENT_PROFILES, PARTNER_SHARES, PROPERTY_LOCATIONS, PROPERTY_TYPES
 import { useHfmcStore } from "@/lib/client-store";
 import { computeEscalations } from "@/lib/domain";
 import { fmtMoney, inDaysISO, todayISO } from "@/lib/format";
-import { Avatar, Modal, ThemeToggle } from "@/components/hfmc/ui";
+import { Avatar, Chip, Modal, ThemeToggle } from "@/components/hfmc/ui";
 import { Toaster } from "@/components/hfmc/toaster";
 import {
   IBank, IBriefcase, ICalc, IChart, IFlag, IGrid, IInbox, ILogout, IMenu, IPlus, IShield, ITasks, LogoMark,
@@ -30,7 +30,7 @@ function Clock() {
 }
 
 function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { stages, banks, partners, channels, users, me, flags, createCase, toast, nav } = useHfmcStore();
+  const { stages, banks, partners, channels, users, me, flags, createCase, toast, nav, clients, cases } = useHfmcStore();
   const activeStages = [...stages].filter((s) => s.active).sort((a, b) => a.sortOrder - b.sortOrder);
   const [customer, setCustomer] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
@@ -61,6 +61,20 @@ function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void })
 
   const needsPartner = source === "Agent" || source === "Broker" || source === "Referral";
   const partnerOptions = partners.filter((p) => p.active && p.kind === source);
+
+  // Repeat-client detection — surface the person's file while typing.
+  // Phone-digit match is confident enough to show; name match too (the
+  // backend dedupe is stricter: EID > phone+name, phone alone never merges).
+  const ph = whatsapp.replace(/\D/g, "");
+  const nm = customer.trim().toLowerCase();
+  const knownClient = open && (ph.length >= 7 || nm.length >= 4)
+    ? clients.find((cl) =>
+        (ph.length >= 7 && cl.phone === ph) ||
+        (nm.length >= 4 && cl.fullName.trim().toLowerCase() === nm))
+    : undefined;
+  const knownClientCases = knownClient
+    ? cases.filter((c) => c.clientId === knownClient.id || c.secondPartyClientId === knownClient.id)
+    : [];
 
   const toggleBank = (name: string) =>
     setBankList((prev) => (prev.includes(name) ? prev.filter((b) => b !== name) : [...prev, name]));
@@ -126,6 +140,30 @@ function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void })
             <input className="input mono" value={waGroup} onChange={(e) => setWaGroup(e.target.value)} placeholder="https://chat.whatsapp.com/…" />
           </div>
         </div>
+
+        {knownClient && (
+          <div className="rounded-lg p-3 anim-fade-up" style={{ background: "rgba(242,176,76,0.06)", border: "1px solid rgba(242,176,76,0.35)" }}>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-disp font-semibold text-[12.5px]" style={{ color: "var(--amber)" }}>Existing client file</span>
+              <span className="text-[12.5px] font-medium">{knownClient.fullName}</span>
+              {knownClient.eidNo && <span className="mono text-[10.5px] text-[var(--ink-faint)]">EID on record</span>}
+              <Chip tone={knownClientCases.length ? "amber" : "slate"}>
+                {knownClientCases.length} prior engagement{knownClientCases.length === 1 ? "" : "s"}
+              </Chip>
+            </div>
+            {knownClientCases.length > 0 && (
+              <div className="mt-2 space-y-1">
+                {knownClientCases.slice(0, 4).map((kc) => (
+                  <button key={kc.id} type="button" className="text-[11.5px] block text-left hover:underline" style={{ color: "var(--ink-dim)" }}
+                    onClick={() => { onClose(); nav({ name: "case", id: kc.id }); }}>
+                    {kc.caseNumber} · {kc.customer} · {kc.stage} · {kc.caseStatus}
+                  </button>
+                ))}
+                <p className="text-[10.5px] text-[var(--ink-faint)] m-0">This new file will be linked to the same client record.</p>
+              </div>
+            )}
+          </div>
+        )}
 
         <div>
           <label className="label">Banks submitted to <span className="normal-case tracking-normal" style={{ color: "var(--ink-faint)" }}>— leave none for “bank not yet decided”</span></label>

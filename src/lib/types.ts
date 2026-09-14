@@ -1,3 +1,5 @@
+export * from "./case-profile";
+import type { CaseProfile } from "./case-profile";
 // HFMC domain types — ported from the original smallhfmc.
 
 export type Role = string; // designation label, admin-managed
@@ -71,7 +73,7 @@ export interface LoanCase {
   holdUntil: string | null; // ISO date
   // --- Bank submission tracking ---
   // Document Vault profile vectors
-  employmentProfile: string; // Salaried | Self-Employed | Non-Resident
+  employmentProfile: string; // Salaried | Self-Employed
   propertyType: string; // Ready | Off-Plan
   residency: string; // UAE National | Resident Expatriate | Non-Resident
   loanType: string | null; // NSTL | STL
@@ -88,6 +90,36 @@ export interface LoanCase {
   folAmount: number | null;
   folTenure: number | null; // months
   folRoi: number | null; // rate of interest
+  profileJson?: string | null;
+  profile?: CaseProfile;
+  // Client master links — the person behind the engagement
+  clientId: number | null;
+  secondPartyClientId: number | null;
+}
+
+// Client master — one row per human across all their engagements
+// (mortgage cases, future buyouts, insurance). Identity decided by KYC:
+// EID (unique) > passport > phone+name corroboration; phone alone never merges.
+export interface ClientDto {
+  id: number;
+  fullName: string;
+  eidNo: string | null;
+  passportNo: string | null;
+  phone: string;
+  email: string | null;
+  dob: string | null;
+  nationality: string | null;
+  residency: string;
+  emirate: string | null;
+  employmentProfile: string;
+  companyName: string | null;
+  monthlySalary: number;
+  variableIncome: number;
+  rentalIncome: number;
+  existingEmis: number;
+  creditCardLimits: number;
+  notes: string;
+  createdAt: string;
 }
 
 // Stage transition log — one row per stage change on a case.
@@ -233,6 +265,7 @@ export interface BankProduct {
   rentalIncomePct: number | null;
   rentalCapPctOfSalary: number | null;
   dbrPct: number | null;
+  stressBufferPct?: number | null;
   totalTatDays: number | null;
   paTatDays: number | null;
   paValidityDays: number | null;
@@ -391,7 +424,7 @@ export const SOURCES: CaseSource[] = ["Direct", "Agent", "Broker", "Website", "R
 export const PARTNER_SHARES = [10, 15, 20, 30];
 
 // MIS operational dropdown options — shared by Dashboard, Case Detail, and New Case modal.
-export const EMPLOYMENT_PROFILES = ["Salaried", "Self-Employed", "Non-Resident"] as const;
+export const EMPLOYMENT_PROFILES = ["Salaried", "Self-Employed"] as const;
 export const PROPERTY_TYPES = ["Ready", "Off-Plan"] as const;
 export const RESIDENCIES = ["UAE National", "Resident Expatriate", "Non-Resident"] as const;
 export const TRANSACTION_TYPES = ["Buyout", "Buyout+Equity", "Primary Handover", "Resale", "Equity Cashout", "Refinance", "Other"] as const;
@@ -417,4 +450,25 @@ export interface TaskInput {
   waitingFor: string;
   whyPending: string;
   dueDate: string;
+}
+
+export interface EmailLog {
+  id: number;
+  caseId: number;
+  subject: string;
+  sender: string;
+  direction: string; // from_bank | from_client | internal
+  receivedAt: string;
+  outlookLink: string | null;
+  messageId: string | null;
+}
+
+export interface UnmatchedEmail {
+  id: number;
+  subject: string;
+  sender: string;
+  receivedAt: string;
+  bestGuessCaseId: number | null;
+  status: string; // Pending | Linked | Ignored
+  messageId: string | null;
 }

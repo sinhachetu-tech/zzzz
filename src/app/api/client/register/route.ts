@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { cookies } from "next/headers";
 import { toISODate } from "@/lib/format";
+import { matchClientByPhoneName, syncCaseClients } from "@/lib/client-master";
 
 const CLIENT_SESSION_COOKIE = "hfmc_client_session";
 
@@ -14,6 +15,49 @@ export async function POST(req: NextRequest) {
 
   if (!name?.trim()) return NextResponse.json({ error: "Name is required." }, { status: 400 });
   if (!phone?.trim()) return NextResponse.json({ error: "Phone number is required." }, { status: 400 });
+
+  // Repeat client? A phone+name match on the Client master warms the lead up
+  // with their known profile so the team starts from what we already know.
+  const known = await matchClientByPhoneName(phone, name.trim());
+  const knownClient = known
+    ? await db.client.findUnique({ where: { id: known.id } })
+    : null;
+
+  const warmProfile = knownClient
+    ? JSON.stringify({
+        primary: {
+          fullName: knownClient.fullName,
+          phone: phone.trim(),
+          email: email?.trim() || knownClient.email || undefined,
+          eidNo: knownClient.eidNo ?? undefined,
+          passportNo: knownClient.passportNo ?? undefined,
+          dob: knownClient.dob ?? undefined,
+          nationality: knownClient.nationality ?? undefined,
+          residency: knownClient.residency,
+          employmentProfile: knownClient.employmentProfile,
+          companyName: knownClient.companyName ?? undefined,
+          monthlySalary: knownClient.monthlySalary,
+          variableIncome: knownClient.variableIncome,
+          rentalIncome: knownClient.rentalIncome,
+          existingEmis: knownClient.existingEmis,
+          creditCardLimits: knownClient.creditCardLimits,
+          emirate: knownClient.emirate ?? undefined,
+        },
+        property: {
+          propertyValue: propertyValue ?? 0,
+          loanAmount: 0,
+          downPayment: 0,
+          transactionType: "",
+          propertyType: "Ready",
+          propertyLocation: knownClient.emirate ?? "Dubai",
+        },
+        secondParty: {
+          role: "none", fullName: "", relationship: "Spouse",
+          residency: "Resident Expatriate", employmentProfile: "Salaried",
+          monthlySalary: 0, variableIncome: 0, rentalIncome: 0, existingEmis: 0, creditCardLimits: 0,
+        },
+      })
+    : null;
 
   // Create a case in "Lead" stage — before the normal pipeline starts.
   // The team will pick it up, assign an owner, and move it to WhatsApp Group Creation.
@@ -32,12 +76,20 @@ export async function POST(req: NextRequest) {
       source: "Website",
       whatsapp: phone.trim(),
       waGroup: null,
-      statusNote: message?.trim() || "New client registration — awaiting advisor assignment.",
+      statusNote: message?.trim() || (knownClient ? "Returning client registered — profile pre-filled, verify with client." : "New client registration — awaiting advisor assignment."),
       transactionType: "",
       propertyLocation: null,
       coApplicantName: null,
+      ...(knownClient ? {
+        employmentProfile: knownClient.employmentProfile,
+        residency: knownClient.residency,
+      } : {}),
+      ...(warmProfile ? { profileJson: warmProfile } : {}),
     },
   });
+
+  // link to the Client master (creates the row for first-timers)
+  await syncCaseClients(created.id).catch(() => {});
 
   // Log an activity
   await db.activity.create({

@@ -1,4 +1,6 @@
 "use client";
+import { CaseProfileEditor } from "@/components/views/case-profile-editor";
+import { parseCaseProfile, computeJointAffordability } from "@/lib/case-profile";
 
 /* Leads view — the top of the funnel. Lead-stage cases (including portal
    self-registrations) with qualify / assign / convert actions. Converting
@@ -7,12 +9,13 @@
 import { useMemo, useState } from "react";
 import { useHfmcStore } from "@/lib/client-store";
 import { fmtDate, relTime } from "@/lib/format";
-import { Avatar, Chip, EmptyState } from "@/components/hfmc/ui";
+import { Avatar, Chip, EmptyState, Modal } from "@/components/hfmc/ui";
 import { IArrowR, IWhatsapp } from "@/components/icons";
 
 export default function Leads() {
   const { cases, users, userById, updateCase, toast, nav, me, flags } = useHfmcStore();
   const [filter, setFilter] = useState<"all" | "mine" | "unassigned">("all");
+  const [qualifyingCase, setQualifyingCase] = useState<any>(null);
 
   const canAssign = !!(flags?.issueTasks || flags?.admin || flags?.super);
   const leads = useMemo(
@@ -71,11 +74,19 @@ export default function Leads() {
               <div key={c.id} className="card p-4 anim-fade-up" style={{ borderLeft: "3px solid var(--amber)" }}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="mono text-[12px]" style={{ color: "var(--amber)" }}>{c.caseNumber}</span>
-                      <Chip tone="slate">{c.source}</Chip>
-                      {unassigned && <Chip tone="coral">unassigned</Chip>}
-                    </div>
+                    {(() => {
+                      const prof = parseCaseProfile(c.profileJson, { customer: c.customer, loanAmount: c.loanAmount, coApplicantName: c.coApplicantName });
+                      const joint = computeJointAffordability(prof);
+                      return (
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="mono text-[12px]" style={{ color: "var(--amber)" }}>{c.caseNumber}</span>
+                          <Chip tone="slate">{c.source}</Chip>
+                          {unassigned && <Chip tone="coral">unassigned</Chip>}
+                          {c.clientId && <Chip tone="amber">known client</Chip>}
+                          <Chip tone={joint.badgeTone}>{joint.badgeLabel}</Chip>
+                        </div>
+                      );
+                    })()}
                     <div className="font-disp font-semibold text-[15px] mt-1">{c.customer}</div>
                     <p className="text-[11.5px] text-[var(--ink-dim)] m-0 mt-1 leading-snug">
                       {c.statusNote || "No inquiry note."}
@@ -102,6 +113,9 @@ export default function Leads() {
                       ))}
                     </select>
                   )}
+                  <button className="btn btn-ghost btn-sm" onClick={() => setQualifyingCase(c)}>
+                    Qualify profile
+                  </button>
                   <button className="btn btn-ghost btn-sm" onClick={() => nav({ name: "case", id: c.id })}>
                     Open <IArrowR size={12} />
                   </button>
@@ -113,6 +127,12 @@ export default function Leads() {
             );
           })}
         </div>
+      )}
+
+      {qualifyingCase && (
+        <Modal title={`Qualify Lead Profile � ${qualifyingCase.caseNumber}`} sub={qualifyingCase.customer} onClose={() => setQualifyingCase(null)} width={680}>
+          <CaseProfileEditor c={qualifyingCase} onSaved={() => setQualifyingCase(null)} />
+        </Modal>
       )}
     </div>
   );

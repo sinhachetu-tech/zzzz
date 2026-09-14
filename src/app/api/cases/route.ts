@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { currentUser } from "@/lib/auth";
 import { serCase } from "@/lib/ser";
 import { syncCaseVault } from "@/lib/vault";
+import { syncCaseClients } from "@/lib/client-master";
 import { toISODate } from "@/lib/format";
 import type { CaseSource, CasePartner } from "@/lib/types";
 
@@ -137,6 +138,9 @@ export async function POST(req: NextRequest) {
 
   // populate the conditional Document Vault for the new case
   await syncCaseVault(created.id);
+
+  // link the primary applicant to the Client master (repeat-business anchor)
+  await syncCaseClients(created.id).catch((e) => console.error("client sync failed:", e));
 
   if (task?.description?.trim()) {
     await db.task.create({

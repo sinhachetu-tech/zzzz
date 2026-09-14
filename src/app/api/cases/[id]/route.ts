@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { currentUser } from "@/lib/auth";
 import { serCase } from "@/lib/ser";
 import { syncCaseVault } from "@/lib/vault";
+import { syncCaseClients } from "@/lib/client-master";
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const me = await currentUser();
@@ -84,11 +85,25 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (body.waGroup !== undefined) data.waGroup = body.waGroup;
   if (body.customer !== undefined) data.customer = body.customer;
   if (body.loanAmount !== undefined) data.loanAmount = body.loanAmount;
+  // structured profile (income, liabilities, KYC ids, second party) — persisted
+  // verbatim; each case keeps its own snapshot of the applicant as filed
+  if (body.profileJson !== undefined) data.profileJson = body.profileJson;
 
   const updated = await db.loanCase.update({ where: { id: caseId }, data });
 
   // profile vectors moved → pull in newly-applicable document requirements
   if (profileChanged) await syncCaseVault(caseId);
+
+  // identity/profile data changed → refresh the Client master links
+  let fresh = updated;
+  if (body.profileJson !== undefined || body.whatsapp !== undefined || body.customer !== undefined || body.coApplicantName !== undefined) {
+    try {
+      await syncCaseClients(caseId);
+      fresh = (await db.loanCase.findUnique({ where: { id: caseId } })) ?? updated;
+    } catch (e) {
+      console.error("client sync failed:", e);
+    }
+  }
 
   if (data.stage) {
     await db.stageTransition.create({
@@ -108,5 +123,5 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     });
   }
 
-  return NextResponse.json({ case: serCase(updated) });
+  return NextResponse.json({ case: serCase(fresh!) });
 }

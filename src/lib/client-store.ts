@@ -2,8 +2,8 @@
 
 import { create } from "zustand";
 import type {
-  Activity, BankItem, BankProduct, BulletinItem, CaseDocument, CasePartner, CaseSource, ChannelItem, Designation, DocRule,
-  CaseUpdate, FeeRule, Proposal, Instruction, LoanCase, MasterItem, PartnerItem, SlaRule, StageItem, StageTransitionDto, Task, User,
+  Activity, BankItem, BankProduct, BulletinItem, CaseDocument, CasePartner, CaseSource, ChannelItem, ClientDto, Designation, DocRule,
+  CaseUpdate, EmailLog, FeeRule, Proposal, Instruction, LoanCase, MasterItem, PartnerItem, SlaRule, StageItem, StageTransitionDto, Task, UnmatchedEmail, User,
 } from "./types";
 import type { RoleFlags } from "./domain";
 
@@ -43,6 +43,9 @@ interface StateSnapshot {
   bankProducts: BankProduct[];
   caseUpdates: CaseUpdate[];
   caseProposals: Proposal[];
+  unmatchedEmails: UnmatchedEmail[];
+  emails: EmailLog[];
+  clients: ClientDto[];
 }
 
 interface ToastMsg {
@@ -132,7 +135,7 @@ const empty: StateSnapshot = {
   me: null, flags: null, users: [], designations: [], cases: [], visibleCaseIds: [], tasks: [],
   visibleTaskIds: [], activities: [], stages: [], whyPending: [], waitingFor: [], banks: [],
   partners: [], channels: [], slaRules: [], instructions: [], bulletin: [], caseUpdates: [], caseProposals: [],
-  escalations: 0, docRules: [], feeRules: [], eibor: [], stageTransitions: [], caseDocuments: [], bankProducts: [],
+  escalations: 0, docRules: [], feeRules: [], eibor: [], stageTransitions: [], caseDocuments: [], bankProducts: [], unmatchedEmails: [], emails: [], clients: [],
 };
 
 let toastSeq = 1;

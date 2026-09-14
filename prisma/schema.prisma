@@ -49,6 +49,47 @@ model Designation {
   builtIn  Boolean  @default(false)
 }
 
+// Client master — one row per human (borrower, co-borrower, co-applicant).
+// The anchor for repeat business: every engagement (mortgage case today, a
+// buyout in three years, an insurance policy after that) links back to the
+// same person. Each case keeps its own profileJson snapshot as filed; this
+// record holds the latest known truth, refreshed whenever a case profile is
+// saved. Auto-merge key is the phone number only — name collisions never
+// auto-merge (duplicates are cheap, wrong merges are not).
+model Client {
+  id        Int      @id @default(autoincrement())
+  fullName  String
+  // KYC identity — what actually decides "same person". EID is legally unique
+  // in the UAE (definite auto-merge); passport is strong but renewable; phone
+  // is only a hint (families share numbers) and never merges alone.
+  eidNo     String?  @unique // Emirates ID, stored digits-only (784XXXXXXXXXXXX)
+  passportNo String?
+  phone     String   @default("") // digits only — match hint, never a sole merge key
+  email     String?
+  dob       String?
+  nationality String?
+  residency String   @default("Resident Expatriate")
+  emirate   String?
+  employmentProfile String @default("Salaried")
+  companyName String?
+  // latest-known financial snapshot (emptier profiles never erase these)
+  monthlySalary   Int @default(0)
+  variableIncome  Int @default(0)
+  rentalIncome    Int @default(0)
+  existingEmis    Int @default(0)
+  creditCardLimits Int @default(0)
+  notes     String   @default("")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  primaryCases     LoanCase[] @relation("PrimaryClient")
+  secondPartyCases LoanCase[] @relation("SecondPartyClient")
+
+  @@index([phone])
+  @@index([passportNo])
+}
+
 model LoanCase {
   id          Int      @id @default(autoincrement())
   caseNumber  String   @unique
@@ -86,6 +127,7 @@ model LoanCase {
   transactionType  String  @default("") // Buyout, Primary Handover, Resale, Equity Release…
   propertyLocation String? // Dubai, Abu Dhabi, ADGM…
   coApplicantName  String?
+  profileJson      String  @default("{}") // structured primary applicant, property & co-borrower profile
   onHold           Boolean @default(false)
   holdReason       String?
   holdUntil        String? // ISO date
@@ -105,6 +147,10 @@ model LoanCase {
   folTenure Int?
   folRoi    Float?
 
+  // --- Client master links (repeat business across engagements) ---
+  clientId            Int? // primary applicant → Client
+  secondPartyClientId Int? // co-borrower / co-applicant → their own Client row
+
   owner      User      @relation("CaseOwner", fields: [ownerId], references: [id])
   vrm        User?     @relation("CaseVrm", fields: [vrmId], references: [id])
   tasks      Task[]
@@ -118,6 +164,8 @@ model LoanCase {
   vaultDocuments   CaseDocument[]
   caseUpdates      CaseUpdate[]
   proposals        Proposal[]
+  client           Client?  @relation("PrimaryClient", fields: [clientId], references: [id])
+  secondPartyClient Client? @relation("SecondPartyClient", fields: [secondPartyClientId], references: [id])
 }
 
 model Task {

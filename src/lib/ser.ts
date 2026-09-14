@@ -1,6 +1,7 @@
+import { parseCaseProfile } from "./case-profile";
 // Serialization: Prisma row → API DTO matching the original HFMC types.
 import type {
-  Activity, BankItem, BulletinItem, CasePartner, Instruction, LoanCase,
+  Activity, BankItem, BulletinItem, CasePartner, ClientDto, Instruction, LoanCase,
   BankProduct, Proposal, CaseDocument, CaseUpdate, DocRule, FeeRule, MasterItem, PartnerItem, Reply, SlaRule, StageItem, StageTransition, StageTransitionDto, Task, User,
 } from "./types";
 
@@ -52,6 +53,7 @@ type PrismaCase = {
   folAmount?: number | null;
   folTenure?: number | null;
   folRoi?: number | null;
+  profileJson?: string | null;
 };
 
 export function serCase(c: PrismaCase): LoanCase {
@@ -97,6 +99,30 @@ export function serCase(c: PrismaCase): LoanCase {
     folAmount: c.folAmount ?? null,
     folTenure: c.folTenure ?? null,
     folRoi: c.folRoi ?? null,
+    // Client master links
+    clientId: (c as unknown as { clientId?: number | null }).clientId ?? null,
+    secondPartyClientId: (c as unknown as { secondPartyClientId?: number | null }).secondPartyClientId ?? null,
+  };
+}
+
+/* ---------------- client master ---------------- */
+
+type PrismaClientRow = {
+  id: number; fullName: string; eidNo: string | null; passportNo: string | null;
+  phone: string; email: string | null; dob: string | null; nationality: string | null;
+  residency: string; emirate: string | null; employmentProfile: string; companyName: string | null;
+  monthlySalary: number; variableIncome: number; rentalIncome: number; existingEmis: number;
+  creditCardLimits: number; notes: string; createdAt: Date;
+};
+
+export function serClient(c: PrismaClientRow): ClientDto {
+  return {
+    id: c.id, fullName: c.fullName, eidNo: c.eidNo, passportNo: c.passportNo,
+    phone: c.phone, email: c.email, dob: c.dob, nationality: c.nationality,
+    residency: c.residency, emirate: c.emirate, employmentProfile: c.employmentProfile,
+    companyName: c.companyName, monthlySalary: c.monthlySalary, variableIncome: c.variableIncome,
+    rentalIncome: c.rentalIncome, existingEmis: c.existingEmis, creditCardLimits: c.creditCardLimits,
+    notes: c.notes, createdAt: c.createdAt.toISOString(),
   };
 }
 
@@ -145,7 +171,7 @@ type PrismaBankProduct = {
   totalTatDays: number | null; paTatDays: number | null; paValidityDays: number | null;
   folValidityDays: number | null; valuationValidityDays: number | null;
   rateTable: string; stressTest: string; fees: string; insurance: string; pricingJson: string; feesJson?: string | null; insuranceJson?: string | null;
-  cardRulePct?: number | null; bonusPct?: number | null; rentalIncomePct?: number | null; rentalCapPctOfSalary?: number | null; dbrPct?: number | null;
+  cardRulePct?: number | null; bonusPct?: number | null; rentalIncomePct?: number | null; rentalCapPctOfSalary?: number | null; dbrPct?: number | null; stressBufferPct?: number | null;
   eligibility: string; documents: string; notes: string; axesJson: string;
   version: number; status: string; effectiveDate: string | null; approvedBy: string | null;
   sourceFiles: string; active: boolean;
@@ -160,7 +186,7 @@ export function serBankProduct(p: PrismaBankProduct): BankProduct {
     maxLtvNational: p.maxLtvNational, maxLtvExpatriate: p.maxLtvExpatriate,
     minLoan: p.minLoan, maxLoan: p.maxLoan, tenorYears: p.tenorYears, minSalary: p.minSalary,
     cardRulePct: p.cardRulePct ?? null, bonusPct: p.bonusPct ?? null, rentalIncomePct: p.rentalIncomePct ?? null,
-    rentalCapPctOfSalary: p.rentalCapPctOfSalary ?? null, dbrPct: p.dbrPct ?? null,
+    rentalCapPctOfSalary: p.rentalCapPctOfSalary ?? null, dbrPct: p.dbrPct ?? null, stressBufferPct: p.stressBufferPct ?? null,
     totalTatDays: p.totalTatDays, paTatDays: p.paTatDays, paValidityDays: p.paValidityDays,
     folValidityDays: p.folValidityDays, valuationValidityDays: p.valuationValidityDays,
     rateTable: p.rateTable, stressTest: p.stressTest, fees: p.fees, insurance: p.insurance,

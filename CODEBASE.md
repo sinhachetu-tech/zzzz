@@ -1,0 +1,138 @@
+# HFMC Codebase Map
+
+Plain-English guide to every code file, for humans and AI assistants.
+**Rule: after any code change, update the relevant entry here in the same commit.**
+(Keeps AI sessions short — an assistant can read this one file instead of exploring 160+ files.)
+
+---
+
+## What this app is
+
+HFMC — a UAE mortgage brokerage case tracker. Three portals:
+
+1. **Team portal** (`/`) — dashboard, leads, cases ("Case 360"), tasks, bulletin, calculator, reports, admin.
+2. **Client portal** (`/client`) — clients log in with case number + phone last-4; see timeline, upload documents, register as new leads.
+3. **Agent/partner portal** (`/agent`) — partners log in with a password; see their referred cases.
+
+**The funnel:** Website registration or manual add → `Lead` stage (Leads tab, qualify + assign owner) → `Convert` → WhatsApp Group Creation → pipeline stages → Closed/Lost. Every case belongs to one **Client** (person); every engagement (mortgage, future buyout, insurance) links to the same client record.
+
+## Key concepts (read before touching the data layer)
+
+- **Client master vs case profile.** `Client` = the person (KYC: EID unique > passport > phone+name; phone alone never merges). `profileJson` on each case = the applicant's snapshot *as filed* on that engagement. Saving a case profile refreshes the client master (fills gaps, never erases).
+- **Co-borrower vs co-applicant** (`src/lib/case-profile.ts`): co-borrower incomes are pooled into affordability (DBR); co-applicant is title/KYC only. Both get their own Client row.
+- **Fees live in two places:** `FeeRule` table = government/transfer fees (per emirate × txn type, universal). `BankProduct.feesJson` = bank charges (processing, pre-approval, early/partial settlement, valuation) — parsed/computed by `src/lib/bank-fees.ts`.
+- **Bank products are versioned** (draft → approved) and feed the **bank-match eligibility engine** → proposals (saved snapshots, draft → sent → won/lost).
+- **Everything reaches the UI through one payload:** `GET /api/state` → Zustand store `useHfmcStore` (`src/lib/client-store.ts`). Mutations call an API route, then re-hydrate. There is **no URL routing** — `route` is store state; views render in `src/app/page.tsx` inside `Shell`.
+
+## File tree (annotated)
+
+```
+├─ prisma/schema.prisma        All DB tables (User, Designation, LoanCase, Client, Task,
+│                              Activity, Instruction, Bulletin, BankItem, BankProduct,
+│                              EiborRate, Proposal, DocRule, CaseDocument, FeeRule, …)
+├─ scripts/backfill-clients.js One-off: created Client rows for pre-existing cases
+├─ src/data/seed/*.json        Master/demo data (banks, products, doc rules, fee rules, users…)
+├─ src/lib/                    ★ Pure logic — no React
+│  ├─ db.ts                    Prisma client singleton
+│  ├─ auth.ts                  Team sessions (cookie), currentUser(), flagsFor(role)
+│  ├─ client-auth.ts           Client-portal sessions (case number + phone last-4)
+│  ├─ agent-auth.ts            Agent/partner sessions
+│  ├─ types.ts                 All DTO types shared by API + UI (LoanCase, ClientDto, …)
+│  ├─ ser.ts                   Serializers: Prisma row → DTO (serCase, serClient, …)
+│  ├─ client-store.ts          Zustand store: state snapshot, Route type, all mutations
+│  ├─ domain.ts                Visibility scoping (team/own), SLA escalation, role flags
+│  ├─ format.ts                Money/date formatting, derived case status, commission calc
+│  ├─ case-profile.ts          ★ CaseProfile shape (primary/property/second-party),
+│  │                           co-borrower vs co-applicant affordability pooling
+│  ├─ client-master.ts         ★ Client identity resolution & master sync
+│  │                           (resolveClient, syncCaseClients, matchClientByPhoneName)
+│  ├─ mortgage.ts              MPBF calculator engine (pure)
+│  ├─ calc.ts                  Affordability engine (pure)
+│  ├─ bank-pricing.ts          Rate quotes: intro/follow-on/stress EMI math
+│  ├─ bank-fees.ts             ★ Bank fee parsers + calculators (processing, pre-approval,
+│  │                           early/partial settlement, insurance, total cost of finance)
+│  ├─ bank-match.ts            Match-engine server logic (eligibility per bank product)
+│  ├─ bank-rules-taxonomy.ts   Axis-name taxonomy for decoding bank workbooks
+│  ├─ bank-rules-seed-data.ts  Decoded rate-card data for seeding
+│  ├─ quote-parser.ts          Deterministic rate-card text → quote drafts (confidence flags)
+│  ├─ vault.ts                 Doc Vault rule engine: profile vectors → per-case checklist
+│  ├─ email-match.ts           Fuzzy email subject → case matcher
+│  ├─ graph.ts                 Microsoft Graph mailbox reader (app-only auth)
+│  └─ seed.ts                  Seeds DB from src/data/seed/*.json (idempotent)
+├─ src/app/
+│  ├─ page.tsx                 Team portal root: login gate + Shell + view by store route
+│  ├─ layout.tsx, manifest.ts  App shell, PWA manifest
+│  ├─ proposal/page.tsx        Print-ready bank comparison page (public link)
+│  ├─ client/                  Client portal (login, dashboard, store)
+│  ├─ agent/                   Agent portal (login, dashboard, store)
+│  └─ api/                     One folder per endpoint (route.ts each):
+│     ├─ state/                ★ GET — the single hydration payload for the team portal
+│     ├─ auth/  client/  agent/  Login/logout/register for the three portals
+│     ├─ cases/                POST create; [id]/ PATCH update (+tasks/ POST)
+│     ├─ client/register/      Portal self-registration → Lead-stage case (+ warm prefill
+│     │                        for returning clients)
+│     ├─ bank-match/           POST — run eligibility across bank products
+│     ├─ proposals/            POST save, PATCH status
+│     ├─ documents/            Ad-hoc add / PATCH status / DELETE / file upload
+│     ├─ case-updates/         Daily MIS notes
+│     ├─ bulletin/ instructions/ tasks/  CRUD + replies
+│     ├─ email/inbound|poll|unmatched/   Mailbox webhook + review queue
+│     ├─ calculator/save/      Save affordability checks
+│     ├─ admin/                Generic admin CRUD (kind + payload)
+│     └─ ai/ advisor|insights|doc-read/  LLM endpoints (advisor, case copilot, doc reader)
+├─ src/components/
+│  ├─ views/                   ★ The actual screens (see per-file index below)
+│  ├─ hfmc/ui.tsx              Design system: Modal, Chip, Avatar, Seg, buttons
+│  ├─ hfmc/bits.tsx            Composite widgets (WaButtons, CommissionPanel, BankChips…)
+│  ├─ hfmc/charts.tsx          Tiny chart components (Spark, donut, bars)
+│  ├─ hfmc/toaster.tsx         Toast host
+│  ├─ icons.tsx                All inline SVG icons
+│  └─ providers.tsx, sw-register.tsx  Theme provider, PWA service-worker registration
+└─ worklog.md                  Historical build log (chronological; append-only)
+```
+
+## Per-file index: `src/components/views/`
+
+| File | What it does (plain English) |
+|---|---|
+| `login.tsx` | Team login screen with demo seats |
+| `shell.tsx` | App frame: sidebar/mobile drawer/bottom nav, **NewCaseModal** ("Add client" — with repeat-client banner), nav items, SLA widget |
+| `dashboard.tsx` | KPIs + pipeline table + side widgets (this doubles as the case list today) |
+| `leads.tsx` | Lead-stage funnel: filter, assign owner, **Qualify profile** (opens CaseProfileEditor in a modal), **Convert to case** |
+| `case-detail.tsx` | ★ **Case 360**: header + stage pipeline; tabs = Lead & Applicant Profile / Daily MIS / Tasks / Documents / Banks & proposal / Activity; right rail = MIS, Pre-approval, FOL, AI copilot, **ClientFileCard** (client file + other engagements), commission, people |
+| `case-profile-editor.tsx` | 3-tab structured profile editor (Primary incl. EID/passport KYC, Property & Finance, Co-borrower/Co-applicant). Saves `profileJson` via case PATCH |
+| `daily-mis.tsx` | Daily status note panel (writes CaseUpdate) |
+| `doc-vault.tsx` | Per-case document checklist (upload, verify, reject, waive) |
+| `bank-match.tsx` | BankMatchPanel: inputs (pre-filled from profile) → eligibility results → select → save proposal |
+| `proposal-history.tsx` | Saved proposals list with status transitions + print link |
+| `calculator.tsx` | Full MPBF calculator + AI Mortgage Advisor + AI Document Reader panels |
+| `tasks.tsx` | Task queue across visible cases |
+| `bulletin.tsx` | Morning Bulletin directives (issue, complete, drop, carry, replies) |
+| `reports.tsx` | Reports: pipeline by stage, source mix, bank win rate, commission export, SLA |
+| `emails.tsx` | Unmatched-email review queue + recent email log |
+| `admin.tsx` | Admin: teammates, designations, banks (+products/fees editor), partners, channels, stages, masters, SLA, doc rules, fee rules |
+| `proposal-history.tsx`/`daily-mis.tsx` | (also embedded inside Case 360 tabs) |
+
+## "I want to change X — which files?"
+
+| Task | Files to touch |
+|---|---|
+| Add/alter a pipeline stage or master list | `src/data/seed/*.json` (data) or Admin UI; logic in `src/lib/domain.ts` |
+| Case fields (new column) | `prisma/schema.prisma` → `db:push` → `src/lib/ser.ts` (serCase + PrismaCase type) → `src/lib/types.ts` → UI (usually `case-detail.tsx`) |
+| Client identity / merge rules | `src/lib/client-master.ts` (single source of truth) |
+| Profile fields / co-borrower math | `src/lib/case-profile.ts` + `case-profile-editor.tsx`; persistence flows through case PATCH |
+| Bank eligibility rules | `BankProduct` columns + `src/lib/bank-match.ts` (+ admin editor in `admin.tsx`) |
+| Fees (bank) | `src/lib/bank-fees.ts` + `feesJson` on products (Admin → Bank products) |
+| Fees (government/transfer) | `FeeRule` rows via Admin → Fee rules; shown in Calculator |
+| New API endpoint | new `src/app/api/<name>/route.ts`; expose to UI via `state/route.ts` + `client-store.ts` |
+| New screen/nav item | view in `src/components/views/`, add Route in `client-store.ts`, item in `shell.tsx` navItems, render in `page.tsx` |
+| Client portal | `src/app/client/*` + `src/app/api/client/*` |
+| Email integration | `src/lib/graph.ts` (read), `src/lib/email-match.ts` (match), `src/app/api/email/*` |
+| AI features | `src/app/api/ai/*` (advisor, insights=copilot, doc-read) |
+
+## Maintenance rules
+
+1. **Update this file in the same commit as any code change.**
+2. Schema changes: `npx prisma db push` then `npx prisma generate` (no migrations folder — db push workflow).
+3. Verify with `npx tsc --noEmit` and `npx eslint .` before handing off.
+4. Append narrative work to `worklog.md`; keep structural truth here.
