@@ -108,7 +108,9 @@ function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void })
         employmentProfile, propertyType, residency,
         bankRm: bankRm.trim() || null,
       });
-      toast("success", `${c.caseNumber} opened for ${c.customer}.`);
+      toast("success", stage === "Lead"
+        ? `Lead ${c.caseNumber} created for ${c.customer} — qualify it in Leads.`
+        : `${c.caseNumber} created for ${c.customer}.`);
       setCustomer(""); setWhatsapp(""); setWaGroup(""); setBankList([]); setTaskDesc("");
       setTransactionType(""); setPropertyLocation(""); setCoApplicantName(""); setBankRm("");
       setErr("");
@@ -120,7 +122,7 @@ function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void })
   };
 
   return (
-    <Modal onClose={onClose} title="Add client" width={580}>
+    <Modal onClose={onClose} title="Add lead" sub="A new inquiry — qualify it in Leads, then convert it into a case." width={580}>
       <div className="space-y-3.5">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
@@ -335,7 +337,7 @@ function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void })
         </span>
         <div className="flex gap-2">
           <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={submit}>Open case</button>
+          <button className="btn btn-primary" onClick={submit}>{stage === "Lead" ? "Create lead" : "Create case"}</button>
         </div>
       </div>
     </Modal>
@@ -345,11 +347,12 @@ function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void })
 export default function Shell({ children }: { children: ReactNode }) {
   const { me, route, nav, logout, escalations, instructions, bulletin, visibleCases, newCaseOpen, openNewCase, closeNewCase } = useHfmcStore();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [fabOpen, setFabOpen] = useState(false);
   const flags = useHfmcStore((s) => s.flags);
 
-  // Close the mobile drawer when route changes
+  // Close the mobile drawer + FAB dial when route changes
   // eslint-disable-next-line react-hooks/set-state-in-effect -- drawer must close on every navigation
-  useEffect(() => { setDrawerOpen(false); }, [route]);
+  useEffect(() => { setDrawerOpen(false); setFabOpen(false); }, [route]);
 
   const openInstr = instructions.filter((i) => i.status === "Open").length;
   const pipeline = visibleCases().filter((c) => c.caseStatus === "Active").reduce((s, c) => s + c.loanAmount, 0);
@@ -362,6 +365,7 @@ export default function Shell({ children }: { children: ReactNode }) {
 
   const navItems: { label: string; route: Route; icon: (p: { size?: number; className?: string }) => ReactNode; badge?: number }[] = [
     { label: "Dashboard", route: { name: "dashboard" }, icon: IGrid },
+    { label: "Cases", route: { name: "cases" }, icon: IBriefcase },
     { label: "Leads", route: { name: "leads" }, icon: IInbox },
     { label: "Morning Bulletin", route: { name: "bulletin" }, icon: IFlag, badge: myOpenDirectives },
     { label: "Calculator", route: { name: "calculator" }, icon: ICalc },
@@ -372,6 +376,7 @@ export default function Shell({ children }: { children: ReactNode }) {
 
   const title =
     route.name === "dashboard" ? "Dashboard" :
+    route.name === "cases" ? "Cases" :
     route.name === "leads" ? "Leads" :
     route.name === "case" ? "Case 360" :
     route.name === "tasks" ? "Task Queue" :
@@ -431,8 +436,9 @@ export default function Shell({ children }: { children: ReactNode }) {
           <div className="ml-auto flex items-center gap-2 md:gap-3">
             <Clock />
             <ThemeToggle compact />
-            <button className="btn btn-primary" onClick={openNewCase}>
-              <IPlus size={16} /> <span className="hidden sm:inline">Add client</span>
+            {/* desktop-only: on mobile the floating action button is the single Add-lead entry */}
+            <button className="btn btn-primary !hidden md:!inline-flex" onClick={openNewCase}>
+              <IPlus size={16} /> Add lead
             </button>
           </div>
         </header>
@@ -444,10 +450,11 @@ export default function Shell({ children }: { children: ReactNode }) {
         </main>
       </div>
 
-      {/* Mobile bottom nav */}
+      {/* Mobile bottom nav — Cases/Leads/Tasks lead; the rest lives in the drawer */}
       <nav className="fixed bottom-0 left-0 right-0 z-50 md:hidden flex items-stretch border-t" style={{ borderColor: "var(--line)", background: "color-mix(in srgb, var(--raised) 92%, transparent)", backdropFilter: "blur(10px)" }}>
-        {navItems.slice(0, 5).map((n) => {
-          const active = route.name === n.route.name || (route.name === "case" && n.route.name === "dashboard");
+        {(["dashboard", "cases", "leads", "tasks", "calculator"] as const).map((name) => {
+          const n = navItems.find((x) => x.route.name === name)!;
+          const active = route.name === n.route.name || (route.name === "case" && n.route.name === "cases");
           return (
             <button
               key={n.label}
@@ -470,18 +477,34 @@ export default function Shell({ children }: { children: ReactNode }) {
         })}
       </nav>
 
-      {/* Mobile floating action button — the primary action, always visible */}
-      <button
-        className="fixed bottom-[72px] right-4 z-40 md:hidden flex items-center justify-center rounded-full anim-fade-up"
-        onClick={openNewCase}
-        aria-label="Add client"
-        style={{
-          width: 56, height: 56, background: "var(--amber)", color: "#fff8ec",
-          boxShadow: "0 8px 24px -6px rgba(180,83,9,0.5), 0 2px 8px rgba(0,0,0,0.15)",
-        }}
-      >
-        <IPlus size={26} />
-      </button>
+      {/* Mobile floating action button — role-aware: designated staff get a
+          speed dial (Add lead / New directive), everyone else taps straight
+          through to Add lead. Case-level Add task lives inside Case 360. */}
+      <div className="fixed bottom-[72px] right-4 z-40 md:hidden flex flex-col items-end gap-2">
+        {fabOpen && canInstruct && (
+          <>
+            <button className="flex items-center gap-2 anim-fade-up" onClick={() => { setFabOpen(false); nav({ name: "bulletin" }); }}>
+              <span className="text-[12px] font-disp font-semibold px-2.5 py-1.5 rounded-lg shadow-lg" style={{ background: "var(--raised)", color: "var(--ink)", border: "1px solid var(--line)" }}>New directive</span>
+              <span className="w-10 h-10 rounded-full flex items-center justify-center shadow-lg" style={{ background: "var(--raised)", color: "var(--amber)", border: "1px solid var(--line)" }}><IFlag size={18} /></span>
+            </button>
+            <button className="flex items-center gap-2 anim-fade-up" onClick={() => { setFabOpen(false); openNewCase(); }}>
+              <span className="text-[12px] font-disp font-semibold px-2.5 py-1.5 rounded-lg shadow-lg" style={{ background: "var(--raised)", color: "var(--ink)", border: "1px solid var(--line)" }}>Add lead</span>
+              <span className="w-10 h-10 rounded-full flex items-center justify-center shadow-lg" style={{ background: "var(--amber)", color: "#fff8ec" }}><IPlus size={18} /></span>
+            </button>
+          </>
+        )}
+        <button
+          className="w-14 h-14 rounded-full flex items-center justify-center anim-fade-up"
+          aria-label={canInstruct ? "Quick actions" : "Add lead"}
+          onClick={() => (canInstruct ? setFabOpen((v) => !v) : openNewCase())}
+          style={{
+            background: "var(--amber)", color: "#fff8ec",
+            boxShadow: "0 8px 24px -6px rgba(180,83,9,0.5), 0 2px 8px rgba(0,0,0,0.15)",
+          }}
+        >
+          {fabOpen && canInstruct ? <span className="font-disp text-[22px] leading-none">✕</span> : <IPlus size={26} />}
+        </button>
+      </div>
 
       <NewCaseModal open={newCaseOpen} onClose={closeNewCase} />
       <Toaster />
@@ -517,9 +540,9 @@ function SidebarContent({
 
       <nav className="px-3 mt-2 space-y-1 flex-1">
         {navItems.map((n) => {
-          const active = route.name === n.route.name || (route.name === "case" && n.route.name === "dashboard");
-          return (
-            <button key={n.label} className={`nav-item w-full text-left ${active ? "active" : ""}`} onClick={() => nav(n.route)}>
+            const active = route.name === n.route.name || (route.name === "case" && n.route.name === "cases");
+            return (
+              <button key={n.label} className={`nav-item w-full text-left ${active ? "active" : ""}`} onClick={() => nav(n.route)}>
               <n.icon size={17} />
               <span>{n.label}</span>
               {!!n.badge && n.badge > 0 && (

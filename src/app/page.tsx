@@ -5,6 +5,7 @@ import { useHfmcStore, type Route } from "@/lib/client-store";
 import Login from "@/components/views/login";
 import Shell from "@/components/views/shell";
 import Dashboard from "@/components/views/dashboard";
+import Cases from "@/components/views/cases";
 import CaseDetail from "@/components/views/case-detail";
 import Tasks from "@/components/views/tasks";
 import Bulletin from "@/components/views/bulletin";
@@ -42,6 +43,7 @@ export default function Page() {
 function renderRoute(route: Route) {
   switch (route.name) {
     case "dashboard": return <Dashboard />;
+    case "cases": return <Cases />;
     case "leads": return <Leads />;
     case "case": return <CaseDetail id={route.id} />;
     case "tasks": return <Tasks />;

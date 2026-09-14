@@ -1,15 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+/* Dashboard — the floor's analytics: KPIs, escalations, task breakdowns,
+   activity. The worklist itself lives in the Cases tab; leads in Leads. */
+
+import { useEffect, useMemo, useState } from "react";
 import { useHfmcStore } from "@/lib/client-store";
-import type { BulletinItem, CaseState, CaseStatus, LoanCase } from "@/lib/types";
-import { activityPerDay } from "@/lib/domain";
-import { computeKpis } from "@/lib/domain";
-import { TONE_HEX, ageDays, caseStatusOf, commissionFor, fmtMoney, relTime, todayISO } from "@/lib/format";
-import { Avatar, Chip, EmptyState, StatusChip } from "@/components/hfmc/ui";
-import { BankChips, CaseStateChip, SourceChip } from "@/components/hfmc/bits";
+import type { BulletinItem } from "@/lib/types";
+import { activityPerDay, computeKpis } from "@/lib/domain";
+import { TONE_HEX, caseStatusOf, fmtMoney, relTime, todayISO } from "@/lib/format";
+import { Avatar } from "@/components/hfmc/ui";
 import { BarList, Donut, Spark, useCountUp } from "@/components/hfmc/charts";
-import { IArrowR, IBriefcase, IFlag, IInbox, IPlus } from "@/components/icons";
+import { IArrowR, IFlag } from "@/components/icons";
 
 function useTick(intervalMs: number) {
   const [, setT] = useState(0);
@@ -31,17 +32,9 @@ function Kpi({ label, value, format, tone, sub }: { label: string; value: number
   );
 }
 
-const STATE_TABS: ("Active" | "Booked" | "Lost" | "All")[] = ["Active", "Booked", "Lost", "All"];
-
 export default function Dashboard() {
-  const { cases, tasks, activities, stages, banks, whyPending, waitingFor, users, me, nav, userById, visibleCases, visibleTasks, escalations, bulletin, visibleCaseIds, visibleTaskIds, openNewCase, flags } = useHfmcStore();
+  const { cases, tasks, activities, banks, whyPending, waitingFor, users, me, nav, userById, visibleCases, visibleTasks, escalations, bulletin, visibleCaseIds, visibleTaskIds, flags } = useHfmcStore();
   useTick(30000);
-  const [search, setSearch] = useState("");
-  const [stage, setStage] = useState("All");
-  const [status, setStatus] = useState("All");
-  const [owner, setOwner] = useState("All");
-  const [sort, setSort] = useState("urgency");
-  const [stateTab, setStateTab] = useState<(typeof STATE_TABS)[number]>("Active");
 
   // deps must include the data arrays (cases/visibleCaseIds/tasks/visibleTaskIds)
   // — NOT the store function references, which are stable and would prevent
@@ -56,7 +49,6 @@ export default function Dashboard() {
     () => activityPerDay(activities.filter((a) => visCases.some((c) => c.id === a.caseId)), 14),
     [activities, visCases],
   );
-  const statusOf = (c: LoanCase): CaseStatus => caseStatusOf(c, tasks);
 
   const openTasks = visTasks.filter((t) => t.status === "Open");
 
@@ -74,35 +66,6 @@ export default function Dashboard() {
     .map((id) => ({ id, name: userById(id)?.name ?? "Unassigned", open: openTasks.filter((t) => t.ownerId === id).length, od: openTasks.filter((t) => t.ownerId === id && t.dueDate < todayISO()).length }))
     .sort((a, b) => b.open - a.open)
     .slice(0, 6);
-
-  const filtered = visCases
-    .filter((c) => {
-      if (stateTab === "Active" && c.caseStatus !== "Active") return false;
-      if (stateTab === "Booked" && c.caseStatus !== "Closed") return false;
-      if (stateTab === "Lost" && c.caseStatus !== "Lost") return false;
-      if (stage !== "All" && c.stage !== stage) return false;
-      if (owner !== "All" && c.ownerId !== parseInt(owner, 10)) return false;
-      if (status !== "All" && statusOf(c) !== status) return false;
-      if (search) {
-        const q = search.toLowerCase();
-        if (!c.customer.toLowerCase().includes(q) && !c.caseNumber.toLowerCase().includes(q) && !c.banks.some((b) => b.toLowerCase().includes(q))) return false;
-      }
-      return true;
-    })
-    .sort((a, b) => {
-      const rank = (c: LoanCase) => ({ Overdue: 0, "At Risk": 1, "No Action": 2, "On Track": 3 } as Record<string, number>)[statusOf(c)] ?? 4;
-      if (sort === "urgency") return rank(a) - rank(b) || b.updatedAt.localeCompare(a.updatedAt);
-      if (sort === "newest") return b.createdAt.localeCompare(a.createdAt);
-      if (sort === "oldest") return a.createdAt.localeCompare(b.createdAt);
-      return b.loanAmount - a.loanAmount;
-    });
-
-  const counts = {
-    Active: visCases.filter((c) => c.caseStatus === "Active").length,
-    Booked: visCases.filter((c) => c.caseStatus === "Closed").length,
-    Lost: visCases.filter((c) => c.caseStatus === "Lost").length,
-    All: visCases.length,
-  };
 
   const recent = [...activities]
     .filter((a) => visCases.some((c) => c.id === a.caseId))
@@ -125,10 +88,10 @@ export default function Dashboard() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-disp font-bold text-[24px] tracking-tight m-0">
-            Pipeline · <span style={{ color: "var(--amber)" }}>{scope}</span>
+            Dashboard · <span style={{ color: "var(--amber)" }}>{scope}</span>
           </h1>
           <p className="text-[13px] text-[var(--ink-dim)] mt-0.5 mb-0">
-            {k.openCases} live cases · {fmtMoney(k.pipelineValue)} in flight · {k.escalations} SLA breach{k.escalations === 1 ? "" : "es"}
+            The floor at a glance — {k.openCases} live cases · {fmtMoney(k.pipelineValue)} in flight · {k.escalations} SLA breach{k.escalations === 1 ? "" : "es"}. Work happens in <button className="underline font-medium" onClick={() => nav({ name: "cases" })}>Cases</button> and <button className="underline font-medium" onClick={() => nav({ name: "leads" })}>Leads</button>.
           </p>
         </div>
         <div className="flex items-center gap-2 text-[12px] text-[var(--ink-faint)]">
@@ -137,26 +100,6 @@ export default function Dashboard() {
           <Spark points={spark} width={130} height={34} />
         </div>
       </div>
-
-      {/* prominent Add client CTA — the single most important action */}
-      <button
-        onClick={openNewCase}
-        className="card card-hover w-full flex items-center gap-4 p-4 md:p-5 anim-fade-up text-left group"
-        style={{ borderLeft: "3px solid var(--amber)" }}
-      >
-        <div className="w-11 h-11 md:w-12 md:h-12 rounded-xl flex items-center justify-center shrink-0" style={{ background: "var(--amber)", color: "var(--amber-ink)" }}>
-          <IPlus size={24} />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="font-disp font-bold text-[16px] md:text-[18px] leading-tight">Add a new client</div>
-          <div className="text-[12px] md:text-[13px] text-[var(--ink-dim)] mt-0.5">
-            Open a case file — customer, banks, loan amount, and the first task, all in one go.
-          </div>
-        </div>
-        <span className="font-disp font-semibold text-[12px] hidden sm:inline shrink-0 transition-colors" style={{ color: "var(--amber)" }}>
-          Open form →
-        </span>
-      </button>
 
       <div className="flex gap-3 overflow-x-auto pb-1 stagger">
         <Kpi label="Cases in flight" value={k.openCases} />
@@ -169,129 +112,27 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-4 items-start">
-        <div className="card anim-fade-up">
-          <div className="flex flex-wrap items-center gap-2 p-3 border-b" style={{ borderColor: "var(--line-soft)" }}>
-            <div className="flex rounded-lg overflow-hidden border w-full sm:w-auto" style={{ borderColor: "var(--line)" }}>
-              {STATE_TABS.map((t) => (
-                <button key={t} className="px-3 py-1.5 text-[12px] font-disp font-semibold transition-colors flex-1 sm:flex-initial whitespace-nowrap"
-                  style={stateTab === t ? { background: "rgba(242,176,76,0.15)", color: "var(--amber)" } : { color: "var(--ink-faint)", background: "transparent" }}
-                  onClick={() => setStateTab(t)}>
-                  {t} <span className="mono font-normal opacity-70">{counts[t]}</span>
+        <div className="card p-4 anim-fade-up">
+          <h3 className="font-disp font-semibold text-[13.5px] mt-0 mb-3">Latest activity</h3>
+          <div className="space-y-2.5">
+            {recent.length === 0 && <p className="text-[12.5px] text-[var(--ink-faint)] m-0">Quiet so far.</p>}
+            {recent.map((a) => {
+              const c = cases.find((x) => x.id === a.caseId);
+              return (
+                <button key={a.id} className="rowlink w-full text-left flex gap-2.5 rounded-lg px-2 py-1.5" onClick={() => c && nav({ name: "case", id: c.id })}>
+                  <Avatar name={userById(a.userId)?.name ?? "?"} size={24} />
+                  <span className="min-w-0">
+                    <span className="block text-[12px] leading-snug">
+                      <strong className="font-medium">{userById(a.userId)?.name.split(" ")[0]}</strong>{" "}
+                      <span className="text-[var(--ink-dim)]">{a.action.toLowerCase()}</span>
+                    </span>
+                    <span className="block text-[10.5px] text-[var(--ink-faint)] mono">
+                      {c?.caseNumber} · {relTime(a.at)}
+                    </span>
+                  </span>
                 </button>
-              ))}
-            </div>
-            <input className="input w-full sm:w-[190px]" placeholder="Search case / customer…" value={search} onChange={(e) => setSearch(e.target.value)} />
-            <select className="select w-full sm:w-[150px]" value={stage} onChange={(e) => setStage(e.target.value)}>
-              <option value="All">All stages</option>
-              {[...stages].sort((a, b) => a.sortOrder - b.sortOrder).map((s) => <option key={s.id} value={s.label}>{s.label}</option>)}
-            </select>
-            {stateTab === "Active" && (
-              <select className="select w-full sm:w-[130px]" value={status} onChange={(e) => setStatus(e.target.value)}>
-                <option value="All">All status</option>
-                {["On Track", "At Risk", "Overdue", "No Action"].map((s) => <option key={s}>{s}</option>)}
-              </select>
-            )}
-            <select className="select w-full sm:w-[140px]" value={owner} onChange={(e) => setOwner(e.target.value)}>
-              <option value="All">All owners</option>
-              {users.filter((u) => u.role !== "Head of Company" && u.role !== "PA to HoC").map((u) => <option key={u.id} value={u.id}>{u.name.split(" ")[0]}</option>)}
-            </select>
-            <select className="select w-full sm:w-[140px] sm:ml-auto" value={sort} onChange={(e) => setSort(e.target.value)}>
-              <option value="urgency">Most urgent</option>
-              <option value="newest">Newest</option>
-              <option value="oldest">Oldest</option>
-              <option value="amount">Largest amount</option>
-            </select>
-          </div>
-
-          <div className="overflow-x-auto" style={{ maxHeight: "52vh" }}>
-            {filtered.length === 0 ? (
-              <div className="p-6">
-                <EmptyState icon={<IInbox size={26} />} title={`Nothing in “${stateTab}”`} body="Adjust the filters, or use the Add client button in the top bar to get things moving." />
-              </div>
-            ) : (
-              <table className="tbl min-w-[1200px]">
-                <thead>
-                  <tr>
-                    <th>Case</th>
-                    <th>Customer</th>
-                    <th>Status note</th>
-                    <th>Source</th>
-                    <th>Banks</th>
-                    <th>Stage</th>
-                    <th>Amount</th>
-                    <th>Owner</th>
-                    <th>Age</th>
-                    {stateTab === "Active" ? <th>Status</th> : <th>Lifecycle</th>}
-                    <th className="hidden md:table-cell">Transaction</th>
-                    <th className="hidden md:table-cell">Location</th>
-                    <th className="hidden md:table-cell">Bank RM</th>
-                    <th className="hidden md:table-cell">VRM</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((c) => {
-                    const st = statusOf(c);
-                    const vrm = c.vrmId ? userById(c.vrmId) : null;
-                    const note = c.statusNote?.trim() ?? "";
-                    const noteShort = note.length > 40 ? `${note.slice(0, 39)}…` : note;
-                    return (
-                      <tr key={c.id} onClick={() => nav({ name: "case", id: c.id })}>
-                        <td className="mono text-[12.5px]" style={{ color: "var(--amber)" }}>{c.caseNumber}</td>
-                        <td className="font-medium">
-                          <div className="flex items-center gap-1.5">
-                            {c.onHold && (
-                              <span
-                                className="chip shrink-0"
-                                title={c.holdReason ? `On hold — ${c.holdReason}${c.holdUntil ? ` (until ${c.holdUntil})` : ""}` : "On hold"}
-                                style={{ color: "var(--amber)", background: "rgba(242,176,76,0.12)", borderColor: "rgba(242,176,76,0.4)", padding: "1px 6px", fontSize: "9.5px" }}
-                              >
-                                ON HOLD
-                              </span>
-                            )}
-                            <span className="truncate" style={{ maxWidth: 200 }}>{c.customer}</span>
-                          </div>
-                          {c.partner && (<span className="block text-[10.5px] text-[var(--ink-faint)]">{c.partner.name}{flags?.viewRevenue ? ` · ${c.partner.sharePct}%` : ""}</span>)}
-                        </td>
-                        <td className="text-[12px] text-[var(--ink-dim)]" style={{ maxWidth: 220 }}>
-                          {noteShort ? (
-                            <span title={note}>{noteShort}</span>
-                          ) : (
-                            <span className="text-[var(--ink-faint)]">—</span>
-                          )}
-                        </td>
-                        <td><SourceChip source={c.source} /></td>
-                        <td><BankChips c={c} /></td>
-                        <td><Chip tone="slate">{c.stage}</Chip></td>
-                        <td className="mono">{fmtMoney(c.loanAmount)}</td>
-                        <td>
-                          <div className="flex items-center gap-2">
-                            <Avatar name={userById(c.ownerId)?.name ?? "?"} size={24} />
-                            <span className="text-[12.5px] text-[var(--ink-dim)]">{userById(c.ownerId)?.name.split(" ")[0]}</span>
-                          </div>
-                        </td>
-                        <td className="mono text-[12.5px] text-[var(--ink-dim)]">{ageDays(c.createdAt)}d</td>
-                        <td>{c.caseStatus === "Active" ? <StatusChip status={st} /> : <CaseStateChip state={c.caseStatus} />}</td>
-                        <td className="hidden md:table-cell text-[12px] text-[var(--ink-dim)]">{c.transactionType || <span className="text-[var(--ink-faint)]">—</span>}</td>
-                        <td className="hidden md:table-cell text-[12px] text-[var(--ink-dim)]">{c.propertyLocation || <span className="text-[var(--ink-faint)]">—</span>}</td>
-                        <td className="hidden md:table-cell text-[12px] text-[var(--ink-dim)]">{c.bankRm || <span className="text-[var(--ink-faint)]">—</span>}</td>
-                        <td className="hidden md:table-cell">
-                          {vrm ? (
-                            <div className="flex items-center gap-2">
-                              <Avatar name={vrm.name} size={22} />
-                              <span className="text-[12px] text-[var(--ink-dim)]">{vrm.name.split(" ")[0]}</span>
-                            </div>
-                          ) : <span className="text-[var(--ink-faint)]">—</span>}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
-          </div>
-          <div className="px-4 py-2.5 border-t text-[11.5px] text-[var(--ink-faint)] flex items-center gap-2" style={{ borderColor: "var(--line-soft)" }}>
-            <IBriefcase size={13} />
-            {filtered.length} of {visCases.length} cases · click a row for the full 360 view
+              );
+            })}
           </div>
         </div>
 
@@ -326,36 +167,13 @@ export default function Dashboard() {
             <div className="space-y-2">
               {ownerRows.length === 0 && <p className="text-[12.5px] text-[var(--ink-faint)] m-0">No open tasks assigned.</p>}
               {ownerRows.map((o) => (
-                <button key={o.id} className="rowlink w-full flex items-center gap-2.5 rounded-lg px-2 py-1.5" onClick={() => { setOwner(String(o.id)); setStateTab("Active"); }}>
+                <div key={o.id} className="w-full flex items-center gap-2.5 rounded-lg px-2 py-1.5">
                   <Avatar name={o.name} size={26} />
                   <span className="text-[12.5px] flex-1 text-left truncate">{o.name}</span>
                   {o.od > 0 && <span className="mono text-[11px]" style={{ color: "var(--coral)" }}>{o.od} od</span>}
                   <span className="mono text-[12px] text-[var(--ink-dim)]">{o.open}</span>
-                </button>
+                </div>
               ))}
-            </div>
-          </div>
-          <div className="card p-4 anim-fade-up">
-            <h3 className="font-disp font-semibold text-[13.5px] mt-0 mb-3">Latest activity</h3>
-            <div className="space-y-2.5">
-              {recent.length === 0 && <p className="text-[12.5px] text-[var(--ink-faint)] m-0">Quiet so far.</p>}
-              {recent.map((a) => {
-                const c = cases.find((x) => x.id === a.caseId);
-                return (
-                  <button key={a.id} className="rowlink w-full text-left flex gap-2.5 rounded-lg px-2 py-1.5" onClick={() => c && nav({ name: "case", id: c.id })}>
-                    <Avatar name={userById(a.userId)?.name ?? "?"} size={24} />
-                    <span className="min-w-0">
-                      <span className="block text-[12px] leading-snug">
-                        <strong className="font-medium">{userById(a.userId)?.name.split(" ")[0]}</strong>{" "}
-                        <span className="text-[var(--ink-dim)]">{a.action.toLowerCase()}</span>
-                      </span>
-                      <span className="block text-[10.5px] text-[var(--ink-faint)] mono">
-                        {c?.caseNumber} · {relTime(a.at)}
-                      </span>
-                    </span>
-                  </button>
-                );
-              })}
             </div>
           </div>
         </div>

@@ -10,7 +10,7 @@ Plain-English guide to every code file, for humans and AI assistants.
 
 HFMC — a UAE mortgage brokerage case tracker. Three portals:
 
-1. **Team portal** (`/`) — dashboard, leads, cases ("Case 360"), tasks, bulletin, calculator, reports, admin.
+1. **Team portal** (`/`) — dashboard (analytics), leads, cases (worklist), Case 360, tasks, bulletin, calculator, reports, admin.
 2. **Client portal** (`/client`) — clients log in with case number + phone last-4; see timeline, upload documents, register as new leads.
 3. **Agent/partner portal** (`/agent`) — partners log in with a password; see their referred cases.
 
@@ -96,8 +96,9 @@ HFMC — a UAE mortgage brokerage case tracker. Three portals:
 | File | What it does (plain English) |
 |---|---|
 | `login.tsx` | Team login screen with demo seats |
-| `shell.tsx` | App frame: sidebar/mobile drawer/bottom nav, **NewCaseModal** ("Add client" — with repeat-client banner), nav items, SLA widget |
-| `dashboard.tsx` | KPIs + pipeline table + side widgets (this doubles as the case list today) |
+| `shell.tsx` | App frame: sidebar/mobile drawer/bottom nav, **NewLeadModal** ("Add lead" — dynamic Create lead/case submit, repeat-client banner), nav items, SLA widget; mobile FAB is role-aware (speed dial: Add lead + New directive for task-issuing roles, direct Add lead for staff) |
+| `dashboard.tsx` | Analytics only: KPIs, activity, why-pending/waiting-for breakdowns, owner load, today's directives (the case table moved to `cases.tsx`) |
+| `cases.tsx` | **Cases tab — the pipeline worklist**: filter/search/sort table of all non-lead cases, click a row → Case 360 |
 | `leads.tsx` | Lead-stage funnel: filter, assign owner, **Qualify profile** (opens CaseProfileEditor in a modal), **Convert to case** |
 | `case-detail.tsx` | ★ **Case 360**: header + stage pipeline; tabs = Lead & Applicant Profile / Daily MIS / Tasks / Documents / Banks & proposal / Activity; right rail = MIS, Pre-approval, FOL, AI copilot, **ClientFileCard** (client file + other engagements), commission, people |
 | `case-profile-editor.tsx` | 3-tab structured profile editor (Primary incl. EID/passport KYC, Property & Finance, Co-borrower/Co-applicant). Saves `profileJson` via case PATCH |
