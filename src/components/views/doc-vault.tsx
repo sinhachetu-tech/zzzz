@@ -1,4 +1,5 @@
 "use client";
+import { parseCaseProfile } from "@/lib/case-profile";
 
 /* Document Vault — per-case tab. Conditional checklist (auto-populated by the
    rule engine) + ad-hoc requirements, with upload / verify / reject / waive /
@@ -93,6 +94,21 @@ export function DocVault({ c }: { c: LoanCase }) {
           <IPlus size={14} /> Add document
         </button>
       </div>
+      {(() => {
+        const prof = parseCaseProfile(c.profileJson, { customer: c.customer, coApplicantName: c.coApplicantName });
+        if (prof.secondParty.role === "none") return null;
+        const isCb = prof.secondParty.role === "co_borrower";
+        return (
+          <div className={`px-4 py-2 text-[11.5px] border-b flex items-center gap-2 ${isCb ? "bg-[var(--mint-tint)] text-[var(--ink)]" : "bg-[var(--amber-tint)] text-[var(--ink)]"}`} style={{ borderColor: "var(--line-soft)" }}>
+            <span className="font-semibold">{isCb ? "Co-Borrower (Financial):" : "Co-Applicant (Title Only):"} {prof.secondParty.fullName || "Second Party"}</span>
+            <span className="text-[var(--ink-dim)]">
+              {isCb
+                ? "� Full KYC + Income proofs (Salary Certificate, 6-Month Bank Statements) required for both borrowers."
+                : "� KYC documents (Passport, Visa, Emirates ID) required for property title deed. Financial proofs not needed."}
+            </span>
+          </div>
+        );
+      })()}
 
       {docs.length === 0 ? (
         <p className="px-4 py-6 text-[12.5px] text-[var(--ink-faint)] m-0">

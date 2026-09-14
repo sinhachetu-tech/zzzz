@@ -12,6 +12,7 @@ import { ConfirmModal } from "@/components/hfmc/bits";
 import { parsePricing, resolveQuote, rateSchedule, type ProductPricing, type RateQuote } from "@/lib/bank-pricing";
 import { parseRateTable } from "@/lib/quote-parser";
 import { emi, loanForEmi } from "@/lib/calc";
+import { BankFees, BankInsurance, parseFees, parseInsurance, extractFromAxes } from "@/lib/bank-fees";
 import {
   IBank, ICheck, IPencil, IPlus, IShield, ITrash, ITrophy, IUsers, IX,
 } from "@/components/icons";
@@ -1764,7 +1765,7 @@ function SlaTab() {
 /* ------------------------------ doc rules — conditional vault master (SOP §8.2 + §3.3) ------------------------------ */
 
 const DOC_CONDITION_SETS = {
-  employment: ["all", "Salaried", "Self-Employed", "Non-Resident"],
+  employment: ["all", "Salaried", "Self-Employed"],
   property: ["any", "Ready", "Off-Plan"],
   transaction: ["any", "New Purchase", "Buyout / Equity Release"],
   residency: ["all", "UAE National", "Resident Expatriate", "Non-Resident"],
@@ -2383,6 +2384,12 @@ const NUM_FIELDS: { key: keyof BankProduct; label: string; suffix?: string; role
   { key: "paValidityDays", label: "PA validity", suffix: " d", role: "planned", help: "How long the pre-approval letter stays valid." },
   { key: "folValidityDays", label: "FOL validity", suffix: " d", role: "planned", help: "How long the final offer letter stays valid." },
   { key: "valuationValidityDays", label: "Valuation validity", suffix: " d", role: "planned", help: "How long the valuation report stays valid." },
+  { key: "cardRulePct", label: "Card rule %", suffix: "%", role: "engine", help: "% of total credit card limits counted as monthly obligation (e.g. 5% standard, DIB 2%)" },
+  { key: "dbrPct", label: "DBR ceiling %", suffix: "%", role: "engine", help: "Max allowed DBR for this bank (CBUAE limit is 50%)" },
+  { key: "bonusPct", label: "Bonus income %", suffix: "%", role: "engine", help: "% of annual bonus credited toward monthly income" },
+  { key: "rentalIncomePct", label: "Rental income %", suffix: "%", role: "engine", help: "% of rental income the bank credits (e.g. 83% DIB, 60% ENBD)" },
+  { key: "rentalCapPctOfSalary", label: "Rental cap % of salary", suffix: "%", role: "engine", help: "Rental credit cannot exceed this % of basic salary" },
+  { key: "stressBufferPct", label: "Stress buffer %", suffix: "%", role: "engine", help: "Extra cushion on top of follow-on rate for DSR stress testing" },
 ];
 
 const TEXT_BLOCKS: { key: keyof BankProduct; label: string; hint: string; engineReady: boolean }[] = [
@@ -2490,7 +2497,32 @@ function BankRulesTab() {
           }
         >
           <div className="space-y-3">
-            <FieldRowBadge role="engine" text="Green fields feed Bank Match and the final proposal. Amber fields are displayed but not calculated yet." />
+            <div className="flex items-center justify-between pb-1">
+              <FieldRowBadge role="engine" text="Green fields feed Bank Match and the final proposal. Amber fields are displayed but not calculated yet." />
+              <button
+                type="button"
+                className="btn btn-ghost btn-xs text-[11px] whitespace-nowrap"
+                title="Auto-extract structured fees, insurance, and validity from the product policy axes"
+                onClick={() => {
+                  const { fees, insurance } = extractFromAxes(JSON.stringify(editing.axes || {}));
+                  let paVal = editing.paValidityDays;
+                  const axesObj = editing.axes || {};
+                  if (!paVal && axesObj["PA Validity"]) {
+                    const m = String(axesObj["PA Validity"]).match(/(\d+)\s*days?/i);
+                    if (m) paVal = parseInt(m[1], 10);
+                  }
+                  setEditing({
+                    ...editing,
+                    feesJson: JSON.stringify(fees),
+                    insuranceJson: JSON.stringify(insurance),
+                    paValidityDays: paVal ?? editing.paValidityDays,
+                  });
+                  toast("success", "Extracted structured fees, insurance & validity from policy axes!");
+                }}
+              >
+                Sync from axes
+              </button>
+            </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {NUM_FIELDS.map((f) => (
                 <Field key={String(f.key)} label={`${f.label} · ${f.suffix ?? ""}`}>
@@ -2514,12 +2546,35 @@ function BankRulesTab() {
             </div>
 
             <QuoteRowsEditor
+              productId={editing.id}
               quotes={(() => {
                 try { return (JSON.parse(editing.pricingJson as string)?.quotes ?? []) as RateQuote[]; } catch { return []; }
               })()}
               rateTable={String(editing.rateTable ?? "")}
               onChange={(quotes) => setEditing({ ...editing, pricingJson: JSON.stringify({ quotes }) })}
+              onFeesDraft={(fees, insurance) =>
+                setEditing({
+                  ...editing,
+                  feesJson: fees ? JSON.stringify(fees) : editing.feesJson,
+                  insuranceJson: insurance ? JSON.stringify(insurance) : editing.insuranceJson,
+                })
+              }
             />
+
+            <FeesEditor
+              fees={(() => {
+                try { return parseFees(editing.feesJson) || { processing: {} }; } catch { return { processing: {} }; }
+              })()}
+              onChange={(fees) => setEditing({ ...editing, feesJson: JSON.stringify(fees) })}
+            />
+
+            <InsuranceEditor
+              insurance={(() => {
+                try { return parseInsurance(editing.insuranceJson) || {}; } catch { return {}; }
+              })()}
+              onChange={(insurance) => setEditing({ ...editing, insuranceJson: JSON.stringify(insurance) })}
+            />
+
             {TEXT_BLOCKS.map((b) => (
               <Field key={String(b.key)} label={`${b.label} · ${b.engineReady ? "engine ✓" : "display only"}`}>
                 <textarea
@@ -2656,11 +2711,50 @@ function LivePreview({ editing }: { editing: BankProduct }) {
 
 const TXN_OPTIONS = ["any", "Resale", "Primary Handover", "Buyout", "Equity Release", "Buyout + Equity Release", "Land", "Self Construction", "LAP"];
 
-function QuoteRowsEditor({ quotes, rateTable, onChange }: {
+function QuoteRowsEditor({ quotes, rateTable, onChange, productId, onFeesDraft }: {
   quotes: RateQuote[];
   rateTable: string;
   onChange: (quotes: RateQuote[]) => void;
+  productId: number;
+  onFeesDraft?: (fees: unknown, insurance: unknown) => void;
 }) {
+  const { toast } = useHfmcStore();
+  const [aiDraftBusy, setAiDraftBusy] = useState(false);
+  const [aiQuestions, setAiQuestions] = useState<string[]>([]);
+  const [aiConfidence, setAiConfidence] = useState<string | null>(null);
+
+  const aiDraft = async () => {
+    setAiDraftBusy(true); setAiQuestions([]); setAiConfidence(null);
+    try {
+      const res = await fetch("/api/ai/rule-draft", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ productId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "AI draft failed");
+      const draft = data.draft;
+      const cleanQuotes: RateQuote[] = (draft.quotes ?? []).map((q: Record<string, unknown>) => ({
+        stl: (q.stl ?? null) as boolean | null,
+        termYears: (q.termYears ?? 0) as number,
+        rateType: (q.rateType ?? "3M_EIBOR") as RateQuote["rateType"],
+        ratePct: (q.ratePct ?? null) as number | null,
+        marginPct: (q.marginPct ?? null) as number | null,
+        floorPct: (q.floorPct ?? null) as number | null,
+        ftvMax: (q.ftvMax ?? null) as number | null,
+        txn: (q.txn ?? null) as string | null,
+        segment: (q.segment ?? null) as string | null,
+        note: String(q.note ?? ""),
+      }));
+      onChange(cleanQuotes);
+      onFeesDraft?.(draft.fees ?? null, draft.insurance ?? null);
+      setAiQuestions(Array.isArray(draft.questions) ? draft.questions : []);
+      setAiConfidence(draft.confidence ?? null);
+      toast("success", `AI drafted ${cleanQuotes.length} quotes — review every row before approving.`);
+    } catch (e) {
+      toast("error", e instanceof Error ? e.message : "AI draft failed");
+    }
+    setAiDraftBusy(false);
+  };
   const update = (i: number, patch: Partial<RateQuote>) =>
     onChange(quotes.map((q, idx) => (idx === i ? { ...q, ...patch } : q)));
   const remove = (i: number) => onChange(quotes.filter((_, idx) => idx !== i));
@@ -2683,16 +2777,28 @@ function QuoteRowsEditor({ quotes, rateTable, onChange }: {
         </span>
         {rateTable && (
           <button className="btn btn-ghost btn-sm" title="Draft quotes from the source text — review each row before approving" onClick={autoDraft}>
-            Auto-draft from source text
+            Auto-draft
           </button>
         )}
+        <button className="btn btn-primary btn-sm" onClick={aiDraft} disabled={aiDraftBusy}
+          title="AI reads the full source text (rates + fees + insurance) and proposes structured drafts — you review and approve">
+          {aiDraftBusy ? "AI drafting…" : "AI draft"}
+        </button>
         <button className="btn btn-ghost btn-sm" onClick={add}><IPlus size={13} /> Add quote</button>
       </div>
       {quotes.length === 0 && (
         <p className="text-[11.5px] text-[var(--ink-faint)] m-0">
-          No quotes yet — use Auto-draft to pre-fill from the source text, then review each row.
+          No quotes yet — use AI draft or Auto-draft to pre-fill from the source text, then review each row.
         </p>
       )}
+      {aiConfidence && (
+        <p className="text-[11px] m-0" style={{ color: aiConfidence === "high" ? "var(--mint)" : aiConfidence === "low" ? "var(--coral)" : "var(--amber)" }}>
+          AI confidence: {aiConfidence}{aiQuestions.length ? " — confirm these:" : ""}
+        </p>
+      )}
+      {aiQuestions.map((q, i) => (
+        <p key={i} className="text-[11px] m-0" style={{ color: "var(--coral)" }}>? {q}</p>
+      ))}
       {quotes.map((q, i) => (
         <div key={i} className="rounded-lg px-2.5 py-2 space-y-1.5" style={{ background: "var(--surface)", border: "1px solid var(--line)" }}>
           <div className="flex flex-wrap items-center gap-1.5">
@@ -2744,6 +2850,307 @@ function QuoteRowsEditor({ quotes, rateTable, onChange }: {
             onChange={(e) => update(i, { note: e.target.value })} />
         </div>
       ))}
+    </div>
+  );
+}
+
+/* ---------------- Fees & Insurance Structured Editors ---------------- */
+
+function FeesEditor({ fees, onChange }: { fees: BankFees; onChange: (fees: BankFees) => void }) {
+  const [open, setOpen] = useState(true);
+  const p = fees.processing || {};
+  const pa = fees.preApproval || {};
+  const es = fees.earlySettlement || {};
+  const ps = fees.partialSettlement || {};
+  const v = fees.valuation || {};
+
+  const updateProcessing = (patch: Partial<NonNullable<BankFees["processing"]>>) => {
+    onChange({ ...fees, processing: { ...p, ...patch } });
+  };
+  const updatePreApproval = (patch: Partial<NonNullable<BankFees["preApproval"]>>) => {
+    onChange({ ...fees, preApproval: { ...pa, ...patch } });
+  };
+  const updateEarlySettlement = (patch: Partial<NonNullable<BankFees["earlySettlement"]>>) => {
+    onChange({ ...fees, earlySettlement: { ...es, ...patch } });
+  };
+  const updatePartialSettlement = (patch: Partial<NonNullable<BankFees["partialSettlement"]>>) => {
+    onChange({ ...fees, partialSettlement: { ...ps, ...patch } });
+  };
+  const updateValuation = (patch: Partial<NonNullable<BankFees["valuation"]>>) => {
+    onChange({ ...fees, valuation: { ...v, ...patch } });
+  };
+
+  return (
+    <div className="rounded-lg p-3 space-y-3" style={{ background: "var(--surface)", border: "1px solid var(--line)" }}>
+      <div className="flex items-center justify-between cursor-pointer select-none" onClick={() => setOpen(!open)}>
+        <div className="flex items-center gap-2">
+          <span className="font-disp font-semibold text-[12px] uppercase tracking-[0.08em] text-[var(--ink)]">
+            Structured Bank Fees
+          </span>
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--mint-tint)] text-[var(--mint)] font-medium">
+            engine ?
+          </span>
+        </div>
+        <button type="button" className="btn btn-ghost btn-xs text-[11px]">{open ? "Collapse" : "Expand"}</button>
+      </div>
+
+      {open && (
+        <div className="space-y-3 pt-1">
+          {/* Processing fee */}
+          <div className="p-2.5 rounded-lg bg-[var(--bg2)] space-y-2">
+            <div className="text-[11px] font-semibold text-[var(--ink-dim)]">Processing Fee</div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div>
+                <label className="text-[10px] text-[var(--ink-faint)]">Default rate (%)</label>
+                <input
+                  type="number" step="0.01" className="input input-sm mono" placeholder="1.05"
+                  value={p.default ?? ""}
+                  onChange={(e) => updateProcessing({ default: e.target.value === "" ? undefined : Number(e.target.value) })}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-[var(--ink-faint)]">Buyout rate (%)</label>
+                <input
+                  type="number" step="0.01" className="input input-sm mono" placeholder="0.5"
+                  value={p.buyout ?? ""}
+                  onChange={(e) => updateProcessing({ buyout: e.target.value === "" ? undefined : Number(e.target.value) })}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-[var(--ink-faint)]">Min Fee (AED)</label>
+                <input
+                  type="number" className="input input-sm mono" placeholder="0"
+                  value={p.minFee ?? ""}
+                  onChange={(e) => updateProcessing({ minFee: e.target.value === "" ? undefined : Number(e.target.value) })}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-[var(--ink-faint)]">Max Cap (AED)</label>
+                <input
+                  type="number" className="input input-sm mono" placeholder="No cap"
+                  value={p.maxFee ?? ""}
+                  onChange={(e) => updateProcessing({ maxFee: e.target.value === "" ? undefined : Number(e.target.value) })}
+                />
+              </div>
+            </div>
+            <input
+              type="text" className="input input-sm text-[11.5px]" placeholder="Processing fee notes (e.g. + 5% VAT)"
+              value={p.note ?? ""}
+              onChange={(e) => updateProcessing({ note: e.target.value })}
+            />
+          </div>
+
+          {/* Pre-approval fee */}
+          <div className="p-2.5 rounded-lg bg-[var(--bg2)] space-y-2">
+            <div className="text-[11px] font-semibold text-[var(--ink-dim)]">Pre-Approval Fee</div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div>
+                <label className="text-[10px] text-[var(--ink-faint)]">Salaried (AED)</label>
+                <input
+                  type="number" className="input input-sm mono" placeholder="1575"
+                  value={pa.fee ?? ""}
+                  onChange={(e) => updatePreApproval({ fee: e.target.value === "" ? undefined : Number(e.target.value) })}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-[var(--ink-faint)]">STL Fee (AED)</label>
+                <input
+                  type="number" className="input input-sm mono" placeholder="e.g. 1000"
+                  value={pa.feeStl ?? ""}
+                  onChange={(e) => updatePreApproval({ feeStl: e.target.value === "" ? undefined : Number(e.target.value) })}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-[var(--ink-faint)]">NSTL Fee (AED)</label>
+                <input
+                  type="number" className="input input-sm mono" placeholder="e.g. 1575"
+                  value={pa.feeNstl ?? ""}
+                  onChange={(e) => updatePreApproval({ feeNstl: e.target.value === "" ? undefined : Number(e.target.value) })}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-[var(--ink-faint)]">Self-Employed (AED)</label>
+                <input
+                  type="number" className="input input-sm mono" placeholder="0 = Free"
+                  value={pa.feeSelfEmployed ?? ""}
+                  onChange={(e) => updatePreApproval({ feeSelfEmployed: e.target.value === "" ? undefined : Number(e.target.value) })}
+                />
+              </div>
+            </div>
+            <input
+              type="text" className="input input-sm text-[11.5px]" placeholder="Pre-approval notes (e.g. adjusted against processing fee)"
+              value={pa.note ?? ""}
+              onChange={(e) => updatePreApproval({ note: e.target.value })}
+            />
+          </div>
+
+          {/* Early & Partial settlement */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div className="p-2.5 rounded-lg bg-[var(--bg2)] space-y-2">
+              <div className="text-[11px] font-semibold text-[var(--ink-dim)]">Early Settlement</div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] text-[var(--ink-faint)]">Penalty (%)</label>
+                  <input
+                    type="number" step="0.1" className="input input-sm mono" placeholder="1.0"
+                    value={es.pct ?? ""}
+                    onChange={(e) => updateEarlySettlement({ pct: e.target.value === "" ? undefined : Number(e.target.value) })}
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-[var(--ink-faint)]">Cap (AED)</label>
+                  <input
+                    type="number" className="input input-sm mono" placeholder="10000"
+                    value={es.cap ?? ""}
+                    onChange={(e) => updateEarlySettlement({ cap: e.target.value === "" ? undefined : Number(e.target.value) })}
+                  />
+                </div>
+              </div>
+              <input
+                type="text" className="input input-sm text-[11.5px]" placeholder="Early settlement note (e.g. capped at AED 10k by CBUAE)"
+                value={es.note ?? ""}
+                onChange={(e) => updateEarlySettlement({ note: e.target.value })}
+              />
+            </div>
+
+            <div className="p-2.5 rounded-lg bg-[var(--bg2)] space-y-2">
+              <div className="text-[11px] font-semibold text-[var(--ink-dim)]">Partial Settlement</div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] text-[var(--ink-faint)]">Free / year (%)</label>
+                  <input
+                    type="number" step="1" className="input input-sm mono" placeholder="25"
+                    value={ps.freeYearlyPct ?? ""}
+                    onChange={(e) => updatePartialSettlement({ freeYearlyPct: e.target.value === "" ? undefined : Number(e.target.value) })}
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-[var(--ink-faint)]">Excess fee (%)</label>
+                  <input
+                    type="number" step="0.1" className="input input-sm mono" placeholder="1.0"
+                    value={ps.pct ?? ""}
+                    onChange={(e) => updatePartialSettlement({ pct: e.target.value === "" ? undefined : Number(e.target.value) })}
+                  />
+                </div>
+              </div>
+              <input
+                type="text" className="input input-sm text-[11.5px]" placeholder="Partial settlement note"
+                value={ps.note ?? ""}
+                onChange={(e) => updatePartialSettlement({ note: e.target.value })}
+              />
+            </div>
+          </div>
+
+          {/* Valuation Note */}
+          <div className="p-2.5 rounded-lg bg-[var(--bg2)]">
+            <label className="text-[10px] text-[var(--ink-faint)]">Valuation Fee details</label>
+            <input
+              type="text" className="input input-sm text-[11.5px] mt-1" placeholder="e.g. AED 2,500 - AED 3,500 based on property value tier"
+              value={v.note ?? ""}
+              onChange={(e) => updateValuation({ note: e.target.value })}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InsuranceEditor({ insurance, onChange }: { insurance: BankInsurance; onChange: (ins: BankInsurance) => void }) {
+  const [open, setOpen] = useState(true);
+  const life = insurance.life || { basis: "per_million_monthly" as const, rate: 0 };
+  const prop = insurance.property || { basis: "pct_pa_of_property" as const, rate: 0 };
+
+  const updateLife = (patch: Partial<NonNullable<BankInsurance["life"]>>) => {
+    onChange({ ...insurance, life: { ...life, ...patch } });
+  };
+  const updateProp = (patch: Partial<NonNullable<BankInsurance["property"]>>) => {
+    onChange({ ...insurance, property: { ...prop, ...patch } });
+  };
+
+  const previewLifeMonthly = life.rate
+    ? life.basis === "per_million_monthly"
+      ? ((1500000 * life.rate) / 100).toFixed(0)
+      : (((1500000 * life.rate) / 100) / 12).toFixed(0)
+    : null;
+  const previewPropYearly = prop.rate ? ((2000000 * prop.rate) / 100).toFixed(0) : null;
+
+  return (
+    <div className="rounded-lg p-3 space-y-3" style={{ background: "var(--surface)", border: "1px solid var(--line)" }}>
+      <div className="flex items-center justify-between cursor-pointer select-none" onClick={() => setOpen(!open)}>
+        <div className="flex items-center gap-2">
+          <span className="font-disp font-semibold text-[12px] uppercase tracking-[0.08em] text-[var(--ink)]">
+            Structured Insurance Rates
+          </span>
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--mint-tint)] text-[var(--mint)] font-medium">
+            engine ?
+          </span>
+        </div>
+        <button type="button" className="btn btn-ghost btn-xs text-[11px]">{open ? "Collapse" : "Expand"}</button>
+      </div>
+
+      {open && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+          {/* Life Insurance */}
+          <div className="p-2.5 rounded-lg bg-[var(--bg2)] space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-[var(--ink-dim)]">Life Insurance</span>
+              {previewLifeMonthly && (
+                <span className="text-[10px] text-[var(--mint)] mono">AED {previewLifeMonthly}/mo for 1.5M loan</span>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[10px] text-[var(--ink-faint)]">Calculation Basis</label>
+                <select
+                  className="select select-sm text-[11px]"
+                  value={life.basis}
+                  onChange={(e) => updateLife({ basis: e.target.value as "per_million_monthly" | "pct_pa_of_loan" })}
+                >
+                  <option value="per_million_monthly">Monthly (% p.m.)</option>
+                  <option value="pct_pa_of_loan">Annual (% p.a.)</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] text-[var(--ink-faint)]">Rate (%)</label>
+                <input
+                  type="number" step="0.001" className="input input-sm mono" placeholder="0.03"
+                  value={life.rate || ""}
+                  onChange={(e) => updateLife({ rate: e.target.value === "" ? 0 : Number(e.target.value) })}
+                />
+              </div>
+            </div>
+            <input
+              type="text" className="input input-sm text-[11.5px]" placeholder="Life insurance notes / conditions"
+              value={life.note ?? ""}
+              onChange={(e) => updateLife({ note: e.target.value })}
+            />
+          </div>
+
+          {/* Property Insurance */}
+          <div className="p-2.5 rounded-lg bg-[var(--bg2)] space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-[var(--ink-dim)]">Property Insurance</span>
+              {previewPropYearly && (
+                <span className="text-[10px] text-[var(--mint)] mono">AED {previewPropYearly}/yr for 2.0M prop</span>
+              )}
+            </div>
+            <div>
+              <label className="text-[10px] text-[var(--ink-faint)]">Annual Rate (% p.a. of property value)</label>
+              <input
+                type="number" step="0.001" className="input input-sm mono" placeholder="0.035"
+                value={prop.rate || ""}
+                onChange={(e) => updateProp({ rate: e.target.value === "" ? 0 : Number(e.target.value) })}
+              />
+            </div>
+            <input
+              type="text" className="input input-sm text-[11.5px]" placeholder="Property insurance notes"
+              value={prop.note ?? ""}
+              onChange={(e) => updateProp({ note: e.target.value })}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

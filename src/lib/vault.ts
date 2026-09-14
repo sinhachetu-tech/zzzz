@@ -4,7 +4,7 @@
 import { db } from "@/lib/db";
 import type { DocRule, LoanCase } from "@/lib/types";
 
-export const EMPLOYMENT_PROFILES = ["Salaried", "Self-Employed", "Non-Resident"] as const;
+export const EMPLOYMENT_PROFILES = ["Salaried", "Self-Employed"] as const;
 export const PROPERTY_TYPES = ["Ready", "Off-Plan"] as const;
 export const RESIDENCIES = ["UAE National", "Resident Expatriate", "Non-Resident"] as const;
 export const TXN_CONDITIONS = ["New Purchase", "Buyout / Equity Release"] as const;

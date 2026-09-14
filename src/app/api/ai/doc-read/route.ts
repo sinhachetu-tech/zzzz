@@ -46,6 +46,7 @@ Respond with the JSON object only — no prose, no code fences.`;
   try {
     const zai = await ZAI.create();
     const response = await zai.chat.completions.createVision({
+      model: "gemini-2.0-flash",
       messages: [
         {
           role: "user",
