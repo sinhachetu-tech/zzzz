@@ -33,7 +33,7 @@ function Kpi({ label, value, format, tone, sub }: { label: string; value: number
 }
 
 export default function Dashboard() {
-  const { cases, tasks, activities, banks, whyPending, waitingFor, users, me, nav, userById, visibleCases, visibleTasks, escalations, bulletin, visibleCaseIds, visibleTaskIds, flags } = useHfmcStore();
+  const { cases, tasks, activities, stages, banks, whyPending, waitingFor, users, me, nav, userById, visibleCases, visibleTasks, escalations, bulletin, visibleCaseIds, visibleTaskIds, flags } = useHfmcStore();
   useTick(30000);
 
   // deps must include the data arrays (cases/visibleCaseIds/tasks/visibleTaskIds)
@@ -71,6 +71,21 @@ export default function Dashboard() {
     .filter((a) => visCases.some((c) => c.id === a.caseId))
     .sort((a, b) => b.at.localeCompare(a.at))
     .slice(0, 7);
+
+  // stage funnel — live active work per stage (leads excluded, they are the funnel mouth)
+  const funnelRows = stages
+    .filter((st) => st.active && st.label !== "Lead")
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map((st) => ({ label: st.label, value: visCases.filter((c) => c.caseStatus === "Active" && c.stage === st.label).length }))
+    .filter((r) => r.value > 0);
+
+  // leads waiting in the funnel
+  const leadsWaiting = visCases.filter((c) => c.caseStatus === "Active" && c.stage === "Lead");
+
+  // my tasks due today (or overdue)
+  const myDueToday = me
+    ? openTasks.filter((t) => t.ownerId === me.id && t.dueDate <= todayISO()).sort((a, b) => a.dueDate.localeCompare(b.dueDate)).slice(0, 6)
+    : [];
 
   const liveToday = (b: BulletinItem) => !b.isTemplate && !b.dropped && b.status === "Open" && b.date === todayISO();
   const myOpenDirectives = me ? bulletin.filter((b) => liveToday(b) && b.targets.includes(me.id)) : [];
@@ -112,6 +127,30 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-4 items-start">
+        <div className="space-y-4">
+        <div className="card p-4 anim-fade-up">
+          <h3 className="font-disp font-semibold text-[13.5px] mt-0 mb-3">Pipeline by stage</h3>
+          {funnelRows.length ? <BarList items={funnelRows.map((r) => ({ ...r, color: TONE_HEX.amber }))} /> : <p className="text-[12.5px] text-[var(--ink-faint)] m-0">No live cases — open a lead to start.</p>}
+        </div>
+        <div className="card p-4 anim-fade-up">
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <h3 className="font-disp font-semibold text-[13.5px] m-0">My tasks due today</h3>
+            <button className="btn btn-ghost btn-sm" onClick={() => nav({ name: "tasks" })}>Task queue <IArrowR size={12} /></button>
+          </div>
+          <div className="space-y-2">
+            {myDueToday.length === 0 && <p className="text-[12.5px] text-[var(--ink-faint)] m-0">Nothing due on you today — clean slate.</p>}
+            {myDueToday.map((t) => {
+              const c = cases.find((x) => x.id === t.caseId);
+              return (
+                <button key={t.id} className="rowlink w-full text-left flex items-center gap-2.5 rounded-lg px-2 py-1.5" onClick={() => c && nav({ name: "case", id: c.id })}>
+                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: t.dueDate < todayISO() ? "var(--coral)" : "var(--amber)" }} />
+                  <span className="text-[12.5px] flex-1 truncate">{t.description}</span>
+                  <span className="mono text-[10.5px] text-[var(--ink-faint)]">{c?.caseNumber}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
         <div className="card p-4 anim-fade-up">
           <h3 className="font-disp font-semibold text-[13.5px] mt-0 mb-3">Latest activity</h3>
           <div className="space-y-2.5">
@@ -135,8 +174,23 @@ export default function Dashboard() {
             })}
           </div>
         </div>
+        </div>
 
         <div className="space-y-4">
+          {leadsWaiting.length > 0 && (
+            <div className="card p-4 anim-fade-up" style={{ borderLeft: "3px solid var(--amber)" }}>
+              <div className="flex items-baseline gap-3">
+                <span className="font-disp font-bold text-[28px] leading-none" style={{ color: "var(--amber)" }}>{leadsWaiting.length}</span>
+                <span className="text-[12px] text-[var(--ink-dim)]">lead{leadsWaiting.length === 1 ? "" : "s"} waiting to be qualified</span>
+              </div>
+              <p className="text-[11.5px] text-[var(--ink-faint)] m-0 mt-1.5 mb-0 truncate">
+                {leadsWaiting[0].customer}{leadsWaiting.length > 1 ? ` +${leadsWaiting.length - 1} more` : ""}
+              </p>
+              <button className="btn btn-ghost btn-sm mt-3 w-full justify-center" onClick={() => nav({ name: "leads" })}>
+                Open the funnel <IArrowR size={13} />
+              </button>
+            </div>
+          )}
           {(myOpenDirectives.length > 0 || issuedOpenDirectives.length > 0) && (
             <div className="card p-4 anim-fade-up" style={{ borderLeft: "3px solid var(--amber)" }}>
               <div className="flex items-center gap-2 mb-2">

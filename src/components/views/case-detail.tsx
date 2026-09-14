@@ -568,7 +568,7 @@ function FolPanel({ c }: { c: LoanCase }) {
 /* ---------------- Case Detail ---------------- */
 
 export default function CaseDetail({ id }: { id: number }) {
-  const { cases, tasks, activities, stages, banks, users, instructions, me, nav, userById, caseById, updateCase, completeTask, deleteTask, toast, flags, canInstruct } = useHfmcStore();
+  const { cases, tasks, activities, stages, banks, users, instructions, me, nav, userById, caseById, updateCase, deleteCase, completeTask, deleteTask, toast, flags, canInstruct } = useHfmcStore();
   const c = caseById(id);
   const [caseTab, setCaseTab] = useState<"profile" | "daily" | "tasks" | "documents" | "banks" | "activity">(() => {
     // stage-aware default: a fresh lead opens on its profile (that IS the lead's
@@ -580,6 +580,7 @@ export default function CaseDetail({ id }: { id: number }) {
   const [showOutcome, setShowOutcome] = useState(false);
   const [doneTarget, setDoneTarget] = useState<Task | null>(null);
   const [delTarget, setDelTarget] = useState<Task | null>(null);
+  const [delCaseOpen, setDelCaseOpen] = useState(false);
 
   const caseTasks = useMemo(() => tasks.filter((t) => t.caseId === id), [tasks, id]);
   const caseActivities = useMemo(() => activities.filter((a) => a.caseId === id).sort((a, b) => b.at.localeCompare(a.at)), [activities, id]);
@@ -902,6 +903,12 @@ export default function CaseDetail({ id }: { id: number }) {
       {delTarget && (
         <ConfirmModal open={!!delTarget} onClose={() => setDelTarget(null)} title="Delete task?" body={<>Permanently delete <strong>{delTarget.description}</strong>?</>} confirmLabel="Delete"
           onConfirm={async () => { await deleteTask(delTarget.id); toast("success", "Task deleted."); }} />
+      )}
+      {delCaseOpen && (
+        <ConfirmModal open onClose={() => setDelCaseOpen(false)} title={`Delete ${c.caseNumber}?`}
+          body={<>Permanently delete the case for <strong>{c.customer}</strong> — including its tasks, documents, proposals and history? Only for accidental creations; use <strong>Set outcome → Lost</strong> otherwise.</>}
+          confirmLabel="Delete permanently"
+          onConfirm={async () => { await deleteCase(c.id); }} />
       )}
     </div>
   );

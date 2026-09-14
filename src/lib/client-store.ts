@@ -37,7 +37,7 @@ interface StateSnapshot {
   escalations: number;
   docRules: DocRule[];
   feeRules: FeeRule[];
-  eibor: { tenor: string; ratePct: number; updatedOn: string; note: string }[];
+  eibor: { tenor: string; ratePct: number; updatedOn: string; note: string; effectiveFrom?: string | null; updatedBy?: string }[];
   stageTransitions: StageTransitionDto[];
   caseDocuments: CaseDocument[];
   bankProducts: BankProduct[];
@@ -109,6 +109,8 @@ interface HfmcState extends StateSnapshot {
 
   // daily MIS
   addCaseUpdate: (caseId: number, note: string, onHold: boolean, holdReason: string) => Promise<void>;
+  deleteCase: (id: number) => Promise<void>;
+  saveEibor: (tenor: string, ratePct: number, effectiveFrom?: string | null, note?: string) => Promise<void>;
 
   // bank rules
   uploadBankLogo: (bankId: number, file: File) => Promise<void>;
@@ -274,6 +276,29 @@ export const useHfmcStore = create<HfmcState>((set, get) => ({
       return;
     }
     get().toast("success", "Daily update saved.");
+    await get().hydrate();
+  },
+  deleteCase: async (id) => {
+    const res = await fetch(`/api/cases/${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      get().toast("error", e.error || "Could not delete.");
+      return;
+    }
+    get().toast("success", "Deleted.");
+    const r = get().route;
+    if (r.name === "case" && r.id === id) get().nav({ name: "leads" });
+    await get().hydrate();
+  },
+  saveEibor: async (tenor, ratePct, effectiveFrom, note) => {
+    const res = await fetch("/api/eibor", {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tenor, ratePct, effectiveFrom, note }),
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error(e.error || "Could not save the rate.");
+    }
     await get().hydrate();
   },
   uploadBankLogo: async (bankId, file) => {

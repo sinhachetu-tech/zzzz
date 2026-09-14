@@ -29,6 +29,92 @@ function Clock() {
   );
 }
 
+const TENOR_ORDER = ["ON", "1W", "1M", "3M", "6M", "1Y"];
+
+/* EiborModal — the daily rate ritual. Whoever the admin granted editEibor to
+   opens the ticker, types/pastes the published rates, stamps the effective
+   date, saves — and every calculation in the app reprices immediately
+   (match engine + proposals read this table live). */
+function EiborModal({ onClose }: { onClose: () => void }) {
+  const { eibor, saveEibor, toast } = useHfmcStore();
+  const sorted = [...eibor].sort((a, b) => TENOR_ORDER.indexOf(a.tenor) - TENOR_ORDER.indexOf(b.tenor));
+  const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries(eibor.map((e) => [e.tenor, String(e.ratePct)])));
+  const [effFrom, setEffFrom] = useState(todayISO());
+  const [paste, setPaste] = useState("");
+  const [busy, setBusy] = useState(false);
+  const last = sorted[0];
+  const updatedBy = last?.updatedBy || "—";
+  const updatedOn = last?.updatedOn || "—";
+
+  const parsePaste = () => {
+    // "ON 4.40, 1M 4.42%, 3 months 4.45" — tenor token + number per line/segment
+    const next = { ...values };
+    let hits = 0;
+    for (const seg of paste.split(/[,\n;]+/)) {
+      const m = seg.match(/\b(ON|1W|1M|3M|6M|1Y|overnight|1\s*month|3\s*months?|6\s*months?|1\s*year)\b[\s:=-]*v?(\d+(?:\.\d+)?)/i);
+      if (!m) continue;
+      const token = m[1].toUpperCase().replace(/\s+/g, "").replace(/MONTHS?/, "M").replace(/YEAR/, "Y").replace("OVERNIGHT", "ON");
+      if (!TENOR_ORDER.includes(token)) continue;
+      next[token] = m[2];
+      hits++;
+    }
+    setValues(next);
+    toast(hits ? "success" : "error", hits ? `${hits} rate${hits === 1 ? "" : "s"} filled from the pasted text — check, then save.` : "Could not read any rates — use 'TENOR rate' pairs like: 3M 4.45");
+    if (hits) setPaste("");
+  };
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      for (const t of TENOR_ORDER) {
+        if (values[t] === undefined) continue;
+        const v = Number(values[t]);
+        const orig = eibor.find((e) => e.tenor === t);
+        if (!v || v <= 0 || v > 25) continue;
+        if (orig && Math.abs(orig.ratePct - v) < 0.00001) continue; // unchanged
+        await saveEibor(t, v, effFrom);
+      }
+      toast("success", "EIBOR table updated — all calculations now use the new rates.");
+      onClose();
+    } catch (e) {
+      toast("error", e instanceof Error ? e.message : "Could not save.");
+    }
+    setBusy(false);
+  };
+
+  return (
+    <Modal title="EIBOR benchmark rates" sub={`Last edited ${updatedOn} by ${updatedBy} — the engine reprices the moment you save.`} onClose={onClose} width={480}>
+      <div className="space-y-3">
+        <div className="grid grid-cols-[70px_1fr] gap-2 items-center">
+          {TENOR_ORDER.map((t) => (
+            <div key={t} className="contents">
+              <label className="label !mb-0 mono">{t}</label>
+              <input className="input mono !py-1.5" type="number" step={0.001} min={0} max={25} value={values[t] ?? ""}
+                onChange={(e) => setValues((v) => ({ ...v, [t]: e.target.value }))} />
+            </div>
+          ))}
+        </div>
+        <div>
+          <label className="label">Effective from <span className="normal-case tracking-normal" style={{ color: "var(--ink-faint)" }}>— the date the published rate takes effect</span></label>
+          <input className="input mono" type="date" value={effFrom} onChange={(e) => setEffFrom(e.target.value)} />
+        </div>
+        <div className="rounded-lg p-3" style={{ background: "var(--tint)", border: "1px solid var(--line-soft)" }}>
+          <label className="label">Or paste the published line <span className="normal-case tracking-normal" style={{ color: "var(--ink-faint)" }}>— e.g. “ON 4.40, 1M 4.42, 3M 4.45”</span></label>
+          <div className="flex gap-2">
+            <input className="input mono !py-1.5" value={paste} onChange={(e) => setPaste(e.target.value)} placeholder="ON 4.40, 1M 4.42, 3M 4.45, 6M 4.5, 1Y 4.55" />
+            <button className="btn btn-ghost btn-sm shrink-0" onClick={parsePaste}>Fill</button>
+          </div>
+        </div>
+        <p className="text-[11px] text-[var(--ink-faint)] m-0">Unchanged tenors are skipped. CBUAE publishes daily (effective same/next day) — no auto-feed exists, so this stays a manual ritual by design.</p>
+      </div>
+      <div className="flex justify-end gap-2 mt-4 pt-3" style={{ borderTop: "1px solid var(--line-soft)" }}>
+        <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? "Saving…" : "Save rates"}</button>
+      </div>
+    </Modal>
+  );
+}
+
 function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { stages, banks, partners, channels, users, me, flags, createCase, toast, nav, clients, cases } = useHfmcStore();
   const activeStages = [...stages].filter((s) => s.active).sort((a, b) => a.sortOrder - b.sortOrder);
@@ -47,6 +133,7 @@ function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void })
   const [customShare, setCustomShare] = useState("");
   const [taskDesc, setTaskDesc] = useState("");
   const [taskDue, setTaskDue] = useState(inDaysISO(3));
+  const [busy, setBusy] = useState(false); // blocks double-submit — the create+rehydrate round-trip takes a beat
   // --- MIS operational (optional, fill later on Case 360) ---
   const [transactionType, setTransactionType] = useState("");
   const [propertyLocation, setPropertyLocation] = useState("");
@@ -80,6 +167,7 @@ function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void })
     setBankList((prev) => (prev.includes(name) ? prev.filter((b) => b !== name) : [...prev, name]));
 
   const submit = async () => {
+    if (busy) return; // second click while in flight — ignore
     if (!customer.trim()) return setErr("Customer name is required.");
     const amt = Number(amount);
     if (!amt || amt <= 0) return setErr("Enter a valid loan amount in AED.");
@@ -87,6 +175,7 @@ function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void })
     const sharePct = share === 0 ? Number(customShare) : share;
     if (needsPartner && (!sharePct || sharePct <= 0 || sharePct > 100)) return setErr("Enter a valid partner share %.");
     if (submissionType === "channel" && !channelId) return setErr("Pick a channel partner.");
+    setBusy(true);
     const partner: CasePartner | null = needsPartner
       ? { kind: source as "Agent" | "Broker" | "Referral", name: partnerName, sharePct }
       : null;
@@ -115,10 +204,11 @@ function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void })
       setTransactionType(""); setPropertyLocation(""); setCoApplicantName(""); setBankRm("");
       setErr("");
       onClose();
-      nav({ name: "case", id: c.id });
+      if (stage === "Lead") nav({ name: "leads" }); else nav({ name: "case", id: c.id });
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Could not open case.");
     }
+    setBusy(false);
   };
 
   return (
@@ -337,7 +427,9 @@ function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void })
         </span>
         <div className="flex gap-2">
           <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={submit}>{stage === "Lead" ? "Create lead" : "Create case"}</button>
+          <button className="btn btn-primary" onClick={submit} disabled={busy}>
+            {busy ? "Creating…" : stage === "Lead" ? "Create lead" : "Create case"}
+          </button>
         </div>
       </div>
     </Modal>
@@ -345,10 +437,10 @@ function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void })
 }
 
 export default function Shell({ children }: { children: ReactNode }) {
-  const { me, route, nav, logout, escalations, instructions, bulletin, visibleCases, newCaseOpen, openNewCase, closeNewCase } = useHfmcStore();
+  const { me, route, nav, logout, escalations, instructions, bulletin, visibleCases, newCaseOpen, openNewCase, closeNewCase, eibor, flags } = useHfmcStore();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [fabOpen, setFabOpen] = useState(false);
-  const flags = useHfmcStore((s) => s.flags);
+  const [eiborOpen, setEiborOpen] = useState(false);
 
   // Close the mobile drawer + FAB dial when route changes
   // eslint-disable-next-line react-hooks/set-state-in-effect -- drawer must close on every navigation
@@ -365,11 +457,11 @@ export default function Shell({ children }: { children: ReactNode }) {
 
   const navItems: { label: string; route: Route; icon: (p: { size?: number; className?: string }) => ReactNode; badge?: number }[] = [
     { label: "Dashboard", route: { name: "dashboard" }, icon: IGrid },
-    { label: "Cases", route: { name: "cases" }, icon: IBriefcase },
-    { label: "Leads", route: { name: "leads" }, icon: IInbox },
     { label: "Morning Bulletin", route: { name: "bulletin" }, icon: IFlag, badge: myOpenDirectives },
-    { label: "Calculator", route: { name: "calculator" }, icon: ICalc },
+    { label: "Leads", route: { name: "leads" }, icon: IInbox },
+    { label: "Cases", route: { name: "cases" }, icon: IBriefcase },
     { label: "Task Queue", route: { name: "tasks" }, icon: ITasks },
+    { label: "Calculator", route: { name: "calculator" }, icon: ICalc },
     { label: "Reports", route: { name: "reports" }, icon: IChart },
     ...(isAdmin ? [{ label: "Admin", route: { name: "admin" as const }, icon: IShield }] : []),
   ];
@@ -433,6 +525,31 @@ export default function Shell({ children }: { children: ReactNode }) {
           </button>
           <h1 className="font-disp font-semibold text-[16px] m-0 truncate">{title}</h1>
           {route.name === "case" && <span className="text-[12px] text-[var(--ink-faint)] hidden lg:inline">the full story of one file</span>}
+          {/* EIBOR ticker — live benchmark, drives every calculation; click to edit if permitted */}
+          {eibor.length > 0 && (() => {
+            const canEdit = !!(flags?.editEibor || flags?.admin || flags?.super);
+            const ordered = [...eibor].sort((a, b) => TENOR_ORDER.indexOf(a.tenor) - TENOR_ORDER.indexOf(b.tenor));
+            const last = ordered[0];
+            return (
+              <button
+                onClick={() => canEdit && setEiborOpen(true)}
+                title={canEdit
+                  ? `Last edited ${last?.updatedOn || "—"} by ${last?.updatedBy || "—"} — click to update`
+                  : `EIBOR benchmark — last updated ${last?.updatedOn || "—"} by ${last?.updatedBy || "—"}`}
+                className="hidden xl:flex items-center gap-1.5 ml-3 px-2.5 py-1 rounded-lg mono text-[11px] transition-colors"
+                style={{ background: "var(--tint)", border: "1px solid var(--line-soft)", color: "var(--ink-dim)", cursor: canEdit ? "pointer" : "default" }}
+              >
+                <span className="dot-live shrink-0" style={{ animation: "pulse 2s infinite" }} />
+                <span className="font-disp font-semibold text-[10px] tracking-[0.1em]" style={{ color: "var(--ink-faint)" }}>EIBOR</span>
+                {ordered.map((e) => (
+                  <span key={e.tenor} className="whitespace-nowrap">
+                    <span style={{ color: "var(--ink-faint)" }}>{e.tenor}</span> <span style={{ color: "var(--amber)" }}>{e.ratePct.toFixed(2)}</span>
+                  </span>
+                ))}
+                {canEdit && <span style={{ color: "var(--ink-faint)" }}>✎</span>}
+              </button>
+            );
+          })()}
           <div className="ml-auto flex items-center gap-2 md:gap-3">
             <Clock />
             <ThemeToggle compact />
@@ -452,7 +569,7 @@ export default function Shell({ children }: { children: ReactNode }) {
 
       {/* Mobile bottom nav — Cases/Leads/Tasks lead; the rest lives in the drawer */}
       <nav className="fixed bottom-0 left-0 right-0 z-50 md:hidden flex items-stretch border-t" style={{ borderColor: "var(--line)", background: "color-mix(in srgb, var(--raised) 92%, transparent)", backdropFilter: "blur(10px)" }}>
-        {(["dashboard", "cases", "leads", "tasks", "calculator"] as const).map((name) => {
+        {(["dashboard", "leads", "cases", "tasks", "calculator"] as const).map((name) => {
           const n = navItems.find((x) => x.route.name === name)!;
           const active = route.name === n.route.name || (route.name === "case" && n.route.name === "cases");
           return (
@@ -507,6 +624,7 @@ export default function Shell({ children }: { children: ReactNode }) {
       </div>
 
       <NewCaseModal open={newCaseOpen} onClose={closeNewCase} />
+      {eiborOpen && <EiborModal onClose={() => setEiborOpen(false)} />}
       <Toaster />
     </div>
   );

@@ -1,8 +1,7 @@
 [
- {
-  "tenor": "3M",
-  "ratePct": 3.62496,
-  "updatedOn": "2026-01-01",
-  "note": "Per DIB pricing sheet — Q1 2026 reference"
- }
+ { "tenor": "ON",  "ratePct": 3.6,    "updatedOn": "2026-01-01", "note": "Overnight — demo value, update from the CBUAE daily publication" },
+ { "tenor": "1M",  "ratePct": 3.62,   "updatedOn": "2026-01-01", "note": "Demo value, update from the CBUAE daily publication" },
+ { "tenor": "3M",  "ratePct": 3.62496,"updatedOn": "2026-01-01", "note": "Per DIB pricing sheet — Q1 2026 reference" },
+ { "tenor": "6M",  "ratePct": 3.65,   "updatedOn": "2026-01-01", "note": "Demo value, update from the CBUAE daily publication" },
+ { "tenor": "1Y",  "ratePct": 3.7,    "updatedOn": "2026-01-01", "note": "Demo value, update from the CBUAE daily publication" }
 ]

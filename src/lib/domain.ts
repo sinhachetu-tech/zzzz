@@ -9,6 +9,7 @@ export interface RoleFlags {
   admin: boolean;
   super: boolean;
   viewRevenue: boolean;
+  editEibor: boolean; // may update the daily EIBOR benchmark table (granted per designation)
 }
 
 /* ---------- visibility scoping ---------- */

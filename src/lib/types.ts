@@ -70,7 +70,8 @@ export interface LoanCase {
   coApplicantName: string | null;
   onHold: boolean;
   holdReason: string | null;
-  holdUntil: string | null; // ISO date
+  holdUntil: string | null;
+  lostReason: string | null; // ISO date
   // --- Bank submission tracking ---
   // Document Vault profile vectors
   employmentProfile: string; // Salaried | Self-Employed

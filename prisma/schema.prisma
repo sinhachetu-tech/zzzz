@@ -46,6 +46,7 @@ model Designation {
   admin     Boolean  @default(false)
   super     Boolean  @default(false)
   viewRevenue Boolean @default(false) // commission rates & earnings are restricted
+  editEibor Boolean  @default(false) // may update the daily EIBOR benchmark table
   builtIn  Boolean  @default(false)
 }
 
@@ -131,6 +132,7 @@ model LoanCase {
   onHold           Boolean @default(false)
   holdReason       String?
   holdUntil        String? // ISO date
+  lostReason       String? // why a lead/case was marked lost (audit trail — no hard delete for losses)
   // --- Bank submission tracking ---
   loanType          String? // NSTL | STL (non-salary vs salary transfer)
   fileSubmittedDate String? // when the file was submitted to the bank
@@ -363,10 +365,13 @@ model BankProduct {
 // Current EIBOR benchmark rates — variable/stress formulas reference these live,
 // so a quarterly update here reprices every bank correctly.
 model EiborRate {
-  tenor    String @id // 1M | 3M | 6M | 1Y
+  tenor    String @id // ON | 1W | 1M | 3M | 6M | 1Y
   ratePct  Float
-  updatedOn String @default("")
+  updatedOn String @default("") // the rate's own reference date (publish/effective day)
   note     String @default("")
+  updatedBy String @default("") // display name of the last editor
+  effectiveFrom String? // the date the published rate takes effect (can differ from publish day)
+  updatedAt DateTime @default(now()) @updatedAt
 }
 
 model PartnerItem {

@@ -10,14 +10,26 @@ import { useMemo, useState } from "react";
 import { useHfmcStore } from "@/lib/client-store";
 import { fmtDate, relTime } from "@/lib/format";
 import { Avatar, Chip, EmptyState, Modal } from "@/components/hfmc/ui";
-import { IArrowR, IWhatsapp } from "@/components/icons";
+import { ConfirmModal } from "@/components/hfmc/bits";
+import { IArrowR, ITrash, IWhatsapp } from "@/components/icons";
 
 export default function Leads() {
-  const { cases, users, userById, updateCase, toast, nav, me, flags } = useHfmcStore();
+  const { cases, users, userById, updateCase, deleteCase, toast, nav, me, flags } = useHfmcStore();
   const [filter, setFilter] = useState<"all" | "mine" | "unassigned">("all");
   const [qualifyingCase, setQualifyingCase] = useState<any>(null);
+  const [losingCase, setLosingCase] = useState<{ id: number; caseNumber: string; customer: string } | null>(null);
+  const [loseReason, setLoseReason] = useState("");
+  const [delCase, setDelCase] = useState<{ id: number; caseNumber: string; customer: string } | null>(null);
 
   const canAssign = !!(flags?.issueTasks || flags?.admin || flags?.super);
+  const canDelete = !!(flags?.admin || flags?.super);
+
+  const markLost = async () => {
+    if (!losingCase) return;
+    await updateCase(losingCase.id, { caseStatus: "Lost", lostReason: loseReason.trim() || "No reason given" });
+    toast("info", `${losingCase.caseNumber} marked lost — kept on record with the reason.`);
+    setLosingCase(null); setLoseReason("");
+  };
   const leads = useMemo(
     () =>
       cases.filter((c) => c.stage === "Lead" && c.caseStatus === "Active")
@@ -119,6 +131,16 @@ export default function Leads() {
                   <button className="btn btn-ghost btn-sm" onClick={() => nav({ name: "case", id: c.id })}>
                     Open <IArrowR size={12} />
                   </button>
+                  <button className="btn btn-ghost btn-sm" title="Mark lost — kept on record with a reason"
+                    onClick={() => { setLosingCase({ id: c.id, caseNumber: c.caseNumber, customer: c.customer }); setLoseReason(""); }}>
+                    Lost
+                  </button>
+                  {canDelete && (
+                    <button className="btn btn-ghost btn-sm !px-2" title="Delete permanently (admin) — for accidental creations"
+                      onClick={() => setDelCase({ id: c.id, caseNumber: c.caseNumber, customer: c.customer })}>
+                      <ITrash size={13} />
+                    </button>
+                  )}
                   <button className="btn btn-mint btn-sm ml-auto" onClick={() => convert(c)}>
                     Convert to case
                   </button>

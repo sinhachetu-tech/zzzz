@@ -1,10 +1,26 @@
 // PATCH /api/cases/:id — update a case (stage, status, wonBank, owner, partner, banks, etc.)
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { currentUser } from "@/lib/auth";
+import { currentUser, flagsFor } from "@/lib/auth";
 import { serCase } from "@/lib/ser";
 import { syncCaseVault } from "@/lib/vault";
 import { syncCaseClients } from "@/lib/client-master";
+
+// DELETE /api/cases/:id — remove an accidentally-created lead/case.
+// Deliberately restricted: admin/super only, because it cascades to tasks,
+// documents, proposals and the whole audit trail.
+export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const me = await currentUser();
+  if (!me) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const flags = await flagsFor(me);
+  if (!flags.admin && !flags.super) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  const { id } = await params;
+  const caseId = parseInt(id, 10);
+  const existing = await db.loanCase.findUnique({ where: { id: caseId } });
+  if (!existing) return NextResponse.json({ error: "not found" }, { status: 404 });
+  await db.loanCase.delete({ where: { id: caseId } });
+  return NextResponse.json({ ok: true });
+}
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const me = await currentUser();
@@ -73,6 +89,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (body.onHold !== undefined) data.onHold = !!body.onHold;
   if (body.holdReason !== undefined) data.holdReason = body.holdReason;
   if (body.holdUntil !== undefined) data.holdUntil = body.holdUntil;
+  if (body.lostReason !== undefined) data.lostReason = body.lostReason;
   if (body.preApprovalDate !== undefined) data.preApprovalDate = body.preApprovalDate;
   if (body.preApprovalAmount !== undefined) data.preApprovalAmount = body.preApprovalAmount;
   if (body.preApprovalTenure !== undefined) data.preApprovalTenure = body.preApprovalTenure;

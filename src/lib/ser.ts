@@ -35,6 +35,7 @@ type PrismaCase = {
   onHold?: boolean;
   holdReason?: string | null;
   holdUntil?: string | null;
+  lostReason?: string | null;
   // --- Bank submission tracking ---
   employmentProfile: string;
   propertyType: string;
@@ -83,6 +84,7 @@ export function serCase(c: PrismaCase): LoanCase {
     onHold: c.onHold ?? false,
     holdReason: c.holdReason ?? null,
     holdUntil: c.holdUntil ?? null,
+    lostReason: c.lostReason ?? null,
     // Bank submission
     employmentProfile: c.employmentProfile, propertyType: c.propertyType, residency: c.residency,
     loanType: c.loanType ?? null,

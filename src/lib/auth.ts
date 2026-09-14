@@ -100,15 +100,16 @@ export interface RoleFlags {
   admin: boolean;
   super: boolean;
   viewRevenue: boolean;
+  editEibor: boolean; // may update the daily EIBOR benchmark table (granted per designation)
 }
 
-const SUPER_FLAGS: RoleFlags = { scope: "all", issueTasks: true, admin: true, super: true, viewRevenue: true };
+const SUPER_FLAGS: RoleFlags = { scope: "all", issueTasks: true, admin: true, super: true, viewRevenue: true, editEibor: true };
 
 export async function flagsFor(user: SessionUser): Promise<RoleFlags> {
   if (user.role === "Super Admin") return SUPER_FLAGS;
   const d = await db.designation.findUnique({ where: { name: user.role } });
-  if (!d) return { scope: "own", issueTasks: false, admin: false, super: false, viewRevenue: false };
-  return { scope: d.scope as RoleFlags["scope"], issueTasks: d.issueTasks, admin: d.admin, super: d.super, viewRevenue: d.viewRevenue };
+  if (!d) return { scope: "own", issueTasks: false, admin: false, super: false, viewRevenue: false, editEibor: false };
+  return { scope: d.scope as RoleFlags["scope"], issueTasks: d.issueTasks, admin: d.admin, super: d.super, viewRevenue: d.viewRevenue, editEibor: (d as unknown as { editEibor?: boolean }).editEibor ?? false };
 }
 
 export async function canManageAll(user: SessionUser): Promise<boolean> {

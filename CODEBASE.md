@@ -21,6 +21,8 @@ HFMC — a UAE mortgage brokerage case tracker. Three portals:
 - **Client master vs case profile.** `Client` = the person (KYC: EID unique > passport > phone+name; phone alone never merges). `profileJson` on each case = the applicant's snapshot *as filed* on that engagement. Saving a case profile refreshes the client master (fills gaps, never erases).
 - **Co-borrower vs co-applicant** (`src/lib/case-profile.ts`): co-borrower incomes are pooled into affordability (DBR); co-applicant is title/KYC only. Both get their own Client row.
 - **Fees live in two places:** `FeeRule` table = government/transfer fees (per emirate × txn type, universal). `BankProduct.feesJson` = bank charges (processing, pre-approval, early/partial settlement, valuation) — parsed/computed by `src/lib/bank-fees.ts`.
+- **EIBOR table drives pricing live**: bank-match/proposals read `EiborRate` at run time — updating the ticker (ON/1W/1M/3M/6M/1Y, with effective date + editor stamp) reprices everything instantly. No auto-feed exists; editing is a deliberate manual ritual.
+- **Leads are never silently destroyed**: "Lost" keeps the record with a reason (`lostReason`); hard delete exists only for admin/super to remove accidental creations.
 - **Bank products are versioned** (draft → approved) and feed the **bank-match eligibility engine** → proposals (saved snapshots, draft → sent → won/lost).
 - **Everything reaches the UI through one payload:** `GET /api/state` → Zustand store `useHfmcStore` (`src/lib/client-store.ts`). Mutations call an API route, then re-hydrate. There is **no URL routing** — `route` is store state; views render in `src/app/page.tsx` inside `Shell`.
 
@@ -96,10 +98,10 @@ HFMC — a UAE mortgage brokerage case tracker. Three portals:
 | File | What it does (plain English) |
 |---|---|
 | `login.tsx` | Team login screen with demo seats |
-| `shell.tsx` | App frame: sidebar/mobile drawer/bottom nav, **NewLeadModal** ("Add lead" — dynamic Create lead/case submit, repeat-client banner), nav items, SLA widget; mobile FAB is role-aware (speed dial: Add lead + New directive for task-issuing roles, direct Add lead for staff) |
-| `dashboard.tsx` | Analytics only: KPIs, activity, why-pending/waiting-for breakdowns, owner load, today's directives (the case table moved to `cases.tsx`) |
+| `shell.tsx` | App frame: sidebar/mobile drawer/bottom nav, **NewLeadModal** ("Add lead" — busy-guarded dynamic Create lead/case submit, repeat-client banner), **EIBOR ticker + editor modal** (daily ritual; permission = designation `editEibor`), nav items, SLA widget; mobile FAB is role-aware (speed dial: Add lead + New directive for task-issuing roles, direct Add lead for staff) |
+| `dashboard.tsx` | Analytics: KPIs, **pipeline-by-stage funnel**, **my tasks due today**, latest activity, leads-waiting card, why-pending/waiting-for, owner load, today's directives |
 | `cases.tsx` | **Cases tab — the pipeline worklist**: filter/search/sort table of all non-lead cases, click a row → Case 360 |
-| `leads.tsx` | Lead-stage funnel: filter, assign owner, **Qualify profile** (opens CaseProfileEditor in a modal), **Convert to case** |
+| `leads.tsx` | Lead-stage funnel: filter, assign owner, **Qualify profile**, **Convert to case**, **Lost** (reason kept on record), **Delete** (admin only — accidental creations) |
 | `case-detail.tsx` | ★ **Case 360**: header + stage pipeline; tabs = Lead & Applicant Profile / Daily MIS / Tasks / Documents / Banks & proposal / Activity; right rail = MIS, Pre-approval, FOL, AI copilot, **ClientFileCard** (client file + other engagements), commission, people |
 | `case-profile-editor.tsx` | 3-tab structured profile editor (Primary incl. EID/passport KYC, Property & Finance, Co-borrower/Co-applicant). Saves `profileJson` via case PATCH |
 | `daily-mis.tsx` | Daily status note panel (writes CaseUpdate) |
@@ -125,6 +127,7 @@ HFMC — a UAE mortgage brokerage case tracker. Three portals:
 | Bank eligibility rules | `BankProduct` columns + `src/lib/bank-match.ts` (+ admin editor in `admin.tsx`) |
 | Fees (bank) | `src/lib/bank-fees.ts` + `feesJson` on products (Admin → Bank products) |
 | Fees (government/transfer) | `FeeRule` rows via Admin → Fee rules; shown in Calculator |
+| Daily EIBOR update | Click the header ticker (needs designation `editEibor` or admin) — paste/enter rates + effective date; flows into all calculations |
 | New API endpoint | new `src/app/api/<name>/route.ts`; expose to UI via `state/route.ts` + `client-store.ts` |
 | New screen/nav item | view in `src/components/views/`, add Route in `client-store.ts`, item in `shell.tsx` navItems, render in `page.tsx` |
 | Client portal | `src/app/client/*` + `src/app/api/client/*` |
