@@ -47,6 +47,7 @@ const TABLES = [
   ["bulletinItem", "BulletinItem"], ["bulletinTarget", "BulletinTarget"], ["reply", "Reply"],
   ["caseUpdate", "CaseUpdate"], ["stageTransition", "StageTransition"],
   ["clientSession", "ClientSession"], ["session", "Session"],
+  ["clientDocument", "ClientDocument"],
   ["emailLog", "EmailLog"], ["unmatchedEmail", "UnmatchedEmail"],
   ["caseDocument", "CaseDocument"], ["bankProduct", "BankProduct"],
   ["affordabilityCheck", "AffordabilityCheck"], ["proposal", "Proposal"],
