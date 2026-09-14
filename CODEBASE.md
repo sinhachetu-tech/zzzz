@@ -134,5 +134,6 @@ HFMC — a UAE mortgage brokerage case tracker. Three portals:
 
 1. **Update this file in the same commit as any code change.**
 2. Schema changes: `npx prisma db push` then `npx prisma generate` (no migrations folder — db push workflow).
-3. Verify with `npx tsc --noEmit` and `npx eslint .` before handing off.
-4. Append narrative work to `worklog.md`; keep structural truth here.
+3. **After a schema push / prisma generate, restart the dev server** — a stale server process keeps the old Prisma client in memory and `/api/state` 500s (symptoms: blank pipeline, missing Admin tab, no flags). Kill the PID on port 3000 (`netstat -ano | grep :3000`) and `npm run dev` again.
+4. Verify with `npx tsc --noEmit` and `npx eslint .` before handing off.
+5. Append narrative work to `worklog.md`; keep structural truth here.

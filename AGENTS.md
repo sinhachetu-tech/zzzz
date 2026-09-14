@@ -13,3 +13,14 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 `CODEBASE.md` (repo root) is the authoritative plain-English map of this codebase:
 annotated file tree, one-line summary of every file, and a "task → which files to touch"
 index. Read it before exploring; keep it updated in the same commit as any code change.
+
+## CODEBASE.md discipline (mandatory for every coding session)
+
+1. **BEFORE changing code**: read the relevant entries in `CODEBASE.md` (use the
+   "task → which files" index instead of exploring the tree).
+2. **AFTER every code change**: review and update `CODEBASE.md` so it stays true —
+   new files get an entry, changed files get their summary corrected, the
+   "task → files" index gains new mappings. This applies to every change, however
+   small; do it in the same commit as the change.
+3. If a change makes any statement in `CODEBASE.md` false (architecture, flow,
+   schema, file purpose), fixing the doc is part of the change — not optional cleanup.
