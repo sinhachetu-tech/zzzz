@@ -146,3 +146,20 @@ HFMC — a UAE mortgage brokerage case tracker. Three portals:
 3. **After a schema push / prisma generate, restart the dev server** — a stale server process keeps the old Prisma client in memory and `/api/state` 500s (symptoms: blank pipeline, missing Admin tab, no flags). Kill the PID on port 3000 (`netstat -ano | grep :3000`) and `npm run dev` again.
 4. Verify with `npx tsc --noEmit` and `npx eslint .` before handing off.
 5. Append narrative work to `worklog.md`; keep structural truth here.
+
+## Roadmap (planned — in the owner's words, kept so plans survive sessions)
+
+1. **Bank/pricing engine validation (now)** — run 1-2 days of real-file comparisons
+   (engine eligibility + EMIs vs actual bank pre-approvals), sharpen missed rules.
+2. **Pre-publish**: move document storage from Postgres byte columns to
+   **Cloudflare R2** (lean DB, fast backups, cheap file storage) — then publish.
+3. **Stage-by-stage SOP digitization** — for each pipeline stage: what happens,
+   what communication goes out (to client/bank), stage-specific checklists.
+4. **Transaction-specific branches** — e.g. a buyout adds its own steps to the
+   standard flow; the stage pipeline should adapt per transaction type.
+5. **Auto-fill bank application forms** — use the structured client profile +
+   bank product data to pre-fill bank forms (design exists with the owner).
+
+Ops rules at publish: GitHub = code backup (push every session); Mumbai Supabase
+= sacred production DB; a free second Supabase project = rehearsal DB for big
+structural changes; backup before any schema push.
