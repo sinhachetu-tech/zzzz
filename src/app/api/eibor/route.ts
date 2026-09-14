@@ -18,8 +18,8 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
-  const { tenor, ratePct, effectiveFrom, note } = await req.json() as {
-    tenor?: string; ratePct?: number; effectiveFrom?: string | null; note?: string;
+  const { tenor, ratePct, effectiveFrom, note, publishedOn } = await req.json() as {
+    tenor?: string; ratePct?: number; effectiveFrom?: string | null; note?: string; publishedOn?: string | null;
   };
 
   if (!tenor || !TENOR_RE.test(tenor)) {
@@ -30,21 +30,24 @@ export async function PATCH(req: NextRequest) {
   }
 
   const today = toISODate(new Date());
+  // publishedOn = the CBUAE publication date shown "as on" in the ticker;
+  // defaults to today when a paste didn't carry one
+  const published = publishedOn && /^\d{4}-\d{2}-\d{2}$/.test(publishedOn) ? publishedOn : today;
   const row = await db.eiborRate.upsert({
     where: { tenor },
     create: {
       tenor,
       ratePct,
-      updatedOn: today,
+      updatedOn: published,
       updatedBy: me.name,
-      effectiveFrom: effectiveFrom || today,
+      effectiveFrom: effectiveFrom || published,
       note: note ?? "",
     },
     update: {
       ratePct,
-      updatedOn: today,
+      updatedOn: published,
       updatedBy: me.name,
-      ...(effectiveFrom !== undefined ? { effectiveFrom: effectiveFrom || today } : {}),
+      ...(effectiveFrom !== undefined ? { effectiveFrom: effectiveFrom || published } : {}),
       ...(note !== undefined ? { note } : {}),
     },
   });

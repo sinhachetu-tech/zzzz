@@ -31,6 +31,22 @@ function Clock() {
 
 const TENOR_ORDER = ["ON", "1W", "1M", "3M", "6M", "1Y"];
 
+/** "01 September 2026" / "1 Sep 2026" / "2026-09-01" → ISO, else null. */
+function parseRateDate(s: string): string | null {
+  const t = s.trim();
+  const iso = t.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) return iso[0];
+  const dmy = t.match(/^(\d{1,2})\s+([A-Za-z]{3,9})\.?\s+(\d{4})$/);
+  if (dmy) {
+    const mo = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"].indexOf(dmy[2].slice(0, 3).toLowerCase());
+    if (mo >= 0) {
+      const pad = (n: number) => String(n).padStart(2, "0");
+      return `${dmy[3]}-${pad(mo + 1)}-${pad(Number(dmy[1]))}`;
+    }
+  }
+  return null;
+}
+
 /* EiborModal — the daily rate ritual. Whoever the admin granted editEibor to
    opens the ticker, types/pastes the published rates, stamps the effective
    date, saves — and every calculation in the app reprices immediately
@@ -38,8 +54,9 @@ const TENOR_ORDER = ["ON", "1W", "1M", "3M", "6M", "1Y"];
 function EiborModal({ onClose }: { onClose: () => void }) {
   const { eibor, saveEibor, toast } = useHfmcStore();
   const sorted = [...eibor].sort((a, b) => TENOR_ORDER.indexOf(a.tenor) - TENOR_ORDER.indexOf(b.tenor));
-  const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries(eibor.map((e) => [e.tenor, String(e.ratePct)])));
+  const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries(eibor.map((e) => [e.tenor, e.ratePct.toFixed(6)])));
   const [effFrom, setEffFrom] = useState(todayISO());
+  const [pubDate, setPubDate] = useState<string>(sorted[0]?.updatedOn || todayISO());
   const [paste, setPaste] = useState("");
   const [busy, setBusy] = useState(false);
   const last = sorted[0];
@@ -47,21 +64,36 @@ function EiborModal({ onClose }: { onClose: () => void }) {
   const updatedOn = last?.updatedOn || "—";
 
   const parsePaste = () => {
-    // "ON 4.40, 1M 4.42%, 3 months 4.45" — tenor token + number per line/segment
+    // Accepts the CBUAE publication row verbatim -
+    //   01 September 2026  3.477640  3.814850  3.764300  3.986280  4.056520  4.394360  03 September 2026
+    // (tabs, commas, pipes or wide spacing all work; a header row is ignored)
+    // - mapping O/N 1W 1M 3M 6M 1Y positionally, the first date to "published on"
+    // and the last to the value date. Loose "TENOR rate" pairs also work.
+    const cells = paste.split(/[\t\n,|]+/).map((c) => c.trim()).filter(Boolean);
+    const dates = cells.map(parseRateDate).filter((d): d is string => !!d);
+    const nums = cells.filter((c) => /^v?\d+(?:\.\d+)?$/.test(c) && parseRateDate(c) == null);
     const next = { ...values };
     let hits = 0;
-    for (const seg of paste.split(/[,\n;]+/)) {
-      const m = seg.match(/\b(ON|1W|1M|3M|6M|1Y|overnight|1\s*month|3\s*months?|6\s*months?|1\s*year)\b[\s:=-]*v?(\d+(?:\.\d+)?)/i);
-      if (!m) continue;
-      const token = m[1].toUpperCase().replace(/\s+/g, "").replace(/MONTHS?/, "M").replace(/YEAR/, "Y").replace("OVERNIGHT", "ON");
-      if (!TENOR_ORDER.includes(token)) continue;
-      next[token] = m[2];
-      hits++;
+    if (nums.length >= TENOR_ORDER.length) {
+      TENOR_ORDER.forEach((t, i) => { next[t] = nums[i]; hits++; });
+    } else {
+      for (const seg of cells) {
+        const m = seg.match(/(O\/N|ON|1W|1M|3M|6M|1Y|overnight|1\s*month|3\s*months?|6\s*months?|1\s*year)[\s:=-]*v?(\d+(?:\.\d+)?)/i);
+        if (!m) continue;
+        const token = m[1].toUpperCase().replace(/\s+/g, "").replace(/MONTHS?/, "M").replace(/YEAR/, "Y").replace("OVERNIGHT", "ON").replace("O/N", "ON");
+        if (!TENOR_ORDER.includes(token)) continue;
+        next[token] = m[2];
+        hits++;
+      }
     }
+    if (dates.length >= 1) setPubDate(dates[0]);
+    if (dates.length >= 2) setEffFrom(dates[dates.length - 1]);
     setValues(next);
-    toast(hits ? "success" : "error", hits ? `${hits} rate${hits === 1 ? "" : "s"} filled from the pasted text — check, then save.` : "Could not read any rates — use 'TENOR rate' pairs like: 3M 4.45");
+    const withDates = dates.length >= 1 ? ` Publish date ${dates[0]}${dates.length >= 2 ? `, value date ${dates[dates.length - 1]}` : ""}.` : "";
+    toast(hits ? "success" : "error", hits ? `${hits} rate${hits === 1 ? "" : "s"} filled.${withDates} Check, then save.` : "Could not read any rates - paste the CBUAE row (date + six rates + value date) or pairs like: 3M 4.45");
     if (hits) setPaste("");
   };
+
 
   const save = async () => {
     setBusy(true);
@@ -72,7 +104,7 @@ function EiborModal({ onClose }: { onClose: () => void }) {
         const orig = eibor.find((e) => e.tenor === t);
         if (!v || v <= 0 || v > 25) continue;
         if (orig && Math.abs(orig.ratePct - v) < 0.00001) continue; // unchanged
-        await saveEibor(t, v, effFrom);
+        await saveEibor(t, v, effFrom, undefined, pubDate);
       }
       toast("success", "EIBOR table updated — all calculations now use the new rates.");
       onClose();
@@ -95,13 +127,21 @@ function EiborModal({ onClose }: { onClose: () => void }) {
           ))}
         </div>
         <div>
-          <label className="label">Effective from <span className="normal-case tracking-normal" style={{ color: "var(--ink-faint)" }}>— the date the published rate takes effect</span></label>
+          <div className="grid grid-cols-2 gap-2">
+          <div>
+          <label className="label">Published on <span className="normal-case tracking-normal" style={{ color: "var(--ink-faint)" }}>— shown “as on”</span></label>
+          <input className="input mono" type="date" value={pubDate} onChange={(e) => setPubDate(e.target.value)} />
+          </div>
+          <div>
+          <label className="label">Value date <span className="normal-case tracking-normal" style={{ color: "var(--ink-faint)" }}>— rate takes effect</span></label>
           <input className="input mono" type="date" value={effFrom} onChange={(e) => setEffFrom(e.target.value)} />
+          </div>
+          </div>
         </div>
         <div className="rounded-lg p-3" style={{ background: "var(--tint)", border: "1px solid var(--line-soft)" }}>
-          <label className="label">Or paste the published line <span className="normal-case tracking-normal" style={{ color: "var(--ink-faint)" }}>— e.g. “ON 4.40, 1M 4.42, 3M 4.45”</span></label>
+          <label className="label">Paste the CBUAE row verbatim <span className="normal-case tracking-normal" style={{ color: "var(--ink-faint)" }}>— publish date, six rates, value date; dates are picked up automatically</span></label>
           <div className="flex gap-2">
-            <input className="input mono !py-1.5" value={paste} onChange={(e) => setPaste(e.target.value)} placeholder="ON 4.40, 1M 4.42, 3M 4.45, 6M 4.5, 1Y 4.55" />
+            <input className="input mono !py-1.5" value={paste} onChange={(e) => setPaste(e.target.value)} placeholder="01 September 2026  3.477640  3.814850  3.764300  3.986280  4.056520  4.394360  03 September 2026" />
             <button className="btn btn-ghost btn-sm shrink-0" onClick={parsePaste}>Fill</button>
           </div>
         </div>
@@ -541,9 +581,14 @@ export default function Shell({ children }: { children: ReactNode }) {
               >
                 <span className="dot-live shrink-0" style={{ animation: "pulse 2s infinite" }} />
                 <span className="font-disp font-semibold text-[10px] tracking-[0.1em]" style={{ color: "var(--ink-faint)" }}>EIBOR</span>
+                {last?.updatedOn && (
+                  <span className="whitespace-nowrap" style={{ color: "var(--ink-faint)" }}>
+                    as on {new Date(last.updatedOn + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}
+                  </span>
+                )}
                 {ordered.map((e) => (
                   <span key={e.tenor} className="whitespace-nowrap">
-                    <span style={{ color: "var(--ink-faint)" }}>{e.tenor}</span> <span style={{ color: "var(--amber)" }}>{e.ratePct.toFixed(2)}</span>
+                    <span style={{ color: "var(--ink-faint)" }}>{e.tenor}</span> <span style={{ color: "var(--amber)" }}>{e.ratePct.toFixed(6)}</span>
                   </span>
                 ))}
                 {canEdit && <span style={{ color: "var(--ink-faint)" }}>✎</span>}

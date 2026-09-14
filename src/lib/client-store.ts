@@ -110,7 +110,7 @@ interface HfmcState extends StateSnapshot {
   // daily MIS
   addCaseUpdate: (caseId: number, note: string, onHold: boolean, holdReason: string) => Promise<void>;
   deleteCase: (id: number) => Promise<void>;
-  saveEibor: (tenor: string, ratePct: number, effectiveFrom?: string | null, note?: string) => Promise<void>;
+  saveEibor: (tenor: string, ratePct: number, effectiveFrom?: string | null, note?: string, publishedOn?: string) => Promise<void>;
 
   // bank rules
   uploadBankLogo: (bankId: number, file: File) => Promise<void>;
@@ -290,10 +290,10 @@ export const useHfmcStore = create<HfmcState>((set, get) => ({
     if (r.name === "case" && r.id === id) get().nav({ name: "leads" });
     await get().hydrate();
   },
-  saveEibor: async (tenor, ratePct, effectiveFrom, note) => {
+  saveEibor: async (tenor, ratePct, effectiveFrom, note, publishedOn) => {
     const res = await fetch("/api/eibor", {
       method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tenor, ratePct, effectiveFrom, note }),
+      body: JSON.stringify({ tenor, ratePct, effectiveFrom, note, publishedOn }),
     });
     if (!res.ok) {
       const e = await res.json().catch(() => ({}));
