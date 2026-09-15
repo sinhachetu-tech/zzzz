@@ -504,7 +504,6 @@ export default function Shell({ children }: { children: ReactNode }) {
     { label: "Morning Bulletin", route: { name: "bulletin" }, icon: IFlag, badge: myOpenDirectives },
     { label: "Leads", route: { name: "leads" }, icon: IInbox },
     { label: "Cases", route: { name: "cases" }, icon: IBriefcase },
-    { label: "Proposals", route: { name: "proposals" }, icon: IChart },
     { label: "Task Queue", route: { name: "tasks" }, icon: ITasks },
     { label: "Calculator", route: { name: "calculator" }, icon: ICalc },
     { label: "Reports", route: { name: "reports" }, icon: IChart },
@@ -514,7 +513,6 @@ export default function Shell({ children }: { children: ReactNode }) {
   const title =
     route.name === "dashboard" ? "Dashboard" :
     route.name === "cases" ? "Cases" :
-    route.name === "proposals" ? "Proposals" :
     route.name === "leads" ? "Leads" :
     route.name === "case" ? "Case 360" :
     route.name === "tasks" ? "Task Queue" :

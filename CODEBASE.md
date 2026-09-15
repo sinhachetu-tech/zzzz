@@ -103,7 +103,7 @@ HFMC — a UAE mortgage brokerage case tracker. Three portals:
 | `shell.tsx` | App frame: sidebar/mobile drawer/bottom nav, **NewLeadModal** ("Add lead" — busy-guarded dynamic Create lead/case submit, repeat-client banner), **EIBOR ticker + editor modal** (daily ritual; permission = designation `editEibor`), nav items, SLA widget; mobile FAB is role-aware (speed dial: Add lead + New directive for task-issuing roles, direct Add lead for staff) |
 | `dashboard.tsx` | Analytics: KPIs, **pipeline-by-stage funnel**, **my tasks due today**, latest activity, leads-waiting card, why-pending/waiting-for, owner load, today's directives |
 | `cases.tsx` | **Cases tab — the pipeline worklist**: filter/search/sort table of all non-lead cases, click a row → Case 360 |
-| `proposals.tsx` | **Proposals tab — the follow-up pipeline**: all saved proposals across cases with status (draft/sent/won/lost), won-value total, CSV export |
+| `proposals.tsx` | **Proposal pipeline report** (rendered inside Reports, not a nav tab): all saved proposals across cases with status (draft/sent/won/lost), CSV export. Creation lives in Case 360: Run match → Generate |
 | `leads.tsx` | Lead-stage funnel: filter, assign owner, **Qualify profile**, **Convert to case**, **Lost** (reason kept on record), **Delete** (admin only — accidental creations) |
 | `case-detail.tsx` | ★ **Case 360**: header + stage pipeline; tabs = Lead & Applicant Profile / Daily MIS / Tasks / Documents / Banks & proposal / Activity; right rail = MIS, Pre-approval, FOL, AI copilot, **ClientFileCard** (client file + other engagements), commission, people |
 | `case-profile-editor.tsx` | 3-tab structured profile editor (Primary incl. EID/passport KYC, Property & Finance, Co-borrower/Co-applicant). Saves `profileJson` via case PATCH |
@@ -132,6 +132,7 @@ HFMC — a UAE mortgage brokerage case tracker. Three portals:
 | Fees (government/transfer) | `FeeRule` rows via Admin → Fee rules; shown in Calculator |
 | Daily EIBOR update | Click the header ticker (needs designation `editEibor` or admin) — paste the CBUAE row verbatim (`Date  O/N  1W  1M  3M  6M  1Y  Value Date`, tab/comma separated) or type rates; publish date shows "as on" in the band, value date = effective; "Last edited" shows the true edit instant in the viewer's timezone; 6-decimal precision everywhere |
 | New API endpoint | new `src/app/api/<name>/route.ts`; expose to UI via `state/route.ts` + `client-store.ts` |
+| Proposal workflow | creation = Case 360 → Banks & proposal tab (Run match → Generate → Print/CSV); follow-up reporting = Reports → Proposal pipeline |
 | New screen/nav item | view in `src/components/views/`, add Route in `client-store.ts`, item in `shell.tsx` navItems, render in `page.tsx` |
 | Client portal | `src/app/client/*` + `src/app/api/client/*` |
 | Email integration | `src/lib/graph.ts` (read), `src/lib/email-match.ts` (match), `src/app/api/email/*` |

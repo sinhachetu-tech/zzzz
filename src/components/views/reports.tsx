@@ -11,6 +11,7 @@ import {
   primaryBank, todayISO,
 } from "@/lib/format";
 import { Avatar, Chip, EmptyState, SectionLabel } from "@/components/hfmc/ui";
+import { ProposalPipeline } from "@/components/views/proposals";
 import { BarList, Donut, Spark, useCountUp } from "@/components/hfmc/charts";
 import {
   IBank, IBriefcase, IChart, IClock, IDownload, IInbox, ITarget, ITrophy, IUsers,
@@ -417,6 +418,9 @@ export default function Reports() {
       </div>
 
       <DailyMisReport visCases={visCases} userById={userById} toast={toast} />
+
+      {/* proposal follow-up pipeline across cases (created in Case 360) */}
+      <ProposalPipeline />
 
       {/* report grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

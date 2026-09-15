@@ -1,18 +1,18 @@
 "use client";
 
-/* Proposals — the follow-up pipeline across all cases. Every saved proposal
-   (draft / sent / won / lost) with its case, amount and age. Won/lost here is
-   how the bank win-rate gets measured. CSV export for the boss's Excel. */
+/* Proposal pipeline — a REPORT inside Reports (not a nav tab): the follow-up
+   view of every saved proposal across cases. Won/lost here feeds the bank
+   win-rate story. Creation stays in Case 360: run match -> generate. */
 
 import { useMemo, useState } from "react";
 import { useHfmcStore } from "@/lib/client-store";
 import { fmtMoney, relTime } from "@/lib/format";
 import { Chip, EmptyState } from "@/components/hfmc/ui";
-import { IChart, IGrid } from "@/components/icons";
+import { IChart, IDownload, IGrid } from "@/components/icons";
 
 const STATUS: ("draft" | "sent" | "won" | "lost")[] = ["draft", "sent", "won", "lost"];
 
-export default function Proposals() {
+export function ProposalPipeline() {
   const { caseProposals, cases, nav, setProposalStatus, toast } = useHfmcStore();
   const [tab, setTab] = useState<(typeof STATUS)[number] | "all">("all");
 
@@ -46,18 +46,21 @@ export default function Proposals() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="font-disp font-bold text-[24px] tracking-tight m-0">
-            Proposals · <span style={{ color: "var(--amber)" }}>{caseProposals.length} total</span>
-          </h1>
-          <p className="text-[13px] text-[var(--ink-dim)] mt-0.5 mb-0">
-            The follow-up pipeline — every saved bank comparison. Sent proposals awaiting a decision are your hot list.
+          <h3 className="font-disp font-semibold text-[15px] m-0 flex items-center gap-2">
+            <IChart size={15} className="text-[var(--amber)]" /> Proposal pipeline
+            <span className="text-[11.5px] font-normal text-[var(--ink-faint)]">
+              {caseProposals.length} saved · created in Case 360 via Run match → Generate
+            </span>
+          </h3>
+          <p className="text-[12px] text-[var(--ink-dim)] mt-0.5 mb-0">
+            The follow-up view across all cases. Sent proposals awaiting a decision are your hot list.
           </p>
         </div>
         <button className="btn btn-ghost btn-sm" onClick={exportCsv} disabled={rows.length === 0}>
-          <IChart size={14} /> Export Excel (CSV)
+          <IDownload size={14} /> Excel (CSV)
         </button>
       </div>
 
@@ -72,7 +75,7 @@ export default function Proposals() {
       </div>
 
       {rows.length === 0 ? (
-        <div className="card p-10">
+        <div className="card p-8">
           <EmptyState icon={<IGrid size={24} />} title="No proposals here yet" body="Run a Bank Match inside a case, then 'Generate proposal' and 'Save to case' — saved proposals land in this pipeline." />
         </div>
       ) : (

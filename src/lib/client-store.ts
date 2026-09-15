@@ -57,7 +57,6 @@ interface ToastMsg {
 export type Route =
   | { name: "dashboard" }
   | { name: "cases" }
-  | { name: "proposals" }
   | { name: "leads" }
   | { name: "case"; id: number }
   | { name: "tasks" }
