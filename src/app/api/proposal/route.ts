@@ -8,6 +8,7 @@ import { currentUser, flagsFor } from "@/lib/auth";
 import { serCase, serDocRule } from "@/lib/ser";
 import { runBankMatch, canonicalTxn } from "@/lib/bank-match";
 import { parseFees, parseInsurance, processingFeePct, lifeInsuranceMonthly, propertyInsuranceYearly } from "@/lib/bank-fees";
+import { parseCaseProfile } from "@/lib/case-profile";
 import type { FeeRule } from "@/lib/types";
 
 export async function POST(req: NextRequest) {
@@ -35,7 +36,9 @@ export async function POST(req: NextRequest) {
     bonusIncome: Number(body.bonusIncome) || 0,
     stl: body.stl ?? true,
     termYears: Number(body.termYears) || 3,
+    ratePref: body.ratePref === "fixed" || body.ratePref === "flexible" ? body.ratePref : undefined,
   };
+  const prof = parseCaseProfile(c.profileJson, { customer: c.customer, loanAmount: c.loanAmount });
 
   const all = await runBankMatch(input);
   const ids: number[] = Array.isArray(body.productIds) ? body.productIds.map(Number) : [];
@@ -71,7 +74,7 @@ export async function POST(req: NextRequest) {
     .map((d) => ({ title: d.title, category: d.category, status: d.status, mandatory: d.mandatory }));
 
   const bankIds = [...new Set(results.map((r) => r.bankProductId))];
-  const products = await db.bankProduct.findMany({ where: { id: { in: bankIds } }, include: { bank: { select: { id: true, name: true, logoData: true, logoType: true } } } });
+  const products = await db.bankProduct.findMany({ where: { id: { in: bankIds } }, include: { bank: { select: { id: true, name: true, logoData: true, logoType: true, posPoints: true, negPoints: true } } } });
   const bankLogos = products.map((p) => ({
     bankName: p.bank.name,
     logoUrl: p.bank.logoData ? `/api/banks/${p.bank.id}/logo` : null,
@@ -102,6 +105,8 @@ export async function POST(req: NextRequest) {
       transactionType: input.transactionType, propertyType: c.propertyType,
       loanAmount: input.loanAmount, propertyValue: input.propertyValue,
       emirate, feeTxn,
+      goldenVisa: !!prof.primary.goldenVisa,
+      islamicOnly: !!prof.primary.islamicOnly,
     },
     input,
     results: results.map((r) => {
@@ -112,8 +117,23 @@ export async function POST(req: NextRequest) {
       const processingFee = procPct != null ? Math.round((input.loanAmount * procPct) / 100) : null;
       const lifeMonthly = lifeInsuranceMonthly(ins, input.loanAmount);
       const propertyYearly = propertyInsuranceYearly(ins, input.propertyValue);
+      // income consumed at each rate stage — the practical DBR read for a comparison
+      const inc = input.monthlyIncome > 0 ? input.monthlyIncome : null;
+      const pct = (emi: number | null) => (inc && emi != null ? Math.round((emi / inc) * 1000) / 10 : null);
+      const es = fees?.earlySettlement;
+      const earlySettlement = es?.pct != null
+        ? `${es.pct}% of outstanding${es.cap != null ? `, cap AED ${es.cap.toLocaleString()}` : ""}${es.freeAfterYears ? `, free after ${es.freeAfterYears}y` : ""}`
+        : null;
+      const partialSettlement = fees?.partialSettlement?.freeYearlyPct != null
+        ? `${fees.partialSettlement.freeYearlyPct}% of original loan per year free`
+        : null;
+      const bank = (prod as unknown as { bank?: { posPoints?: string; negPoints?: string } })?.bank;
       return { ...r, logoUrl: logoFor(r.bankName), commission: mode === "internal" ? commission[r.bankProductId] ?? null : null,
-        bankCosts: { processingFeePct: procPct, processingFee, lifeMonthly, propertyYearly } };
+        bankCosts: { processingFeePct: procPct, processingFee, lifeMonthly, propertyYearly },
+        dbrIntro: pct(r.introEmi), dbrFollowOn: pct(r.followOnEmi), dbrStress: pct(r.stressEmi),
+        earlySettlement, partialSettlement,
+        posPoints: mode === "internal" ? bank?.posPoints ?? null : null,
+        negPoints: mode === "internal" ? bank?.negPoints ?? null : null };
     }),
     costs: {
       equity,

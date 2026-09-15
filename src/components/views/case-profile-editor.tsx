@@ -229,6 +229,22 @@ export function CaseProfileEditor({ c, onSaved }: Props) {
                 </div>
               </div>
             </div>
+
+            <div>
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--ink-faint)]">
+                Decision flags — affect pricing &amp; product choice
+              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1.5">
+                <label className="flex items-center gap-2.5 rounded-lg px-3 py-2.5 cursor-pointer" style={{ background: "var(--tint)", border: "1px solid var(--line-soft)" }}>
+                  <input type="checkbox" checked={!!p.goldenVisa} onChange={(e) => updatePrimary({ goldenVisa: e.target.checked })} />
+                  <span className="text-[12.5px]"><strong>Golden Visa holder</strong> — several banks quote preferential rates/LTV; show it to the RM</span>
+                </label>
+                <label className="flex items-center gap-2.5 rounded-lg px-3 py-2.5 cursor-pointer" style={{ background: "var(--tint)", border: "1px solid var(--line-soft)" }}>
+                  <input type="checkbox" checked={!!p.islamicOnly} onChange={(e) => updatePrimary({ islamicOnly: e.target.checked })} />
+                  <span className="text-[12.5px]"><strong>Sharia-compliant only</strong> — restrict to Islamic products (Islamic / mixed banks)</span>
+                </label>
+              </div>
+            </div>
           </div>
         )}
 

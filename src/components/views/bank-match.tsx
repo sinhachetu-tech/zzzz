@@ -103,6 +103,7 @@ export function BankMatchPanel({ c }: { c: LoanCase }) {
   const [rental, setRental] = useState(initProf.primary.rentalIncome > 0 ? String(initProf.primary.rentalIncome) : "");
   const [bonus, setBonus] = useState(initProf.primary.variableIncome > 0 ? String(initProf.primary.variableIncome) : "");
   const [term, setTerm] = useState(3);
+  const [ratePref, setRatePref] = useState<"best" | "fixed" | "flexible">("best");
   const [results, setResults] = useState<MatchResult[] | null>(null);
   const [selected, setSelected] = useState<Record<number, boolean>>({});
   const [busy, setBusy] = useState(false);
@@ -130,7 +131,8 @@ export function BankMatchPanel({ c }: { c: LoanCase }) {
           rentalIncome: Number(rental) || 0,
           bonusIncome: Number(bonus) || 0,
           propertyValue: Number(propertyValue),
-          stl, termYears: term,
+          stl, termYears: ratePref === "flexible" ? 0 : term,
+          ratePref,
           secondPartyRole,
           coBorrowerIncome: secondPartyRole === "co_borrower" ? Number(coBorrowerIncome) || 0 : 0,
           coBorrowerEmis: secondPartyRole === "co_borrower" ? Number(coBorrowerEmis) || 0 : 0,
@@ -142,7 +144,7 @@ export function BankMatchPanel({ c }: { c: LoanCase }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Match failed");
       setResults(data.results);
-      sessionStorage.setItem("hfmc_proposal_request", JSON.stringify({ caseId: c.id, monthlyIncome: Number(income), existingEmis: Number(emis) || 0, cardLimitsTotal: Number(cardLimits) || 0, rentalIncome: Number(rental) || 0, bonusIncome: Number(bonus) || 0, propertyValue: Number(propertyValue), loanAmount: c.loanAmount, stl, termYears: term }));
+      localStorage.setItem("hfmc_proposal_request", JSON.stringify({ caseId: c.id, monthlyIncome: Number(income), existingEmis: Number(emis) || 0, cardLimitsTotal: Number(cardLimits) || 0, rentalIncome: Number(rental) || 0, bonusIncome: Number(bonus) || 0, propertyValue: Number(propertyValue), loanAmount: c.loanAmount, stl, termYears: ratePref === "flexible" ? 0 : term, ratePref }));
       // preselect eligible + conditions products for the proposal
       const pre: Record<number, boolean> = {};
       for (const r of data.results) if (r.verdict !== "not_eligible") pre[r.bankProductId] = true;
@@ -261,14 +263,33 @@ export function BankMatchPanel({ c }: { c: LoanCase }) {
             </button>
           </div>
           <div>
-            <label className="label">Fixed term</label>
-            <select className="select" value={term} onChange={(e) => setTerm(Number(e.target.value))}>
-              <option value={1}>1 year</option>
-              <option value={3}>3 years</option>
-              <option value={5}>5 years</option>
-              <option value={0}>Day-1 variable</option>
+            <label className="label">Rate type</label>
+            <select className="select" value={ratePref} onChange={(e) => setRatePref(e.target.value as typeof ratePref)}>
+              <option value="best">Best available</option>
+              <option value="fixed">Fixed for term</option>
+              <option value="flexible">Flexible (EIBOR-linked)</option>
             </select>
           </div>
+          {ratePref === "fixed" ? (
+            <div>
+              <label className="label">Fixed tenure</label>
+              <select className="select" value={term} onChange={(e) => setTerm(Number(e.target.value))}>
+                <option value={1}>1 year</option>
+                <option value={2}>2 years</option>
+                <option value={3}>3 years</option>
+                <option value={4}>4 years</option>
+                <option value={5}>5 years</option>
+                <option value={-1}>All terms — best</option>
+              </select>
+            </div>
+          ) : ratePref === "flexible" ? (
+            <div>
+              <label className="label">Benchmark</label>
+              <select className="select" disabled>
+                <option>Day-1 EIBOR-linked</option>
+              </select>
+            </div>
+          ) : null}
         </div>
         <div className="flex flex-wrap gap-2 mt-3">
           <button className="btn btn-primary btn-sm" onClick={run} disabled={busy}>
@@ -280,7 +301,7 @@ export function BankMatchPanel({ c }: { c: LoanCase }) {
               if (!raw) return;
               const body = JSON.parse(raw);
               body.productIds = Object.entries(selected).filter(([, v]) => v).map(([k]) => Number(k));
-              sessionStorage.setItem("hfmc_proposal_request", JSON.stringify(body));
+              localStorage.setItem("hfmc_proposal_request", JSON.stringify(body));
               window.open("/proposal", "_blank");
             }}>
               Generate proposal ({Object.values(selected).filter(Boolean).length})

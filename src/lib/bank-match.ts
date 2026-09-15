@@ -26,7 +26,8 @@ export interface MatchInput {
   rentalIncome: number;      // monthly rental income
   bonusIncome: number;       // monthly-averaged bonus/incentive income
   stl: boolean;              // salary transfer
-  termYears: number;         // preferred fixed term (3 default)
+  termYears: number;         // preferred fixed term (3 default; -1 = best of all fixed terms)
+  ratePref?: "best" | "fixed" | "flexible"; // fixed-for-term vs EIBOR-linked vs best of either
   // Joint application / Second party
   secondPartyRole?: "none" | "co_borrower" | "co_applicant";
   coBorrowerIncome?: number;
@@ -250,7 +251,22 @@ export async function runBankMatch(input: MatchInput): Promise<MatchResult[]> {
     }
 
     const pricing = parsePricing(p.pricingJson);
-    const quote = resolveQuote(pricing, { stl: input.stl, termYears: input.termYears, ftv: p.maxLtvExpatriate ?? 80, txn });
+    const baseReq = { stl: input.stl, ftv: p.maxLtvExpatriate ?? 80, txn };
+    let quote: RateQuote | null = null;
+    if (input.ratePref === "flexible") {
+      quote = resolveQuote(pricing, { ...baseReq, termYears: null, ratePref: "flexible" });
+    } else if (input.ratePref === "fixed" && input.termYears === -1) {
+      // best across every fixed tenure the bank publishes
+      for (const t of [1, 2, 3, 4, 5]) {
+        const q = resolveQuote(pricing, { ...baseReq, termYears: t, ratePref: "fixed" });
+        if (q && (!quote || (q.ratePct ?? 99) < (quote.ratePct ?? 99))) quote = q;
+      }
+    } else {
+      quote = resolveQuote(pricing, { ...baseReq, termYears: input.termYears, ratePref: input.ratePref === "fixed" ? "fixed" : undefined });
+      if (!quote && input.ratePref !== "fixed") {
+        quote = resolveQuote(pricing, { ...baseReq, termYears: null }); // fall back to variable day 1
+      }
+    }
     if (!quote) {
       results.push({ ...baseResult(p, dto.bankName, p.name), reasons: ["no pricing quote for this salary-transfer / term / transaction combination"] });
       continue;
@@ -277,16 +293,18 @@ export async function runBankMatch(input: MatchInput): Promise<MatchResult[]> {
     let followOnEmi: number | null = null;
     let stressEmi: number | null = null;
     const schedule: RateSchedule | null = rateSchedule(quote, eibor, (p as unknown as { stressBufferPct?: number | null }).stressBufferPct ?? 0);
-    if (rate != null && p.tenorYears) {
+    // indicative EMIs: use the product's tenor, else the 25-year UAE norm
+    const tenorY = p.tenorYears ?? 25;
+    if (rate != null) {
       const availableEmi = Math.round((eligibleIncome * dbrPct) / 100 - input.existingEmis - cardObligation);
       if (availableEmi <= 0) {
         reasons.push("income below obligations — no DBR headroom");
       } else {
-        maxLoanByDbr = Math.round(loanForEmi(availableEmi, rate, p.tenorYears));
-        monthlyEmi = Math.round(emi(input.loanAmount, rate, p.tenorYears));
+        maxLoanByDbr = Math.round(loanForEmi(availableEmi, rate, tenorY));
+        monthlyEmi = Math.round(emi(input.loanAmount, rate, tenorY));
         stressEmi = monthlyEmi;
-        if (schedule?.introRatePct != null) introEmi = Math.round(emi(input.loanAmount, schedule.introRatePct, p.tenorYears));
-        if (schedule?.followOnRatePct != null) followOnEmi = Math.round(emi(input.loanAmount, schedule.followOnRatePct, p.tenorYears));
+        if (schedule?.introRatePct != null) introEmi = Math.round(emi(input.loanAmount, schedule.introRatePct, tenorY));
+        if (schedule?.followOnRatePct != null) followOnEmi = Math.round(emi(input.loanAmount, schedule.followOnRatePct, tenorY));
       }
     }
 

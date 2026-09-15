@@ -21,6 +21,8 @@ HFMC — a UAE mortgage brokerage case tracker. Three portals:
 - **Client master vs case profile.** `Client` = the person (KYC: EID unique > passport > phone+name; phone alone never merges). `profileJson` on each case = the applicant's snapshot *as filed* on that engagement. Saving a case profile refreshes the client master (fills gaps, never erases).
 - **Co-borrower vs co-applicant** (`src/lib/case-profile.ts`): co-borrower incomes are pooled into affordability (DBR); co-applicant is title/KYC only. Both get their own Client row.
 - **Fees live in two places:** `FeeRule` table = government/transfer fees (per emirate × txn type, universal). `BankProduct.feesJson` = bank charges (processing, pre-approval, early/partial settlement, valuation) — parsed/computed by `src/lib/bank-fees.ts`.
+- **Fees/insurance coverage**: 85 bank products decoded; 76 carry structured feesJson/insuranceJson (scripts/sync-fees-from-axes.mjs backfills from raw axes; rerun after new imports). Products without tenorYears use the 25-year UAE norm for indicative EMIs.
+- **Decision flags in the profile** (goldenVisa, islamicOnly) flow into proposals as pricing/product notes — extend these before adding one-off free-text fields.
 - **EIBOR table drives pricing live**: bank-match/proposals read `EiborRate` at run time — updating the ticker (ON/1W/1M/3M/6M/1Y, with effective date + editor stamp) reprices everything instantly. No auto-feed exists; editing is a deliberate manual ritual.
 - **Leads are never silently destroyed**: "Lost" keeps the record with a reason (`lostReason`); hard delete exists only for admin/super to remove accidental creations.
 - **Bank products are versioned** (draft → approved) and feed the **bank-match eligibility engine** → proposals (saved snapshots, draft → sent → won/lost).
@@ -106,7 +108,7 @@ HFMC — a UAE mortgage brokerage case tracker. Three portals:
 | `case-profile-editor.tsx` | 3-tab structured profile editor (Primary incl. EID/passport KYC, Property & Finance, Co-borrower/Co-applicant). Saves `profileJson` via case PATCH |
 | `daily-mis.tsx` | Daily status note panel (writes CaseUpdate) |
 | `doc-vault.tsx` | Per-case document checklist (upload, verify, reject, waive) |
-| `bank-match.tsx` | BankMatchPanel: inputs (pre-filled from profile) → eligibility results → select → save proposal |
+| `bank-match.tsx` | BankMatchPanel: inputs (pre-filled from profile) → eligibility results → select → save proposal. **Rate-type selector**: Best available / Fixed-for-term (1-5y or best-of-all) / Flexible EIBOR-linked. Decision flags from the profile (Golden Visa, Sharia-only) surface here |
 | `proposal-history.tsx` | Saved proposals list with status transitions + print link |
 | `calculator.tsx` | Full MPBF calculator + AI Mortgage Advisor + AI Document Reader panels |
 | `tasks.tsx` | Task queue across visible cases |

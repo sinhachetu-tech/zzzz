@@ -27,11 +27,18 @@ interface ProposalResult {
   reasons: string[];
   commission: { gross: number; partnerCut: number; net: number; ratePct: number; partnerSharePct: number } | null;
   bankCosts: { processingFeePct: number | null; processingFee: number | null; lifeMonthly: number | null; propertyYearly: number | null };
+  dbrIntro: number | null;
+  dbrFollowOn: number | null;
+  dbrStress: number | null;
+  earlySettlement: string | null;
+  partialSettlement: string | null;
+  posPoints: string | null;
+  negPoints: string | null;
 }
 interface ProposalData {
   mode: "client" | "internal";
   generatedAt: string;
-  case: { caseNumber: string; customer: string; employmentProfile: string; residency: string; transactionType: string; propertyType: string; loanAmount: number; propertyValue: number; emirate: string; feeTxn: string };
+  case: { caseNumber: string; customer: string; employmentProfile: string; residency: string; transactionType: string; propertyType: string; loanAmount: number; propertyValue: number; emirate: string; feeTxn: string; goldenVisa?: boolean; islamicOnly?: boolean };
   results: ProposalResult[];
   costs: { equity: number; transferFees: { label: string; note: string; amount: number }[]; sellerFees: { label: string; note: string; amount: number }[]; transferTotal: number; grossCashNeeded: number };
   checklist: { title: string; category: string; status: string; mandatory: boolean }[];
@@ -47,7 +54,7 @@ export default function ProposalPage() {
 
   const load = async (mode: "client" | "internal") => {
     setLoading(true);
-    const raw = sessionStorage.getItem("hfmc_proposal_request");
+    const raw = localStorage.getItem("hfmc_proposal_request");
     if (!raw) { setErr("No bank match in progress — run a Bank Match from the case page first."); setLoading(false); return; }
     try {
       const body = { ...JSON.parse(raw), mode };
@@ -62,6 +69,7 @@ export default function ProposalPage() {
     setLoading(false);
   };
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- sessionStorage is browser-only; the initial load must set state
   useEffect(() => { load("client"); }, []);
 
   if (loading) return <Shell><div className="p-10 text-center text-[var(--ink-faint)]">Assembling proposal…</div></Shell>;
@@ -80,7 +88,7 @@ export default function ProposalPage() {
           <button className={data.mode === "client" ? "btn btn-primary btn-sm" : "btn btn-ghost btn-sm"} onClick={() => load("client")}>Client version</button>
           <button className={data.mode === "internal" ? "btn btn-primary btn-sm" : "btn btn-ghost btn-sm"} onClick={() => load("internal")}>Internal version</button>
           <button className="btn btn-mint btn-sm" onClick={async () => {
-            const raw = sessionStorage.getItem("hfmc_proposal_request");
+            const raw = localStorage.getItem("hfmc_proposal_request");
             if (!raw) return;
             const req = JSON.parse(raw);
             const res = await fetch("/api/proposals", { method: "POST", headers: { "Content-Type": "application/json" },
@@ -105,6 +113,12 @@ export default function ProposalPage() {
             <div className="mono text-[13px]" style={{ color: "var(--amber)" }}>{c.caseNumber}</div>
             <div className="font-disp font-semibold text-[18px]">{c.customer}</div>
             <div className="text-[11px] text-[var(--ink-faint)]">{c.employmentProfile} · {c.residency} · {c.propertyType} · {c.transactionType || "Resale"}</div>
+            {(c.goldenVisa || c.islamicOnly) && (
+              <div className="flex gap-1.5 justify-end mt-1 flex-wrap">
+                {c.goldenVisa && <span className="mono text-[9.5px] px-1.5 py-0.5 rounded" style={{ background: "rgba(67,214,155,0.15)", color: "var(--mint)" }}>GOLDEN VISA — ask RM for preferential pricing</span>}
+                {c.islamicOnly && <span className="mono text-[9.5px] px-1.5 py-0.5 rounded" style={{ background: "rgba(87,194,234,0.15)", color: "var(--sky)" }}>SHARIA-COMPLIANT ONLY</span>}
+              </div>
+            )}
             <div className="text-[11px] text-[var(--ink-faint)]">{new Date(data.generatedAt).toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" })}</div>
           </div>
         </div>
@@ -115,11 +129,47 @@ export default function ProposalPage() {
           <Stat label="Emirate" value={c.emirate} />
         </div>
 
+        {/* side-by-side comparison */}
+        <h3 className="font-disp font-semibold text-[14px] mt-6 mb-2">Side-by-side comparison</h3>
+        <div className="overflow-x-auto">
+          <table className="w-full text-[11px]" style={{ borderCollapse: "collapse", minWidth: 640 }}>
+            <thead>
+              <tr>
+                <th className="text-left py-1.5 pr-2 font-disp text-[10px] uppercase tracking-[0.1em] text-[var(--ink-faint)]">Metric</th>
+                {results.map((r) => (
+                  <th key={r.bankProductId} className="text-left py-1.5 px-2 font-disp text-[11px]" style={{ borderBottom: "2px solid var(--amber)" }}>
+                    {r.bankName}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              <CompareRow label="Eligible loan" values={results.map((r) => fmt(r.eligibleLoan))} bold />
+              <CompareRow label="Intro rate" values={results.map((r) => r.schedule?.introRatePct != null ? r.schedule.introRatePct.toFixed(2) + "%" : "—")} />
+              <CompareRow label="Intro EMI" values={results.map((r) => fmt(r.introEmi))} />
+              <CompareRow label="After-intro rate" values={results.map((r) => r.schedule?.followOnRatePct != null ? r.schedule.followOnRatePct.toFixed(2) + "%" : "—")} />
+              <CompareRow label="Follow-on EMI" values={results.map((r) => fmt(r.followOnEmi))} />
+              <CompareRow label="Stress rate" values={results.map((r) => r.schedule?.stressRatePct != null ? r.schedule.stressRatePct.toFixed(2) + "%" : "—")} />
+              <CompareRow label="Stress EMI" values={results.map((r) => fmt(r.stressEmi))} />
+              <CompareRow label="Income consumed — intro" values={results.map((r) => r.dbrIntro != null ? r.dbrIntro + "%" : "—")} />
+              <CompareRow label="Income consumed — after intro" values={results.map((r) => r.dbrFollowOn != null ? r.dbrFollowOn + "%" : "—")} />
+              <CompareRow label="Income consumed — stress" values={results.map((r) => r.dbrStress != null ? r.dbrStress + "%" : "—")} />
+              <CompareRow label="Bank processing fee" values={results.map((r) => r.bankCosts?.processingFee != null ? fmt(r.bankCosts.processingFee) : "—")} />
+              <CompareRow label="Life insurance" values={results.map((r) => r.bankCosts?.lifeMonthly != null ? fmt(r.bankCosts.lifeMonthly) + "/mo" : "—")} />
+              <CompareRow label="Property insurance" values={results.map((r) => r.bankCosts?.propertyYearly != null ? fmt(r.bankCosts.propertyYearly) + "/yr" : "—")} />
+              <CompareRow label="Early settlement" values={results.map((r) => r.earlySettlement ?? "—")} />
+              <CompareRow label="Partial settlement" values={results.map((r) => r.partialSettlement ?? "—")} />
+              {data.mode === "internal" && <CompareRow label="Positives (negotiating)" values={results.map((r) => r.posPoints || "—")} />}
+              {data.mode === "internal" && <CompareRow label="Watch-outs (negotiating)" values={results.map((r) => r.negPoints || "—")} />}
+            </tbody>
+          </table>
+        </div>
+        <p className="text-[10px] text-[var(--ink-faint)] m-0 mt-1">Government &amp; transfer fees are identical across banks — see the cost sheet below. "Income consumed" = EMI as % of the income supplied to the match.</p>
+
         {results.map((r) => (
           <div key={r.bankProductId} className="my-4 rounded-xl p-4" style={{ border: "1px solid var(--line)", background: "var(--tint)" }}>
             <div className="flex items-center gap-3 pb-2.5" style={{ borderBottom: "1px dashed var(--line)" }}>
               {r.logoUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
                 <img src={r.logoUrl} alt={r.bankName} style={{ height: 30, objectFit: "contain" }} />
               ) : (
                 <span className="font-disp font-bold text-[15px]">{r.bankName}</span>
@@ -226,6 +276,17 @@ function RateBox({ n, label, rate, emi, tone }: { n: string; label: string; rate
       <div className="text-[10px] font-disp font-semibold" style={{ color: tone === "amber" ? "var(--amber)" : "var(--ink-faint)" }}>{n} · {label}</div>
       <div className="mt-0.5">{rate != null ? <strong style={{ color: tone === "mint" ? "var(--mint)" : undefined }}>{rate.toFixed(2)}%</strong> : "—"}{emi != null ? <span className="text-[var(--ink-dim)]"> · {fmt(emi)}/mo</span> : null}</div>
     </div>
+  );
+}
+
+function CompareRow({ label, values, bold }: { label: string; values: string[]; bold?: boolean }) {
+  return (
+    <tr style={{ borderBottom: "1px dashed var(--line)" }}>
+      <td className="py-1.5 pr-2" style={{ color: "var(--ink-dim)", fontWeight: bold ? 700 : 400 }}>{label}</td>
+      {values.map((v, i) => (
+        <td key={i} className="py-1.5 px-2 mono" style={{ fontWeight: bold ? 700 : 400, color: bold ? "var(--amber)" : undefined }}>{v}</td>
+      ))}
+    </tr>
   );
 }
 

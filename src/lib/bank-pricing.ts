@@ -40,6 +40,7 @@ export interface QuoteMatchInput {
   ftv: number;               // finance-to-value %
   txn: string;               // canonical transaction
   segment?: string | null;
+  ratePref?: "fixed" | "flexible"; // prefer fixed-for-term or EIBOR-linked quotes
 }
 
 /** Does a single quote match the requested dimensions? */
@@ -57,8 +58,17 @@ export function quoteMatches(q: RateQuote, req: QuoteMatchInput): boolean {
 /** Best (lowest) matching rate quote for a case, or null when not priced. */
 export function resolveQuote(pricing: ProductPricing | null, req: QuoteMatchInput): RateQuote | null {
   if (!pricing?.quotes?.length) return null;
-  const matches = pricing.quotes.filter((q) => quoteMatches(q, req));
+  let matches = pricing.quotes.filter((q) => quoteMatches(q, req));
   if (matches.length === 0) return null;
+  // honour the rate preference when the bank offers that style; otherwise fall
+  // back to the bank's best available quote (shown with its own rate type)
+  if (req.ratePref === "fixed") {
+    const f = matches.filter((m) => m.rateType === "FIXED");
+    if (f.length) matches = f;
+  } else if (req.ratePref === "flexible") {
+    const v = matches.filter((m) => m.rateType !== "FIXED");
+    if (v.length) matches = v;
+  }
   // rank: FIXED first for a fixed-term request, then lowest effective rate
   const effective = (q: RateQuote) =>
     q.rateType === "FIXED" ? (q.ratePct ?? 99) : (q.marginPct ?? 99);

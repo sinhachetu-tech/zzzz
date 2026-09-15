@@ -26,6 +26,9 @@ export interface ApplicantDetails {
   rentalIncome: number;
   existingEmis: number;
   creditCardLimits: number;
+  // decision flags — change pricing/approval posture, not just data
+  goldenVisa?: boolean;   // 10-yr visa: several banks quote preferential rates/LTV
+  islamicOnly?: boolean;  // client will only take Sharia-compliant finance
 }
 
 export interface SecondPartyDetails {
@@ -48,6 +51,7 @@ export interface SecondPartyDetails {
   rentalIncome: number;
   existingEmis: number;
   creditCardLimits: number;
+  goldenVisa?: boolean;
 }
 
 export interface PropertyDetails {
@@ -159,6 +163,8 @@ export function parseCaseProfile(json?: string | null, fallbackCase?: Parameters
         rentalIncome: Number(p.primary.rentalIncome) || 0,
         existingEmis: Number(p.primary.existingEmis) || 0,
         creditCardLimits: Number(p.primary.creditCardLimits) || 0,
+        goldenVisa: !!p.primary.goldenVisa,
+        islamicOnly: !!p.primary.islamicOnly,
       },
       property: {
         propertyValue: Number(p.property?.propertyValue) || 0,
@@ -186,6 +192,7 @@ export function parseCaseProfile(json?: string | null, fallbackCase?: Parameters
         rentalIncome: Number(p.secondParty?.rentalIncome) || 0,
         existingEmis: Number(p.secondParty?.existingEmis) || 0,
         creditCardLimits: Number(p.secondParty?.creditCardLimits) || 0,
+        goldenVisa: !!p.secondParty?.goldenVisa,
       },
     };
   } catch {
