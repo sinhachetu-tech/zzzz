@@ -37,8 +37,12 @@ export async function POST(req: NextRequest) {
     stl: body.stl ?? true,
     termYears: Number(body.termYears) || 3,
     ratePref: body.ratePref === "fixed" || body.ratePref === "flexible" ? body.ratePref : undefined,
+    primaryAge: Number(body.primaryAge) || undefined,
+    coBorrowerAge: Number(body.coBorrowerAge) || undefined,
+    processingMonths: Number(body.processingMonths) || 3,
   };
   const prof = parseCaseProfile(c.profileJson, { customer: c.customer, loanAmount: c.loanAmount });
+  if (!body.processingMonths) input.processingMonths = prof.processingMonths || 3;
 
   const all = await runBankMatch(input);
   const ids: number[] = Array.isArray(body.productIds) ? body.productIds.map(Number) : [];

@@ -9,8 +9,9 @@ export type SecondPartyRole = "none" | "co_borrower" | "co_applicant";
 
 export interface ApplicantDetails {
   fullName: string;
-  dob?: string;
-  age?: number;
+  dob?: string;          // ISO date — drives the age-based tenure cap
+  age?: number;          // manual fallback when DOB is unknown
+  disbursementMonths?: number; // expected application->disbursement lag (months)
   nationality?: string;
   // KYC identity — EID is the legal person-key (unique); passport renewable
   eidNo?: string;
@@ -67,6 +68,21 @@ export interface CaseProfile {
   primary: ApplicantDetails;
   property: PropertyDetails;
   secondParty: SecondPartyDetails;
+  /** expected months from application to first EMI — banks take 2-4 months;
+      tenure must be measured at disbursement, not application. Default 3. */
+  processingMonths?: number;
+}
+
+/** Age in whole years from an ISO dob, as of today. */
+export function ageFromDob(dob?: string | null): number | undefined {
+  if (!dob) return undefined;
+  const d = new Date(dob);
+  if (isNaN(d.getTime())) return undefined;
+  const now = new Date();
+  let a = now.getFullYear() - d.getFullYear();
+  const m = now.getMonth() - d.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < d.getDate())) a--;
+  return a >= 0 && a < 120 ? a : undefined;
 }
 
 export interface JointAffordabilitySummary {
@@ -148,7 +164,7 @@ export function parseCaseProfile(json?: string | null, fallbackCase?: Parameters
       primary: {
         fullName: String(p.primary.fullName ?? fallbackCase?.customer ?? ""),
         dob: p.primary.dob ?? undefined,
-        age: typeof p.primary.age === "number" ? p.primary.age : undefined,
+        age: ageFromDob(p.primary.dob) ?? (typeof p.primary.age === "number" ? p.primary.age : undefined),
         nationality: p.primary.nationality ?? undefined,
         eidNo: p.primary.eidNo ?? undefined,
         passportNo: p.primary.passportNo ?? undefined,
@@ -179,7 +195,7 @@ export function parseCaseProfile(json?: string | null, fallbackCase?: Parameters
         relationship: p.secondParty?.relationship ?? "Spouse",
         fullName: String(p.secondParty?.fullName ?? fallbackCase?.coApplicantName ?? ""),
         dob: p.secondParty?.dob ?? undefined,
-        age: typeof p.secondParty?.age === "number" ? p.secondParty?.age : undefined,
+        age: ageFromDob(p.secondParty?.dob) ?? (typeof p.secondParty?.age === "number" ? p.secondParty?.age : undefined),
         nationality: p.secondParty?.nationality ?? undefined,
         eidNo: p.secondParty?.eidNo ?? undefined,
         passportNo: p.secondParty?.passportNo ?? undefined,
@@ -194,6 +210,7 @@ export function parseCaseProfile(json?: string | null, fallbackCase?: Parameters
         creditCardLimits: Number(p.secondParty?.creditCardLimits) || 0,
         goldenVisa: !!p.secondParty?.goldenVisa,
       },
+      processingMonths: Number(p.processingMonths) || 3,
     };
   } catch {
     return defaultCaseProfile(fallbackCase);

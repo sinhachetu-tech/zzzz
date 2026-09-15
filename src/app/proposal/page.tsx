@@ -40,6 +40,8 @@ interface ProposalResult {
   eligibleIncome: number | null;
   dbrPctUsed: number | null;
   ltvPct: number | null;
+  maxTenorByAge: number | null;
+  tenorUsed: number | null;
   posPoints: string | null;
   negPoints: string | null;
   policy: {
@@ -61,6 +63,7 @@ interface ProposalData {
     monthlyIncome?: number; existingEmis?: number; cardLimitsTotal?: number; rentalIncome?: number;
     bonusIncome?: number; stl: boolean; loanAmount: number; propertyValue: number;
     termYears?: number; ratePref?: string;
+    primaryAge?: number; coBorrowerAge?: number; processingMonths?: number;
   };
   checklist: { title: string; category: string; status: string; mandatory: boolean }[];
 }
@@ -386,6 +389,8 @@ function ProductInspector({ data }: { data: ProposalData }) {
           <Row k="Property value" v={fmt(data.input.propertyValue)} />
           <Row k="Rate preference applied" v={data.input.ratePref ?? "best available"} />
           <Row k="Fixed tenure requested" v={data.input.termYears ? data.input.termYears + "y" : "day-1 variable"} />
+          <Row k="Age at application" v={data.input.primaryAge ? data.input.primaryAge + "y" : "DOB not captured"} tone={data.input.primaryAge ? undefined : "amber"} />
+          <Row k="Processing time assumed" v={(data.input.processingMonths ?? 3) + " months"} />
         </div>
         <div>
           <div className="text-[10px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)] mb-1">Bank policy fields consumed</div>
@@ -424,6 +429,8 @@ function ProductInspector({ data }: { data: ProposalData }) {
           <Row k="EMI on requested — intro" v={fmt(r.introEmi) + " (" + (r.dbrIntro ?? "—") + "% of income)"} />
           <Row k="EMI — after intro" v={fmt(r.followOnEmi) + " (" + (r.dbrFollowOn ?? "—") + "%)"} />
           <Row k="EMI — stress-qualified" v={fmt(r.stressEmi) + " (" + (r.dbrStress ?? "—") + "%)"} tone="amber" />
+          <Row k="Tenure cap by age at disbursement" v={r.maxTenorByAge != null ? r.maxTenorByAge + "y (age " + ((data.input.primaryAge ?? 0) + (data.input.processingMonths ?? 3) / 12).toFixed(1) + " at drawdown)" : "n/a — no DOB/age"} tone={r.maxTenorByAge != null ? "amber" : undefined} />
+          <Row k="Tenure used in EMI math" v={r.tenorUsed != null ? r.tenorUsed + "y" : "—"} />
           <Row k="Processing fee / insurances" v={fmt(r.bankCosts?.processingFee) + " · " + fmt(r.bankCosts?.lifeMonthly) + "/mo · " + fmt(r.bankCosts?.propertyYearly) + "/yr"} />
           <Row k="Early / partial settlement" v={(r.earlySettlement ?? "—") + " / " + (r.partialSettlement ?? "—")} />
         </div>

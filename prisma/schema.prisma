@@ -332,6 +332,8 @@ model BankProduct {
   rentalCapPctOfSalary Float? // rental credit capped at this % of primary salary (DIB 50)
   dbrPct            Float? // bank DBR ceiling override (default 50)
   stressBufferPct   Float? // extra cushion on top of the follow-on rate for DSR (CBD +2; default 0)
+  maxAgeSalaried    Int?   // borrower age cap at loan maturity (salaried)
+  maxAgeSelfEmp     Int?   // borrower age cap at loan maturity (self-employed)
   totalTatDays      Int?
   paTatDays         Int?
   paValidityDays    Int?

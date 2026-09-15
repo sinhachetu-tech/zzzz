@@ -133,18 +133,19 @@ export function BankMatchPanel({ c }: { c: LoanCase }) {
           propertyValue: Number(propertyValue),
           stl, termYears: ratePref === "flexible" ? 0 : term,
           ratePref,
+          processingMonths: initProf.processingMonths ?? 3,
+          primaryAge: initProf.primary.age,
+          coBorrowerAge: initProf.secondParty.age,
           secondPartyRole,
           coBorrowerIncome: secondPartyRole === "co_borrower" ? Number(coBorrowerIncome) || 0 : 0,
           coBorrowerEmis: secondPartyRole === "co_borrower" ? Number(coBorrowerEmis) || 0 : 0,
           coBorrowerCardLimits: secondPartyRole === "co_borrower" ? Number(coBorrowerCardLimits) || 0 : 0,
-          primaryAge: initProf.primary.age,
-          coBorrowerAge: initProf.secondParty.age,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Match failed");
       setResults(data.results);
-      localStorage.setItem("hfmc_proposal_request", JSON.stringify({ caseId: c.id, monthlyIncome: Number(income), existingEmis: Number(emis) || 0, cardLimitsTotal: Number(cardLimits) || 0, rentalIncome: Number(rental) || 0, bonusIncome: Number(bonus) || 0, propertyValue: Number(propertyValue), loanAmount: c.loanAmount, stl, termYears: ratePref === "flexible" ? 0 : term, ratePref }));
+      localStorage.setItem("hfmc_proposal_request", JSON.stringify({ caseId: c.id, monthlyIncome: Number(income), existingEmis: Number(emis) || 0, cardLimitsTotal: Number(cardLimits) || 0, rentalIncome: Number(rental) || 0, bonusIncome: Number(bonus) || 0, propertyValue: Number(propertyValue), loanAmount: c.loanAmount, stl, termYears: ratePref === "flexible" ? 0 : term, ratePref, processingMonths: initProf.processingMonths ?? 3, primaryAge: initProf.primary.age, coBorrowerAge: initProf.secondParty.age }));
       // preselect eligible + conditions products for the proposal
       const pre: Record<number, boolean> = {};
       for (const r of data.results) if (r.verdict !== "not_eligible") pre[r.bankProductId] = true;
@@ -297,7 +298,7 @@ export function BankMatchPanel({ c }: { c: LoanCase }) {
           </button>
           {results && results.some((r) => selected[r.bankProductId]) && (
             <button className="btn btn-mint btn-sm" onClick={() => {
-              const raw = sessionStorage.getItem("hfmc_proposal_request");
+              const raw = localStorage.getItem("hfmc_proposal_request");
               if (!raw) return;
               const body = JSON.parse(raw);
               body.productIds = Object.entries(selected).filter(([, v]) => v).map(([k]) => Number(k));

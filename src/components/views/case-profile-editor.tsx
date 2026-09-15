@@ -13,6 +13,7 @@ import {
   type SecondPartyRole,
   parseCaseProfile,
   computeJointAffordability,
+  ageFromDob,
 } from "@/lib/case-profile";
 import { Chip } from "@/components/hfmc/ui";
 import { ICheck, IUsers } from "@/components/icons";
@@ -158,7 +159,11 @@ export function CaseProfileEditor({ c, onSaved }: Props) {
                   <input className="input" placeholder="e.g. Emirati, British, Indian" value={p.nationality ?? ""} onChange={(e) => updatePrimary({ nationality: e.target.value })} />
                 </div>
                 <div>
-                  <label className="label">Age (years)</label>
+                  <label className="label">Date of birth · <span style={{ color: "var(--amber)" }}>drives the tenure cap</span></label>
+                  <input className="input mono" type="date" value={p.dob ?? ""} onChange={(e) => updatePrimary({ dob: e.target.value || undefined, age: ageFromDob(e.target.value) ?? p.age })} />
+                </div>
+                <div>
+                  <label className="label">Age (years){p.dob ? " — from DOB" : " (fallback if DOB unknown)"}</label>
                   <input className="input mono" type="number" min={21} max={70} placeholder="38" value={p.age ?? ""} onChange={(e) => updatePrimary({ age: e.target.value ? Number(e.target.value) : undefined })} />
                 </div>
                 <div>
@@ -259,6 +264,16 @@ export function CaseProfileEditor({ c, onSaved }: Props) {
               <div>
                 <label className="label">Requested Loan Amount (AED)</label>
                 <input className="input mono" type="number" min={0} step={25000} placeholder="2000000" value={prop.loanAmount || ""} onChange={(e) => updateProperty({ loanAmount: Number(e.target.value) || 0 })} />
+              </div>
+              <div>
+                <label className="label">Processing time (months) · <span style={{ color: "var(--amber)" }}>tenure is capped at disbursement age</span></label>
+                <select className="select" value={profile.processingMonths ?? 3} onChange={(e) => setProfile((prev) => ({ ...prev, processingMonths: Number(e.target.value) }))}>
+                  <option value={2}>2 months</option>
+                  <option value={3}>3 months</option>
+                  <option value={4}>4 months</option>
+                  <option value={5}>5 months</option>
+                  <option value={6}>6 months</option>
+                </select>
               </div>
               <div>
                 <label className="label">Down Payment / Equity (AED)</label>
@@ -383,7 +398,11 @@ export function CaseProfileEditor({ c, onSaved }: Props) {
                       </select>
                     </div>
                     <div>
-                      <label className="label">Age (years)</label>
+                      <label className="label">Date of birth</label>
+                      <input className="input mono" type="date" value={s.dob ?? ""} onChange={(e) => updateSecondParty({ dob: e.target.value || undefined, age: ageFromDob(e.target.value) ?? s.age })} />
+                    </div>
+                    <div>
+                      <label className="label">Age (years){s.dob ? " — from DOB" : ""}</label>
                       <input className="input mono" type="number" min={21} max={70} placeholder="35" value={s.age ?? ""} onChange={(e) => updateSecondParty({ age: e.target.value ? Number(e.target.value) : undefined })} />
                     </div>
                     <div>
