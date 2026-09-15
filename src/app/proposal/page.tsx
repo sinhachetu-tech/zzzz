@@ -71,6 +71,9 @@ export default function ProposalPage() {
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- sessionStorage is browser-only; the initial load must set state
   useEffect(() => { load("client"); }, []);
+  useEffect(() => {
+    if (data) (window as unknown as { __proposalData?: ProposalData }).__proposalData = data;
+  }, [data]);
 
   if (loading) return <Shell><div className="p-10 text-center text-[var(--ink-faint)]">Assembling proposal…</div></Shell>;
   if (err) return <Shell><div className="p-10 text-center" style={{ color: "var(--coral)" }}>{err}</div></Shell>;
@@ -97,7 +100,8 @@ export default function ProposalPage() {
           }}>
             {savedOk ? "Saved ✓" : "Save to case"}
           </button>
-          <button className="btn btn-ghost btn-sm" onClick={() => window.print()}>🖨 Print / Save PDF</button>
+          <button className="btn btn-ghost btn-sm" onClick={exportCsv}>⬇ Export Excel (CSV)</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => window.print()}>🖨 Export PDF (print)</button>
         </div>
       </div>
 
@@ -260,6 +264,46 @@ export default function ProposalPage() {
     </Shell>
   );
 }
+
+function exportCsv() {
+  const d = (window as unknown as { __proposalData?: ProposalData }).__proposalData;
+  if (!d) return;
+  const banks = d.results;
+  const metrics: [string, (r: ProposalResult) => string][] = [
+    ["Verdict", (r) => r.verdict],
+    ["Eligible loan (AED)", (r) => num(r.eligibleLoan)],
+    ["Intro rate %", (r) => num(r.schedule?.introRatePct)],
+    ["Intro EMI (AED)", (r) => num(r.introEmi)],
+    ["After-intro rate %", (r) => num(r.schedule?.followOnRatePct)],
+    ["Follow-on EMI (AED)", (r) => num(r.followOnEmi)],
+    ["Stress rate %", (r) => num(r.schedule?.stressRatePct)],
+    ["Stress EMI (AED)", (r) => num(r.stressEmi)],
+    ["Income consumed intro %", (r) => num(r.dbrIntro)],
+    ["Income consumed after-intro %", (r) => num(r.dbrFollowOn)],
+    ["Income consumed stress %", (r) => num(r.dbrStress)],
+    ["Processing fee (AED)", (r) => num(r.bankCosts?.processingFee)],
+    ["Life insurance (AED/mo)", (r) => num(r.bankCosts?.lifeMonthly)],
+    ["Property insurance (AED/yr)", (r) => num(r.bankCosts?.propertyYearly)],
+    ["Early settlement", (r) => r.earlySettlement ?? ""],
+    ["Partial settlement", (r) => r.partialSettlement ?? ""],
+  ];
+  const esc = (v: string) => `"${String(v).replace(/"/g, '""')}"`;
+  const lines = [
+    [`Metric`, ...banks.map((b) => `${b.bankName} — ${b.productName}`)].map(esc).join(","),
+    ...metrics.map(([label, get]) => [esc(label), ...banks.map((b) => esc(get(b)))].join(",")),
+    "",
+    [esc("Cost to close — " + d.case.emirate)].map(esc).join(","),
+    ...d.costs.transferFees.map((f) => [esc(f.label), esc(String(f.amount))].join(",")),
+    [esc("Gross cash needed"), esc(String(d.costs.grossCashNeeded))].join(","),
+  ];
+  const csv = "\uFEFF" + lines.join("\r\n");
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const a = document.createElement("a");
+  a.href = url; a.download = `proposal-${d.case.caseNumber}.csv`; a.click();
+  URL.revokeObjectURL(url);
+}
+const num = (v: number | null | undefined) => (v == null ? "" : String(v));
+
 
 function Stat({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (
