@@ -2468,12 +2468,16 @@ function BankRulesTab() {
 
       {editing && (
         <Modal
+          full
           title={`Edit rules · ${editing.bankName} · ${editing.name}`}
           sub="Changes apply immediately to the rule engine when status is approved."
           onClose={() => setEditing(null)}
           width={640}
           footer={
             <>
+              <button className="btn btn-ghost mr-auto" onClick={() => setEditing(null)} disabled={busy} title="Return to the pricing list">
+                ← Back to pricing
+              </button>
               <button className="btn btn-ghost" onClick={() => setEditing(null)} disabled={busy}>Cancel</button>
               <button className="btn btn-ghost" disabled={busy} onClick={async () => { setBusy(true); await saveBankProduct(editing.id, { status: "draft" }); setEditing({ ...editing, status: "draft" }); setBusy(false); }}>
                 Move to draft

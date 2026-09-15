@@ -92,9 +92,12 @@ export function Avatar({ name, size = 30 }: { name: string; size?: number }) {
 /* ---------------- modal ---------------- */
 
 export function Modal({
-  title, sub, onClose, children, footer, width = 480,
+  title, sub, onClose, children, footer, width = 480, full = false,
 }: {
   title: string; sub?: string; onClose: () => void; children: ReactNode; footer?: ReactNode; width?: number;
+  /** full: workspace-sized editor (fills the viewport, scrolls internally) —
+      for long forms like the bank-rules editor where a popup feels cramped */
+  full?: boolean;
 }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -107,7 +110,10 @@ export function Modal({
       style={{ background: "rgba(6,13,17,0.72)" }}
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="card anim-scale-in w-full max-h-[88vh] flex flex-col" style={{ maxWidth: width, background: "var(--raised)" }}>
+      <div
+        className={"card anim-scale-in flex flex-col " + (full ? "w-full h-[96vh] max-w-none" : "w-full max-h-[88vh]")}
+        style={full ? { background: "var(--raised)" } : { maxWidth: width, background: "var(--raised)" }}
+      >
         <div className="flex items-start justify-between px-5 pt-4 pb-3 border-b border-[var(--line-soft)]">
           <div>
             <h3 className="font-disp text-[16px] font-semibold m-0">{title}</h3>
