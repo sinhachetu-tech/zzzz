@@ -135,6 +135,7 @@ HFMC — a UAE mortgage brokerage case tracker. Three portals:
 | Daily EIBOR update | Click the header ticker (needs designation `editEibor` or admin) — paste the CBUAE row verbatim (`Date  O/N  1W  1M  3M  6M  1Y  Value Date`, tab/comma separated) or type rates; publish date shows "as on" in the band, value date = effective; "Last edited" shows the true edit instant in the viewer's timezone; 6-decimal precision everywhere |
 | New API endpoint | new `src/app/api/<name>/route.ts`; expose to UI via `state/route.ts` + `client-store.ts` |
 | Proposal workflow | creation = Case 360 → Banks & proposal tab (Run match → Generate → Print/CSV); follow-up reporting = Reports → Proposal pipeline |
+| Test a product's calculation | Proposal page → **Product inspector**: pick bank + product, see every field the engine used (client inputs, bank policy, quote + source, EIBOR, computed intermediates). Missing fields show as "—" with the default applied — that's a data-gap detector |
 | New screen/nav item | view in `src/components/views/`, add Route in `client-store.ts`, item in `shell.tsx` navItems, render in `page.tsx` |
 | Client portal | `src/app/client/*` + `src/app/api/client/*` |
 | Email integration | `src/lib/graph.ts` (read), `src/lib/email-match.ts` (match), `src/app/api/email/*` |

@@ -75,6 +75,7 @@ export async function POST(req: NextRequest) {
 
   const bankIds = [...new Set(results.map((r) => r.bankProductId))];
   const products = await db.bankProduct.findMany({ where: { id: { in: bankIds } }, include: { bank: { select: { id: true, name: true, logoData: true, logoType: true, posPoints: true, negPoints: true } } } });
+  const eiborRows = await db.eiborRate.findMany();
   const bankLogos = products.map((p) => ({
     bankName: p.bank.name,
     logoUrl: p.bank.logoData ? `/api/banks/${p.bank.id}/logo` : null,
@@ -109,6 +110,7 @@ export async function POST(req: NextRequest) {
       islamicOnly: !!prof.primary.islamicOnly,
     },
     input,
+    eibor: eiborRows.map((e) => ({ tenor: e.tenor, ratePct: e.ratePct })),
     results: results.map((r) => {
       const prod = products.find((pp) => pp.id === r.bankProductId);
       const fees = parseFees((prod as unknown as { feesJson?: string })?.feesJson ?? "{}");
@@ -133,7 +135,23 @@ export async function POST(req: NextRequest) {
         dbrIntro: pct(r.introEmi), dbrFollowOn: pct(r.followOnEmi), dbrStress: pct(r.stressEmi),
         earlySettlement, partialSettlement,
         posPoints: mode === "internal" ? bank?.posPoints ?? null : null,
-        negPoints: mode === "internal" ? bank?.negPoints ?? null : null };
+        negPoints: mode === "internal" ? bank?.negPoints ?? null : null,
+        policy: {
+          tenorYears: prod?.tenorYears ?? null,
+          maxLtvNational: prod?.maxLtvNational ?? null,
+          maxLtvExpatriate: prod?.maxLtvExpatriate ?? null,
+          minLoan: prod?.minLoan ?? null,
+          maxLoan: prod?.maxLoan ?? null,
+          minSalary: prod?.minSalary ?? null,
+          dbrPct: prod?.dbrPct ?? null,
+          cardRulePct: prod?.cardRulePct ?? null,
+          bonusPct: prod?.bonusPct ?? null,
+          rentalIncomePct: prod?.rentalIncomePct ?? null,
+          rentalCapPctOfSalary: prod?.rentalCapPctOfSalary ?? null,
+          stressBufferPct: prod?.stressBufferPct ?? null,
+          totalTatDays: prod?.totalTatDays ?? null,
+          paTatDays: prod?.paTatDays ?? null,
+        } };
     }),
     costs: {
       equity,
