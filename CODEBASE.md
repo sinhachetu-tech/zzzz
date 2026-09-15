@@ -119,7 +119,7 @@ HFMC — a UAE mortgage brokerage case tracker. Three portals:
 | `bulletin.tsx` | Morning Bulletin directives (issue, complete, drop, carry, replies) |
 | `reports.tsx` | Reports: pipeline by stage, source mix, bank win rate, commission export, SLA |
 | `emails.tsx` | Unmatched-email review queue + recent email log |
-| `admin.tsx` | Admin: teammates, designations, banks (+products/fees editor — opens **full-screen** with "← Back to pricing"; quote rows include follow-on recipes), partners, channels, stages, masters, SLA, doc rules, fee rules. The shared `Modal` component (hfmc/ui.tsx) has a `full` variant for workspace-sized editors |
+| `admin.tsx` | Admin: teammates, designations, banks (+products/fees editor — opens **full-screen** with "← Back to pricing"; quote rows include follow-on recipes), partners, channels, stages, masters, SLA, doc rules, fee rules. The shared `Modal` component (hfmc/ui.tsx) has a `full` variant for workspace-sized editors, and all modals render through a **React portal to document.body** — without it, `fixed` overlays inside transformed ancestors (anim-fade-up cards, backdrop-blur bars) anchor to that ancestor and open "below or above" the content |
 | `proposal-history.tsx`/`daily-mis.tsx` | (also embedded inside Case 360 tabs) |
 
 ## "I want to change X — which files?"

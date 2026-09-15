@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import type { ReactNode } from "react";
 import type { CaseStatus, Tone } from "@/lib/types";
 import { STATUS_TONE, dueInfo, initials } from "@/lib/format";
@@ -104,7 +105,14 @@ export function Modal({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
-  return (
+  // Portal to document.body: a `fixed` overlay inside any ancestor with a
+  // transform/filter (cards with anim-fade-up, backdrop blur...) becomes
+  // positioned relative to THAT ancestor — modals then open "below or above"
+  // the content instead of centered on the viewport. Body-level portals are
+  // immune to every ancestor transform.
+  const mounted = typeof document !== "undefined";
+  if (!mounted) return null;
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 anim-fade-in"
       style={{ background: "rgba(6,13,17,0.72)" }}
@@ -126,7 +134,8 @@ export function Modal({
         <div className="px-5 py-4 overflow-y-auto">{children}</div>
         {footer && <div className="px-5 py-3.5 border-t border-[var(--line-soft)] flex justify-end gap-2.5">{footer}</div>}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
