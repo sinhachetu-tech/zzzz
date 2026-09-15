@@ -82,8 +82,8 @@ export interface MatchResult {
   introEmi: number | null;
   followOnEmi: number | null;
   stressEmi: number | null;
-  maxTenorByAge: number | null; // tenure ceiling from the maturity-age cap
-  tenorUsed: number | null;     // tenor actually applied in the EMI math
+  maxTenorByAgeMonths: number | null; // tenure ceiling in months (maturity-age cap, after processing months)
+  tenorUsedMonths: number | null;     // tenor actually applied in the EMI math, in months
   /** Structured fees from feesJson — null if no fees data on this product */
   fees: MatchFees | null;
   /** Structured insurance from insuranceJson — null if no data */
@@ -157,7 +157,7 @@ function baseResult(p: { id: number }, bankName: string, productName: string, jo
     bankProductId: p.id, bankName, productName, verdict: "not_eligible", reasons: [],
     quote: null, assessmentRatePct: null, monthlyEmi: null, maxLoanByDbr: null,
     maxLoanByLtv: null, eligibleLoan: null, ltvPct: null, cardObligation: null,
-    dbrPctUsed: null, eligibleIncome: null, schedule: null, introEmi: null, maxTenorByAge: null, tenorUsed: null,
+    dbrPctUsed: null, eligibleIncome: null, schedule: null, introEmi: null, maxTenorByAgeMonths: null, tenorUsedMonths: null,
     followOnEmi: null, stressEmi: null, fees: null, insurance: null, costBreakdown: null,
     tat: { totalTatDays: null, paTatDays: null, paValidityDays: null, folValidityDays: null, valuationValidityDays: null },
     jointAffordability: jointAffordability ?? {
@@ -291,28 +291,31 @@ export async function runBankMatch(input: MatchInput): Promise<MatchResult[]> {
     const dbrPct = p.dbrPct ?? 50;
 
     let maxLoanByDbr: number | null = null;
-    let maxTenorByAge: number | null = null;
-    let tenorUsed: number | null = null;
+    let maxTenorByAgeMonths: number | null = null;
+    let tenorUsedMonths: number | null = null;
     let monthlyEmi: number | null = null;
     let introEmi: number | null = null;
     let followOnEmi: number | null = null;
     let stressEmi: number | null = null;
     const schedule: RateSchedule | null = rateSchedule(quote, eibor, (p as unknown as { stressBufferPct?: number | null }).stressBufferPct ?? 0);
     // indicative EMIs: product tenor, else the 25-year UAE norm — then capped by
-    // the borrower's age AT DISBURSEMENT (application + processing months):
-    // max tenure = bank's maturity age cap − age when EMIs start
+    // the borrower's age AT DISBURSEMENT, all in MONTHS: eligible tenure =
+    // (maturity-age cap − age at application) × 12 − processing months
     const ages = [input.primaryAge, input.secondPartyRole === "co_borrower" ? input.coBorrowerAge : null]
       .filter((a): a is number => typeof a === "number" && a > 0);
     const oldest = ages.length ? Math.max(...ages) : null;
     const maxAge = input.employmentProfile === "Self-Employed"
       ? ((p as unknown as { maxAgeSelfEmp?: number | null }).maxAgeSelfEmp ?? 70)
       : ((p as unknown as { maxAgeSalaried?: number | null }).maxAgeSalaried ?? 70);
-    const ageCapYears = oldest != null ? Math.floor(maxAge - (oldest + (input.processingMonths ?? 0) / 12)) : null;
-    const tenorY = Math.max(1, Math.min(p.tenorYears ?? 25, ageCapYears ?? 999));
-    maxTenorByAge = ageCapYears;
-    tenorUsed = tenorY;
-    if (ageCapYears != null && (p.tenorYears ?? 25) > ageCapYears) {
-      reasons.push("tenure capped to " + tenorY + "y — age " + oldest + " + " + (input.processingMonths ?? 0) + " months processing vs " + maxAge + "y maturity cap");
+    const procMonths = input.processingMonths ?? 0;
+    const maxTenureMonthsByAge = oldest != null ? Math.floor((maxAge - oldest) * 12 - procMonths) : null;
+    const productTenorMonths = (p.tenorYears ?? 25) * 12;
+    const tenorMonths = Math.max(12, Math.min(productTenorMonths, maxTenureMonthsByAge ?? 999));
+    maxTenorByAgeMonths = maxTenureMonthsByAge;
+    tenorUsedMonths = tenorMonths;
+    const tenorY = tenorMonths / 12;
+    if (maxTenureMonthsByAge != null && productTenorMonths > maxTenureMonthsByAge) {
+      reasons.push("tenure capped to " + tenorMonths + " months (" + (tenorMonths / 12).toFixed(1) + "y) — age " + oldest + " + " + procMonths + " months processing vs " + maxAge + "y maturity cap");
     }
     if (rate != null) {
       const availableEmi = Math.round((eligibleIncome * dbrPct) / 100 - input.existingEmis - cardObligation);
@@ -355,7 +358,7 @@ export async function runBankMatch(input: MatchInput): Promise<MatchResult[]> {
     let costBreakdown: TotalCostBreakdown | null = null;
     if (introEmi != null && p.tenorYears) {
       costBreakdown = totalCostOfFinance(
-        input.loanAmount, p.tenorYears,
+        input.loanAmount, tenorY,
         introEmi, // use intro EMI for the intro period — approximation
         bfees, bins, txn, input.stl,
       );
@@ -378,7 +381,7 @@ export async function runBankMatch(input: MatchInput): Promise<MatchResult[]> {
       monthlyEmi, maxLoanByDbr, maxLoanByLtv, eligibleLoan, ltvPct,
       cardObligation, dbrPctUsed: dbrPct, eligibleIncome, schedule,
       introEmi, followOnEmi, stressEmi,
-      maxTenorByAge, tenorUsed,
+      maxTenorByAgeMonths, tenorUsedMonths,
       fees: matchFees,
       insurance: matchIns,
       costBreakdown,

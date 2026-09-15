@@ -40,8 +40,8 @@ interface ProposalResult {
   eligibleIncome: number | null;
   dbrPctUsed: number | null;
   ltvPct: number | null;
-  maxTenorByAge: number | null;
-  tenorUsed: number | null;
+  maxTenorByAgeMonths: number | null;
+  tenorUsedMonths: number | null;
   posPoints: string | null;
   negPoints: string | null;
   policy: {
@@ -175,6 +175,7 @@ export default function ProposalPage() {
             </thead>
             <tbody>
               <CompareRow label="Eligible loan" values={results.map((r) => fmt(r.eligibleLoan))} bold />
+              <CompareRow label="Eligible tenure (months)" values={results.map((r) => r.tenorUsedMonths != null ? String(r.tenorUsedMonths) : "—")} />
               <CompareRow label="Intro rate" values={results.map((r) => r.schedule?.introRatePct != null ? r.schedule.introRatePct.toFixed(2) + "%" : "—")} />
               <CompareRow label="Intro EMI" values={results.map((r) => fmt(r.introEmi))} />
               <CompareRow label="After-intro rate" values={results.map((r) => r.schedule?.followOnRatePct != null ? r.schedule.followOnRatePct.toFixed(2) + "%" : "—")} />
@@ -218,6 +219,7 @@ export default function ProposalPage() {
               <span>Max by DBR: {fmt(r.maxLoanByDbr)}</span>
               <span>Max by LTV: {fmt(r.maxLoanByLtv)}</span>
               <span>EMI on requested: {fmt(r.monthlyEmi)}</span>
+              <span>Eligible tenure: {r.tenorUsedMonths != null ? <strong style={{ color: "var(--amber)" }}>{r.tenorUsedMonths} months</strong> : "—"}{(r.maxTenorByAgeMonths != null && r.maxTenorByAgeMonths < r.tenorUsedMonths!) ? " (age-capped)" : ""}</span>
               {r.reasons.length > 0 && <span style={{ color: "var(--coral)" }}>{r.reasons.join(" · ")}</span>}
             </div>
             {r.bankCosts && (r.bankCosts.processingFee != null || r.bankCosts.lifeMonthly != null) && (
@@ -429,8 +431,8 @@ function ProductInspector({ data }: { data: ProposalData }) {
           <Row k="EMI on requested — intro" v={fmt(r.introEmi) + " (" + (r.dbrIntro ?? "—") + "% of income)"} />
           <Row k="EMI — after intro" v={fmt(r.followOnEmi) + " (" + (r.dbrFollowOn ?? "—") + "%)"} />
           <Row k="EMI — stress-qualified" v={fmt(r.stressEmi) + " (" + (r.dbrStress ?? "—") + "%)"} tone="amber" />
-          <Row k="Tenure cap by age at disbursement" v={r.maxTenorByAge != null ? r.maxTenorByAge + "y (age " + ((data.input.primaryAge ?? 0) + (data.input.processingMonths ?? 3) / 12).toFixed(1) + " at drawdown)" : "n/a — no DOB/age"} tone={r.maxTenorByAge != null ? "amber" : undefined} />
-          <Row k="Tenure used in EMI math" v={r.tenorUsed != null ? r.tenorUsed + "y" : "—"} />
+          <Row k="Tenure cap by age (after processing gap)" v={r.maxTenorByAgeMonths != null ? r.maxTenorByAgeMonths + " months" : "n/a — no DOB/age"} tone={r.maxTenorByAgeMonths != null ? "amber" : undefined} />
+          <Row k="Eligible tenure used in EMI math" v={r.tenorUsedMonths != null ? r.tenorUsedMonths + " months (" + (r.tenorUsedMonths / 12).toFixed(1) + "y)" : "—"} tone="mint" />
           <Row k="Processing fee / insurances" v={fmt(r.bankCosts?.processingFee) + " · " + fmt(r.bankCosts?.lifeMonthly) + "/mo · " + fmt(r.bankCosts?.propertyYearly) + "/yr"} />
           <Row k="Early / partial settlement" v={(r.earlySettlement ?? "—") + " / " + (r.partialSettlement ?? "—")} />
         </div>
