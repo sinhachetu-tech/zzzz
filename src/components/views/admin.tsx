@@ -2559,7 +2559,7 @@ function BankRulesTab() {
                   }
                 }}
               >
-                + Save as New Version (Next Month)
+                Save as new version
               </button>
               <button
                 className="btn btn-primary"
