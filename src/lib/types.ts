@@ -68,6 +68,7 @@ export interface LoanCase {
   transactionType: string; // Buyout, Buyout+Equity, Primary Handover, Resale, etc.
   propertyLocation: string | null; // Dubai, Abu Dhabi, ADGM, etc.
   coApplicantName: string | null;
+  partnerRm: string | null; // partner's RM/coordinator on this file
   onHold: boolean;
   holdReason: string | null;
   holdUntil: string | null;
@@ -232,6 +233,13 @@ export interface MasterItem {
   active: boolean;
 }
 
+export interface Contact {
+  name: string;
+  phone?: string;
+  email?: string;
+  role?: string; // RM / relationship manager title, desk, etc.
+}
+
 export interface BankItem {
   id: number;
   name: string;
@@ -241,6 +249,7 @@ export interface BankItem {
   negPoints: string;
   website: string;
   active: boolean;
+  contacts: Contact[]; // bank RMs
 }
 
 // Bank rule product — decoded from the rates/policy workbooks, versioned.
@@ -286,6 +295,7 @@ export interface BankProduct {
   version: number;
   status: "draft" | "approved";
   effectiveDate: string | null;
+  expiryDate?: string;
   approvedBy: string | null;
   sourceFiles: string;
   active: boolean;
@@ -297,6 +307,7 @@ export interface PartnerItem {
   name: string;
   defaultSharePct: number;
   active: boolean;
+  contacts: Contact[]; // partner RMs / coordinators
 }
 
 export interface AffordabilityCheck {

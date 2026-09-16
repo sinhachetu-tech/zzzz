@@ -7,6 +7,7 @@
 import { useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useHfmcStore } from "@/lib/client-store";
+import { parsePricing, resolveQuote, rateSchedule } from "@/lib/bank-pricing";
 import {
   FREQUENCIES, LIAB_METHODS, LIAB_TYPES, LTV_CHOICES,
   SALARIED_SOURCES, SE_SOURCES,
@@ -57,8 +58,9 @@ function Stat({ label, value, tone }: { label: string; value: string; tone?: str
 }
 
 function NumIn({ value, onChange, min = 0, step = 1000, placeholder }: { value: number; onChange: (n: number) => void; min?: number; step?: number; placeholder?: string }) {
+  // a stored 0 renders empty so typing replaces it (no "0500000" fighting)
   return (
-    <input className="input mono" type="number" min={min} step={step} value={Number.isFinite(value) ? value : ""} placeholder={placeholder}
+    <input className="input mono" type="number" min={min} step={step} value={Number.isFinite(value) && value !== 0 ? value : ""} placeholder={placeholder ?? "0"}
       onChange={(e) => onChange(e.target.value === "" ? 0 : Number(e.target.value))} />
   );
 }
@@ -699,10 +701,81 @@ type WhifTab = "liab" | "rate" | "tenor" | "income";
 
 type CalcMode = "affordability" | "transfer";
 
+/* Client picker — search the client master by name, mobile, email or EID. */
+function ClientPicker({ clients, cases, onPick, onClose }: {
+  clients: { id: number; fullName: string; phone: string; email: string | null; eidNo: string | null; emirate: string | null; dob: string | null; residency: string; employmentProfile: string; monthlySalary: number }[];
+  cases: { id: number; clientId: number | null; profileJson?: string | null }[];
+  onPick: (c: { id: number; fullName: string; dob: string | null; emirate: string | null; residency: string; employmentProfile: string }) => void;
+  onClose: () => void;
+}) {
+  const [q, setQ] = useState("");
+  const hits = useMemo(() => {
+    const t = q.trim().toLowerCase();
+    if (!t) return clients.slice(0, 8);
+    return clients.filter((c) =>
+      c.fullName.toLowerCase().includes(t) ||
+      (c.phone || "").includes(t.replace(/\D/g, "")) ||
+      (c.email ?? "").toLowerCase().includes(t) ||
+      (c.eidNo ?? "").includes(t.replace(/\D/g, ""))
+    ).slice(0, 10);
+  }, [q, clients]);
+  return (
+    <div className="px-5 py-4">
+      <input className="input" autoFocus placeholder="Name, mobile, email or Emirates ID…" value={q} onChange={(e) => setQ(e.target.value)} />
+      <div className="mt-3 space-y-1.5 max-h-[46vh] overflow-y-auto">
+        {hits.length === 0 && <p className="text-[12.5px] text-[var(--ink-faint)] m-0 py-3 text-center">No match — type the name, part of the mobile, email or EID.</p>}
+        {hits.map((c) => (
+          <button key={c.id} className="w-full text-left rounded-lg px-3 py-2 hover:bg-[var(--tint)] transition-colors" style={{ border: "1px solid var(--line-soft)" }}
+            onClick={() => onPick(c)}>
+            <span className="text-[13px] font-medium">{c.fullName}</span>
+            <span className="block text-[11px] text-[var(--ink-faint)] mono">
+              {[c.phone, c.email, c.eidNo ? "EID ✓" : null, c.employmentProfile].filter(Boolean).join(" · ")}
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function Calculator() {
-  const { me, toast, nav, feeRules, docRules } = useHfmcStore();
+  const { me, toast, nav, feeRules, docRules, clients, cases, bankProducts, eibor } = useHfmcStore();
   const [mode, setMode] = useState<CalcMode>("affordability");
   const [input, setInput] = useState<MortgageInput>(defaultInput);
+  // deal shape — auto-filled from the selected client's latest case, always editable
+  const [dealEmirate, setDealEmirate] = useState("Dubai");
+  const [dealTxn, setDealTxn] = useState("Resale");
+  const [pickerOpen, setPickerOpen] = useState(false);
+  // rate scenario — what-if over the three rates, or fetched from a bank product
+  const [rateStyle, setRateStyle] = useState<"fixed" | "variable">("fixed");
+  const [introRate, setIntroRate] = useState(0);
+  const [introYears, setIntroYears] = useState(3);
+  const [foTenor, setFoTenor] = useState<"1M" | "3M" | "6M" | "1Y">("3M");
+  const [foSpread, setFoSpread] = useState(0);
+  const [foFinal, setFoFinal] = useState(0);
+  const [useFoFinal, setUseFoFinal] = useState(false);
+  const [stressSpread, setStressSpread] = useState(0);
+  const [stressFinal, setStressFinal] = useState(0);
+  const [useStressFinal, setUseStressFinal] = useState(false);
+  const [fetchBank, setFetchBank] = useState("");
+  const [fetchProduct, setFetchProduct] = useState("");
+
+  const eiborPct = (t: string) => eibor.find((e) => e.tenor === t)?.ratePct ?? null;
+
+  // three-scenario rates: explicit inputs, or auto-filled from the chosen bank product.
+  // DBR1/2/3 use the calculator's own qualifying income + existing obligations.
+  const scenario = (() => {
+    if (rateStyle === "variable") {
+      const eib = eiborPct(foTenor) ?? 0;
+      const rate = eib + foSpread;
+      const stress = useStressFinal ? stressFinal : rate + stressSpread;
+      return { intro: rate, introYears: 0, followOn: rate, stress };
+    }
+    const eib = eiborPct(foTenor) ?? 0;
+    const followOn = useFoFinal ? foFinal : eib + foSpread;
+    const stress = useStressFinal ? stressFinal : followOn + stressSpread;
+    return { intro: introRate, introYears, followOn, stress };
+  })();
   const [whif, setWhif] = useState<WhifTab>("liab");
   const [cardId, setCardId] = useState("");
   const [cardLimit, setCardLimit] = useState("");
@@ -901,8 +974,44 @@ export default function Calculator() {
         </div>
       </div>
 
+      {pickerOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 anim-fade-in" style={{ background: "rgba(6,13,17,0.72)" }} onMouseDown={(e) => { if (e.target === e.currentTarget) setPickerOpen(false); }}>
+          <div className="card anim-scale-in w-full" style={{ maxWidth: 560, background: "var(--raised)" }}>
+            <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b" style={{ borderColor: "var(--line-soft)" }}>
+              <h3 className="font-disp text-[15px] font-semibold m-0">Pick a client</h3>
+              <button className="btn btn-ghost btn-sm !px-2" onClick={() => setPickerOpen(false)}>✕</button>
+            </div>
+            <ClientPicker
+              clients={clients}
+              cases={cases}
+              onPick={(cl) => {
+                up({
+                  name: cl.fullName,
+                  dob: cl.dob ?? input.dob,
+                  applicantType: cl.residency === "UAE National" ? "UAE National" : "Expatriate",
+                  employment: cl.employmentProfile === "Self-Employed" ? "Self-Employed" : "Salaried",
+                });
+                if (cl.emirate) setDealEmirate(cl.emirate);
+                // co-borrower auto-fetch: a client who is a second party on another case comes in via the case profile
+                const linked = cases.find((c) => c.clientId === cl.id && c.profileJson);
+                if (linked) {
+                  try {
+                    const prof = JSON.parse(linked.profileJson || "{}");
+                    const emi = Number(prof.primary?.existingEmis) || 0;
+                    if (emi) setInput((prev) => ({ ...prev, liabilities: prev.liabilities.map((l, i) => (i === 0 ? { ...l, emi } : l)) }));
+                  } catch { /* ignore */ }
+                }
+                setPickerOpen(false);
+                toast("success", cl.fullName + " loaded — verify income and liabilities.");
+              }}
+              onClose={() => setPickerOpen(false)}
+            />
+          </div>
+        </div>
+      )}
+
       {mode === "transfer" ? (
-        <TransferFees feeRules={feeRules} docRules={docRules} />
+        <TransferFees feeRules={feeRules} docRules={docRules} initial={{ emirate: dealEmirate, txn: dealTxn, propertyValue: input.propertyValue, finance: input.requested }} />
       ) : (
       <>
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_420px] gap-4 items-start">
@@ -912,11 +1021,22 @@ export default function Calculator() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="label">Applicant name</label>
-                <input className="input" value={input.name} onChange={(e) => up({ name: e.target.value })} placeholder="e.g. Mohammed Al Mansoori" />
+                <div className="flex gap-1.5">
+                  <input className="input" value={input.name} onChange={(e) => up({ name: e.target.value })} placeholder="e.g. Mohammed Al Mansoori" />
+                  <button className="btn btn-ghost btn-sm shrink-0" title="Search existing clients by name, mobile, email or EID" onClick={() => setPickerOpen(true)}>🔍</button>
+                </div>
               </div>
               <div>
-                <label className="label">WhatsApp</label>
-                <input className="input mono" value={input.whatsapp} onChange={(e) => up({ whatsapp: e.target.value })} placeholder="+971 50 …" />
+                <label className="label">Emirate · <span className="normal-case tracking-normal" style={{ color: "var(--ink-faint)" }}>pre-filled, editable</span></label>
+                <select className="select" value={dealEmirate} onChange={(e) => setDealEmirate(e.target.value)}>
+                  {["Dubai", "Abu Dhabi", "Sharjah", "Ajman", "RAK", "Fujairah", "UAQ"].map((x) => <option key={x}>{x}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="label">Transaction type · <span className="normal-case tracking-normal" style={{ color: "var(--ink-faint)" }}>pre-filled, editable</span></label>
+                <select className="select" value={dealTxn} onChange={(e) => setDealTxn(e.target.value)}>
+                  {["Resale", "Primary Handover", "Buyout", "Buyout + Equity Release", "Equity Release"].map((x) => <option key={x}>{x}</option>)}
+                </select>
               </div>
               <div>
                 <label className="label">Applicant type</label>
@@ -1131,13 +1251,137 @@ export default function Calculator() {
             </div>
           </Section>
 
-          <Section num="05" title="Rate & stress" hint="assessment rate drives the DBR MPBF">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <Section num="05" title="Rate scenario — intro / follow-on / stress" hint="DBR 1·2·3 at each stage, or fetch from a bank product">
+            {/* optional engine fetch */}
+            <div className="flex flex-wrap items-end gap-2 mb-3 pb-3" style={{ borderBottom: "1px dashed var(--line)" }}>
               <div>
-                <label className="label">Actual / contract rate %</label>
+                <label className="label">Fetch from engine — optional</label>
+                <select className="select" style={{ width: 150 }} value={fetchBank}
+                  onChange={(e) => { setFetchBank(e.target.value); setFetchProduct(""); }}>
+                  <option value="">— bank —</option>
+                  {[...new Set(bankProducts.filter((b) => b.active).map((b) => b.bankName))].sort().map((bn) => <option key={bn}>{bn}</option>)}
+                </select>
+              </div>
+              {fetchBank && (
+                <div>
+                  <label className="label">Product</label>
+                  <select className="select" style={{ width: 240 }} value={fetchProduct}
+                    onChange={(e) => {
+                      setFetchProduct(e.target.value);
+                      const prod = bankProducts.find((b) => String(b.id) === e.target.value);
+                      if (!prod) return;
+                      const pricing = parsePricing(prod.pricingJson);
+                      const quote = resolveQuote(pricing, { stl: true, termYears: 3, ftv: 80, txn: "Resale" });
+                      if (!quote) { toast("error", "That product has no rate quotes filed yet."); return; }
+                      const sched = rateSchedule(quote, { ON: eiborPct("ON") ?? 0, "1M": eiborPct("1M") ?? 0, "3M": eiborPct("3M") ?? 0, "6M": eiborPct("6M") ?? 0, "1Y": eiborPct("1Y") ?? 0 }, prod.stressBufferPct ?? 0);
+                      if (sched.introTermYears && sched.introTermYears > 0) {
+                        setRateStyle("fixed"); setIntroRate(sched.introRatePct ?? 0); setIntroYears(sched.introTermYears);
+                        const fo = sched.followOnRatePct ?? 0;
+                        const basis = (quote.variableAfter?.basis ?? "3M") as "1M" | "3M" | "6M" | "1Y";
+                        setFoTenor(basis); setUseFoFinal(true); setFoFinal(fo);
+                        setUseStressFinal(true); setStressFinal(sched.stressRatePct ?? fo);
+                      } else {
+                        setRateStyle("variable"); setFoTenor((quote.rateType.replace("_EIBOR", "") || "3M") as "1M" | "3M" | "6M" | "1Y");
+                        setFoSpread(quote.marginPct ?? 0); setUseStressFinal(true); setStressFinal(sched.stressRatePct ?? 0);
+                      }
+                      toast("success", prod.bankName + " rates loaded — edit freely, engine link is optional.");
+                    }}>
+                    <option value="">— product —</option>
+                    {bankProducts.filter((b) => b.active && b.bankName === fetchBank).map((b) => <option key={b.id} value={String(b.id)}>{b.name}</option>)}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            {/* fixed vs variable */}
+            <div className="flex gap-1.5 mb-3">
+              <button type="button" className="chip transition-all" style={rateStyle === "fixed" ? { background: "var(--amber-tint)", borderColor: "var(--amber)", color: "var(--amber)" } : { background: "var(--bg2)", borderColor: "var(--line)", color: "var(--ink-faint)" }}
+                onClick={() => setRateStyle("fixed")}>Fixed intro</button>
+              <button type="button" className="chip transition-all" style={rateStyle === "variable" ? { background: "var(--amber-tint)", borderColor: "var(--amber)", color: "var(--amber)" } : { background: "var(--bg2)", borderColor: "var(--line)", color: "var(--ink-faint)" }}
+                onClick={() => setRateStyle("variable")}>Day-1 variable</button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+              {rateStyle === "fixed" ? (
+                <>
+                  <div>
+                    <label className="label">Intro / fixed rate %</label>
+                    <input className="input mono" type="number" step={0.01} min={0} value={introRate || ""} onChange={(e) => setIntroRate(Number(e.target.value) || 0)} />
+                  </div>
+                  <div>
+                    <label className="label">Fixed for</label>
+                    <select className="select" value={introYears} onChange={(e) => setIntroYears(Number(e.target.value))}>
+                      {[1, 2, 3, 4, 5].map((y) => <option key={y} value={y}>{y} year{y > 1 ? "s" : ""}</option>)}
+                    </select>
+                  </div>
+                </>
+              ) : <div className="sm:col-span-2 text-[11.5px] text-[var(--ink-faint)] self-end pb-2">Day-1 variable: intro = follow-on (EIBOR + spread below).</div>}
+              <div>
+                <label className="label">Follow-on {rateStyle === "fixed" ? "after fixed term" : ""}</label>
+                <div className="flex gap-1">
+                  <select className="select !w-auto" value={useFoFinal ? "final" : foTenor} onChange={(e) => { if (e.target.value === "final") setUseFoFinal(true); else { setUseFoFinal(false); setFoTenor(e.target.value as typeof foTenor); } }}>
+                    <option value="1M">1M EIBOR +</option>
+                    <option value="3M">3M EIBOR +</option>
+                    <option value="6M">6M EIBOR +</option>
+                    <option value="1Y">1Y EIBOR +</option>
+                    <option value="final">final figure</option>
+                  </select>
+                  {useFoFinal
+                    ? <input className="input mono !w-24" type="number" step={0.01} value={foFinal || ""} onChange={(e) => setFoFinal(Number(e.target.value) || 0)} placeholder="%" />
+                    : <input className="input mono !w-20" type="number" step={0.005} value={foSpread || ""} onChange={(e) => setFoSpread(Number(e.target.value) || 0)} placeholder="spread" />}
+                </div>
+              </div>
+              <div>
+                <label className="label">Stress rate</label>
+                <div className="flex gap-1">
+                  <button type="button" className="chip transition-all" style={!useStressFinal ? { background: "var(--amber-tint)", borderColor: "var(--amber)", color: "var(--amber)" } : { background: "var(--bg2)", borderColor: "var(--line)", color: "var(--ink-faint)" }}
+                    onClick={() => setUseStressFinal(false)}>spread +</button>
+                  {useStressFinal
+                    ? <input className="input mono !w-24" type="number" step={0.01} value={stressFinal || ""} onChange={(e) => setStressFinal(Number(e.target.value) || 0)} placeholder="final %" />
+                    : <input className="input mono !w-20" type="number" step={0.05} value={stressSpread || ""} onChange={(e) => setStressSpread(Number(e.target.value) || 0)} placeholder="%" />}
+                </div>
+              </div>
+            </div>
+
+            {/* DBR 1/2/3 + push to assessment */}
+            {(() => {
+              const months = r.maxTenorMonths || 300;
+              const emiFor = (rate: number) => rate > 0 ? Math.round((input.requested * (rate / 100 / 12)) / (1 - Math.pow(1 + rate / 100 / 12, -months))) || 0 : 0;
+              const emi1 = emiFor(scenario.intro), emi2 = emiFor(scenario.followOn), emi3 = emiFor(scenario.stress);
+              const obligations = r.existingEmis;
+              const income = r.eligibleIncome || 0;
+              const dbr = (e: number) => income > 0 ? Math.round(((e + obligations) / income) * 1000) / 10 : 0;
+              return (
+                <div className="grid grid-cols-3 gap-2.5 mt-3.5 pt-3.5" style={{ borderTop: "1px dashed var(--line)" }}>
+                  <div className="rounded-lg px-3 py-2" style={{ background: "var(--bg2)", border: "1px solid var(--line)" }}>
+                    <div className="text-[10px] font-disp font-semibold text-[var(--ink-faint)]">DBR 1 · intro {scenario.intro.toFixed(2)}%{scenario.introYears ? ` · ${scenario.introYears}y` : ""}</div>
+                    <div className="mono text-[15px] font-bold mt-0.5">{dbr(emi1)}%</div>
+                    <div className="text-[10.5px] text-[var(--ink-faint)] mono">EMI {fmtAED(emi1)}</div>
+                  </div>
+                  <div className="rounded-lg px-3 py-2" style={{ background: "var(--bg2)", border: "1px solid var(--line)" }}>
+                    <div className="text-[10px] font-disp font-semibold text-[var(--ink-faint)]">DBR 2 · follow-on {scenario.followOn.toFixed(2)}%</div>
+                    <div className="mono text-[15px] font-bold mt-0.5">{dbr(emi2)}%</div>
+                    <div className="text-[10.5px] text-[var(--ink-faint)] mono">EMI {fmtAED(emi2)}</div>
+                  </div>
+                  <div className="rounded-lg px-3 py-2" style={{ background: "var(--amber-tint)", border: "1px solid var(--amber)" }}>
+                    <div className="text-[10px] font-disp font-semibold" style={{ color: "var(--amber)" }}>DBR 3 · stress {scenario.stress.toFixed(2)}%</div>
+                    <div className="mono text-[15px] font-bold mt-0.5" style={{ color: "var(--amber)" }}>{dbr(emi3)}%</div>
+                    <div className="text-[10.5px] text-[var(--ink-faint)] mono">EMI {fmtAED(emi3)}</div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-3 mt-3.5 pt-3.5" style={{ borderTop: "1px dashed var(--line)" }}>
+              <div>
+                <label className="label">Assessment rate % — drives MPBF</label>
                 <input className="input mono" type="number" step={0.05} min={0} value={input.actualRate}
                   onChange={(e) => up({ actualRate: Number(e.target.value) || 0 })} />
               </div>
+              <button type="button" className="btn btn-ghost btn-sm self-end" title="Copy the stress rate into the assessment rate"
+                onClick={() => up({ actualRate: Math.round(scenario.stress * 100) / 100, stressOverride: null })}>
+                Use stress ({scenario.stress.toFixed(2)}%) as assessment
+              </button>
               <div>
                 <label className="label">Load factor</label>
                 <div className="flex gap-1.5 flex-wrap">
@@ -1288,11 +1532,12 @@ export default function Calculator() {
 const FEE_EMIRATES = ["Dubai", "Abu Dhabi"] as const;
 const FEE_TXNS = ["Primary", "Resale", "Buyout"] as const;
 
-function TransferFees({ feeRules, docRules }: { feeRules: FeeRule[]; docRules: DocRule[] }) {
-  const [emirate, setEmirate] = useState<(typeof FEE_EMIRATES)[number]>("Dubai");
-  const [txn, setTxn] = useState<(typeof FEE_TXNS)[number]>("Primary");
-  const [propertyValue, setPropertyValue] = useState(2500000);
-  const [finance, setFinance] = useState(2000000);
+function TransferFees({ feeRules, docRules, initial }: { feeRules: FeeRule[]; docRules: DocRule[]; initial?: { emirate?: string; txn?: string; propertyValue?: number; finance?: number } }) {
+  // seeds from the affordability inputs (auto-picked, still editable here)
+  const [emirate, setEmirate] = useState<(typeof FEE_EMIRATES)[number]>((initial?.emirate as typeof emirate) ?? "Dubai");
+  const [txn, setTxn] = useState<(typeof FEE_TXNS)[number]>((initial?.txn === "Buyout" || initial?.txn === "Equity Release" || initial?.txn === "Buyout + Equity Release" ? "Buyout" : initial?.txn === "Primary Handover" ? "Primary" : initial?.txn === "Resale" ? "Resale" : "Primary") as typeof txn);
+  const [propertyValue, setPropertyValue] = useState(initial?.propertyValue ?? 2500000);
+  const [finance, setFinance] = useState(initial?.finance ?? 2000000);
 
   const rows = feeRules
     .filter((f) => f.active && f.emirate === emirate && f.txnType === txn)

@@ -879,6 +879,7 @@ export default function CaseDetail({ id }: { id: number }) {
                   <div>
                     <div className="text-[12.5px] font-medium">{c.partner.name}</div>
                     <div className="text-[11px] text-[var(--ink-faint)]">{c.partner.kind}{flags?.viewRevenue ? ` · ${c.partner.sharePct}% of our commission` : ""}</div>
+                    {c.partnerRm && <div className="text-[11px] text-[var(--ink-dim)]">RM: {c.partnerRm}</div>}
                   </div>
                 </div>
               )}

@@ -66,6 +66,9 @@ export interface MatchResult {
   bankProductId: number;
   bankName: string;
   productName: string;
+  version?: number;
+  effectiveDate?: string | null;
+  expiryDate?: string;
   verdict: "eligible" | "conditions" | "not_eligible";
   reasons: string[];
   quote: RateQuote | null;
@@ -152,9 +155,13 @@ function productApplies(p: BankProduct, input: MatchInput): string | null {
   return null;
 }
 
-function baseResult(p: { id: number }, bankName: string, productName: string, jointAffordability?: MatchResult["jointAffordability"]): MatchResult {
+function baseResult(p: { id: number; version?: number; effectiveDate?: string | null; expiryDate?: string }, bankName: string, productName: string, jointAffordability?: MatchResult["jointAffordability"]): MatchResult {
   return {
-    bankProductId: p.id, bankName, productName, verdict: "not_eligible", reasons: [],
+    bankProductId: p.id, bankName, productName,
+    version: p.version ?? 1,
+    effectiveDate: p.effectiveDate ?? null,
+    expiryDate: p.expiryDate ?? "2099-12-31",
+    verdict: "not_eligible", reasons: [],
     quote: null, assessmentRatePct: null, monthlyEmi: null, maxLoanByDbr: null,
     maxLoanByLtv: null, eligibleLoan: null, ltvPct: null, cardObligation: null,
     dbrPctUsed: null, eligibleIncome: null, schedule: null, introEmi: null, maxTenorByAgeMonths: null, tenorUsedMonths: null,
@@ -203,10 +210,27 @@ function buildMatchInsurance(bins: BankInsurance, loanAmount: number, propertyVa
 }
 
 export async function runBankMatch(input: MatchInput): Promise<MatchResult[]> {
-  const [products, eiborRows] = await Promise.all([
+  const [productsRaw, eiborRows] = await Promise.all([
     db.bankProduct.findMany({ where: { status: "approved", active: true }, include: { bank: { select: { name: true } } } }),
     db.eiborRate.findMany(),
   ]);
+
+  // Versioning selection: Pick the active rate sheet for today
+  const today = new Date().toISOString().slice(0, 10);
+  const activeProductsMap = new Map<string, typeof productsRaw[0]>();
+  for (const p of productsRaw) {
+    const eff = p.effectiveDate ? p.effectiveDate.slice(0, 10) : "";
+    const exp = (p as any).expiryDate ? (p as any).expiryDate.slice(0, 10) : "2099-12-31";
+    if (eff && eff > today) continue; // Future version not active yet
+    if (exp && exp < today) continue; // Expired version
+
+    const key = `${p.bankId}__${p.name.trim().toLowerCase()}__${p.employment}__${p.residency}`;
+    const existing = activeProductsMap.get(key);
+    if (!existing || (p.version ?? 1) > (existing.version ?? 1)) {
+      activeProductsMap.set(key, p);
+    }
+  }
+  const products = Array.from(activeProductsMap.values());
   const eibor: EiborCurve = Object.fromEntries(eiborRows.map((e) => [e.tenor, e.ratePct]));
   const txn = canonicalTxn(input.transactionType);
   const results: MatchResult[] = [];

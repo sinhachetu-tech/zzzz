@@ -14,6 +14,9 @@ interface MatchResult {
   bankProductId: number;
   bankName: string;
   productName: string;
+  version?: number;
+  effectiveDate?: string | null;
+  expiryDate?: string;
   verdict: "eligible" | "conditions" | "not_eligible";
   reasons: string[];
   quote: { rateType: string; ratePct?: number | null; marginPct?: number | null; term?: number | null } | null;
@@ -323,6 +326,11 @@ export function BankMatchPanel({ c }: { c: LoanCase }) {
                     <span className="text-[12.5px] font-semibold">{r.bankName}</span>
                     <span className="text-[11.5px] text-[var(--ink-dim)]">{r.productName}</span>
                     <Chip tone={v.tone}>{v.label}</Chip>
+                    {r.version && (
+                      <span className="mono text-[10px] px-1.5 py-0.5 rounded font-medium" style={{ background: "var(--amber-tint)", color: "var(--amber)" }}>
+                        v{r.version}{r.effectiveDate ? ` · ${r.effectiveDate.slice(0, 10)}` : ""}
+                      </span>
+                    )}
                     <span className="ml-auto mono text-[12.5px] font-semibold" style={{ color: r.verdict === "eligible" ? "var(--mint)" : undefined }}>
                       {r.verdict === "not_eligible" ? "" : fmt(r.eligibleLoan)}
                     </span>

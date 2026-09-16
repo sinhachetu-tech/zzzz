@@ -681,10 +681,32 @@ interface BankDraft {
   name: string;
   ratePct: number;
   active: boolean;
+  contacts: { name: string; phone?: string; email?: string; role?: string }[];
 }
 
 function blankBank(): BankDraft {
-  return { id: 0, name: "", ratePct: 0.8, active: true };
+  return { id: 0, name: "", ratePct: 0.8, active: true, contacts: [] };
+}
+
+/* Bank RM / partner contact editor — rows of {name, phone, email, role}. */
+function ContactsEditor({ contacts, onChange }: { contacts: { name: string; phone?: string; email?: string; role?: string }[]; onChange: (c: { name: string; phone?: string; email?: string; role?: string }[]) => void }) {
+  const upd = (i: number, patch: Partial<{ name: string; phone?: string; email?: string; role?: string }>) =>
+    onChange(contacts.map((c, idx) => (idx === i ? { ...c, ...patch } : c)));
+  return (
+    <div className="space-y-1.5">
+      {contacts.length === 0 && <p className="text-[11.5px] text-[var(--ink-faint)] m-0">No contact yet — add the relationship manager&apos;s name, phone and email. Add more than one if the desk has several RMs.</p>}
+      {contacts.map((c, i) => (
+        <div key={i} className="flex flex-wrap items-center gap-1.5">
+          <input className="input !py-1 text-[11.5px]" style={{ width: 150 }} placeholder="RM name" value={c.name} onChange={(e) => upd(i, { name: e.target.value })} />
+          <input className="input mono !py-1 text-[11.5px]" style={{ width: 130 }} placeholder="+971…" value={c.phone ?? ""} onChange={(e) => upd(i, { phone: e.target.value })} />
+          <input className="input !py-1 text-[11.5px]" style={{ width: 170 }} placeholder="email" value={c.email ?? ""} onChange={(e) => upd(i, { email: e.target.value })} />
+          <input className="input !py-1 text-[11.5px]" style={{ width: 120 }} placeholder="role/desk" value={c.role ?? ""} onChange={(e) => upd(i, { role: e.target.value })} />
+          <button className="btn btn-ghost btn-sm !px-2" style={{ color: "var(--coral)" }} onClick={() => onChange(contacts.filter((_, idx) => idx !== i))} title="Remove contact">✕</button>
+        </div>
+      ))}
+      <button className="btn btn-ghost btn-sm" onClick={() => onChange([...contacts, { name: "" }])}>+ Add contact</button>
+    </div>
+  );
 }
 
 function BanksTab() {
@@ -712,6 +734,7 @@ function BanksTab() {
       name: editing.name.trim(),
       ratePct: editing.ratePct,
       active: editing.active,
+      contacts: editing.contacts.filter((c) => c.name.trim()),
     };
     const res = creating
       ? await adminPost(body)
@@ -790,7 +813,7 @@ function BanksTab() {
                     <div className="inline-flex gap-1.5">
                       <button
                         className="btn btn-ghost btn-sm"
-                        onClick={() => { setEditing({ ...b }); setCreating(false); }}
+                        onClick={() => { setEditing({ ...b, contacts: b.contacts ?? [] }); setCreating(false); }}
                       >
                         <IPencil size={13} /> Edit
                       </button>
@@ -836,6 +859,12 @@ function BanksTab() {
                 onChange={(e) => setEditing({ ...editing, ratePct: Number(e.target.value) || 0 })}
               />
             </Field>
+            <div>
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--ink-faint)]">Bank RM contacts</span>
+              <div className="mt-1.5">
+                <ContactsEditor contacts={editing.contacts} onChange={(contacts) => setEditing({ ...editing, contacts })} />
+              </div>
+            </div>
             <div className="flex items-center gap-2">
               <input
                 type="checkbox"
@@ -872,10 +901,11 @@ interface PartnerDraft {
   defaultSharePct: number;
   password: string;
   active: boolean;
+  contacts: { name: string; phone?: string; email?: string; role?: string }[];
 }
 
 function blankPartner(): PartnerDraft {
-  return { id: 0, kind: "Agent", name: "", defaultSharePct: 20, password: "agent123", active: true };
+  return { id: 0, kind: "Agent", name: "", defaultSharePct: 20, password: "agent123", active: true, contacts: [] };
 }
 
 function partnerKindTone(k: PartnerKind): "amber" | "sky" | "coral" {
@@ -912,6 +942,7 @@ function PartnersTab() {
       name: editing.name.trim(),
       defaultSharePct: editing.defaultSharePct,
       active: editing.active,
+      contacts: editing.contacts.filter((c) => c.name.trim()),
     };
     // blank password on edit = keep the existing one
     if (creating || editing.password.trim()) body.password = editing.password.trim() || "agent123";
@@ -1004,7 +1035,7 @@ function PartnersTab() {
                       <div className="inline-flex gap-1.5">
                         <button
                           className="btn btn-ghost btn-sm"
-                          onClick={() => { setEditing({ ...p, password: "" }); setCreating(false); }}
+                          onClick={() => { setEditing({ ...p, password: "", contacts: p.contacts ?? [] }); setCreating(false); }}
                         >
                           <IPencil size={13} /> Edit
                         </button>
@@ -1080,6 +1111,12 @@ function PartnersTab() {
                 Used to sign in at the Agent portal ({editing.name ? editing.name : "partner name"} + this password).
               </p>
             </Field>
+            <div>
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--ink-faint)]">Partner RM / coordinator contacts</span>
+              <div className="mt-1.5">
+                <ContactsEditor contacts={editing.contacts} onChange={(contacts) => setEditing({ ...editing, contacts })} />
+              </div>
+            </div>
             <div className="flex items-center gap-2">
               <input
                 type="checkbox"
@@ -2402,7 +2439,7 @@ const TEXT_BLOCKS: { key: keyof BankProduct; label: string; hint: string; engine
 ];
 
 function BankRulesTab() {
-  const { bankProducts, banks, saveBankProduct, toast } = useHfmcStore();
+  const { bankProducts, banks, saveBankProduct, toast, hydrate } = useHfmcStore();
   const [bankFilter, setBankFilter] = useState<string>("DIB");
   const [editing, setEditing] = useState<BankProduct | null>(null);
   const [busy, setBusy] = useState(false);
@@ -2438,6 +2475,10 @@ function BankRulesTab() {
                 <Chip tone="slate">{p.sheet}</Chip>
                 {p.program && <Chip tone="sky">{p.program}</Chip>}
                 <Chip tone={p.status === "approved" ? "mint" : "amber"}>{p.status}</Chip>
+                <Chip tone="slate">v{p.version ?? 1}</Chip>
+                <span className="text-[11px] mono text-[var(--ink-faint)]">
+                  {p.effectiveDate ? ("Eff: " + p.effectiveDate.slice(0, 10)) : "Active"} ~ Exp: {p.expiryDate ? p.expiryDate.slice(0, 10) : "2099-12-31"}
+                </span>
                 {p.approvedBy && <span className="text-[10.5px] text-[var(--ink-faint)]">by {p.approvedBy}</span>}
                 <div className="ml-auto flex gap-1.5">
                   <button className="btn btn-ghost btn-sm" onClick={() => setEditing(p)}>
@@ -2483,6 +2524,43 @@ function BankRulesTab() {
                 Move to draft
               </button>
               <button
+                type="button"
+                className="btn btn-mint"
+                disabled={busy}
+                title="Save changed rates as a new version row with effective date"
+                onClick={async () => {
+                  const newEff = prompt("Enter Effective Date for the new version (YYYY-MM-DD):", new Date().toISOString().slice(0, 10));
+                  if (!newEff) return;
+                  setBusy(true);
+                  const res = await fetch("/api/admin", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      kind: "bankproduct_version",
+                      originalProductId: editing.id,
+                      effectiveDate: newEff,
+                      expiryDate: editing.expiryDate || "2099-12-31",
+                      pricingJson: editing.pricingJson,
+                      feesJson: editing.feesJson,
+                      insuranceJson: editing.insuranceJson,
+                      rateTable: editing.rateTable,
+                      notes: editing.notes,
+                    }),
+                  });
+                  const json = await res.json();
+                  setBusy(false);
+                  if (res.ok) {
+                    toast("success", "New rate version created with effective date " + newEff);
+                    await hydrate();
+                    setEditing(null);
+                  } else {
+                    toast("error", json.error || "Failed to create new version.");
+                  }
+                }}
+              >
+                + Save as New Version (Next Month)
+              </button>
+              <button
                 className="btn btn-primary"
                 disabled={busy || productIssues(editing).filter((i) => i.blocking).length > 0}
                 title={productIssues(editing).filter((i) => i.blocking).map((i) => i.msg).join("; ") || "Approve these rules"}
@@ -2501,6 +2579,35 @@ function BankRulesTab() {
           }
         >
           <div className="space-y-3">
+            <div className="p-2.5 rounded-lg border flex flex-wrap items-center gap-3" style={{ background: "var(--tint)", borderColor: "var(--line)" }}>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] font-semibold text-[var(--ink-faint)] uppercase tracking-wider">Version</span>
+                <span className="mono font-bold text-[12.5px] px-2 py-0.5 rounded" style={{ background: "var(--amber-tint)", color: "var(--amber)" }}>
+                  v{editing.version ?? 1}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <label className="text-[11px] font-medium text-[var(--ink-dim)]">Effective:</label>
+                <input
+                  type="date"
+                  className="input !py-1 !px-2 text-[11.5px] mono !w-36"
+                  value={editing.effectiveDate ? editing.effectiveDate.slice(0, 10) : ""}
+                  onChange={(e) => setEditing({ ...editing, effectiveDate: e.target.value || null })}
+                  title="Date this rate sheet starts"
+                />
+              </div>
+              <div className="flex items-center gap-1.5">
+                <label className="text-[11px] font-medium text-[var(--ink-dim)]">Upto / Expiry:</label>
+                <input
+                  type="date"
+                  className="input !py-1 !px-2 text-[11.5px] mono !w-36"
+                  value={editing.expiryDate ? editing.expiryDate.slice(0, 10) : "2099-12-31"}
+                  onChange={(e) => setEditing({ ...editing, expiryDate: e.target.value || "2099-12-31" })}
+                  title="Defaults to 31-Dec-2099"
+                />
+              </div>
+              <span className="text-[10px] text-[var(--ink-faint)] ml-auto">Default: 31-Dec-2099 (active indefinitely)</span>
+            </div>
             <div className="flex items-center justify-between pb-1">
               <FieldRowBadge role="engine" text="Green fields feed Bank Match and the final proposal. Amber fields are displayed but not calculated yet." />
               <button

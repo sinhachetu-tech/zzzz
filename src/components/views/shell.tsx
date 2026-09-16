@@ -169,7 +169,7 @@ function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void })
   const [submissionType, setSubmissionType] = useState<"direct" | "channel">("direct");
   const [channelId, setChannelId] = useState<number | null>(null);
   const [amount, setAmount] = useState("1500000");
-  const [stage, setStage] = useState(activeStages[0]?.label ?? "WhatsApp Group Creation");
+  const [stage, setStage] = useState("Lead"); // Add-lead always starts at the top of the funnel; change only when onboarding a live deal
   const [ownerId, setOwnerId] = useState(me?.id ?? 0);
   const [source, setSource] = useState<CaseSource>("Direct");
   const [partnerName, setPartnerName] = useState("");
@@ -183,6 +183,8 @@ function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void })
   const [propertyLocation, setPropertyLocation] = useState("");
   const [coApplicantName, setCoApplicantName] = useState("");
   const [bankRm, setBankRm] = useState("");
+  const [partnerRm, setPartnerRm] = useState("");
+  const [bankRms, setBankRms] = useState<Record<string, string>>({});
   const [employmentProfile, setEmploymentProfile] = useState<(typeof EMPLOYMENT_PROFILES)[number]>("Salaried");
   const [propertyType, setPropertyType] = useState<(typeof PROPERTY_TYPES)[number]>("Ready");
   const [residency, setResidency] = useState<(typeof RESIDENCIES)[number]>("Resident Expatriate");
@@ -225,7 +227,7 @@ function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void })
       : null;
     const selectedChannel = submissionType === "channel" ? channels.find((ch) => ch.id === channelId) : null;
     try {
-      const c = await createCase({
+      const res = await createCase({
         customer, banks: bankList, loanAmount: amt, stage, ownerId,
         source, partner, whatsapp, waGroup: waGroup.trim() || null,
         task: taskDesc.trim()
@@ -239,16 +241,20 @@ function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void })
         propertyLocation: propertyLocation || null,
         coApplicantName: coApplicantName.trim() || null,
         employmentProfile, propertyType, residency,
-        bankRm: bankRm.trim() || null,
+        bankRm: (bankRms[bankList[0]] ?? bankRm).trim() || null,
+        bankRms: bankRms,
+        partnerRm: partnerRm.trim() || null,
       });
+      const resAny = res as unknown as { caseNumber: string; customer: string; id: number; __cases?: { caseNumber: string }[] };
+      const made = resAny.__cases?.length ?? 1;
       toast("success", stage === "Lead"
-        ? `Lead ${c.caseNumber} created for ${c.customer} — qualify it in Leads.`
-        : `${c.caseNumber} created for ${c.customer}.`);
+        ? `Lead${made > 1 ? `s (${made} — one per bank)` : ""} created for ${resAny.customer} — qualify in Leads.`
+        : `${made > 1 ? made + " cases created (one per bank). First: " : ""}${resAny.caseNumber} for ${resAny.customer}.`);
       setCustomer(""); setWhatsapp(""); setWaGroup(""); setBankList([]); setTaskDesc("");
-      setTransactionType(""); setPropertyLocation(""); setCoApplicantName(""); setBankRm("");
+      setTransactionType(""); setPropertyLocation(""); setCoApplicantName(""); setBankRm(""); setPartnerRm(""); setBankRms({});
       setErr("");
       onClose();
-      if (stage === "Lead") nav({ name: "leads" }); else nav({ name: "case", id: c.id });
+      if (stage === "Lead") nav({ name: "leads" }); else nav({ name: "case", id: resAny.id });
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Could not open case.");
     }
@@ -317,6 +323,30 @@ function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void })
           <p className="text-[11px] text-[var(--ink-faint)] mt-1.5 mb-0">
             Multiple banks can be in play — the winning bank is recorded when the case books. Percentages shown are our commission rate.
           </p>
+          {bankList.length > 0 && (
+            <div className="mt-2 space-y-1.5">
+              {bankList.map((bn) => {
+                const bank = banks.find((b) => b.name === bn);
+                const rm = bankRms[bn] ?? bank?.contacts?.[0]?.name ?? "";
+                return (
+                  <div key={bn} className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[11.5px] font-disp font-semibold" style={{ minWidth: 90 }}>{bn} RM</span>
+                    <select className="select !w-auto !py-1 text-[11.5px]" value={rm}
+                      onChange={(e) => setBankRms((prev) => ({ ...prev, [bn]: e.target.value }))}>
+                      {(bank?.contacts ?? []).map((c, i) => (
+                        <option key={i} value={c.name}>{c.name}{c.phone ? " · " + c.phone : ""}{c.email ? " · " + c.email : ""}</option>
+                      ))}
+                      <option value="">— type below —</option>
+                    </select>
+                    {!bank?.contacts?.length && (
+                      <input className="input !py-1 text-[11.5px]" style={{ width: 200 }} placeholder="RM name · phone"
+                        value={rm} onChange={(e) => setBankRms((prev) => ({ ...prev, [bn]: e.target.value }))} />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         <div>
@@ -340,6 +370,25 @@ function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void })
                 <option key={ch.id} value={ch.id}>{ch.name}{flags?.viewRevenue ? ` — ${ch.commissionPct}% of loan` : ""}</option>
               ))}
             </select>
+          )}
+          {submissionType === "channel" && channelId && (
+            <div className="mt-2">
+              <label className="label">Partner RM / coordinator <span className="normal-case tracking-normal" style={{ color: "var(--ink-faint)" }}>— pick from their saved contacts or type</span></label>
+              <div className="flex gap-1.5 flex-wrap">
+                <select className="select !w-auto !py-1 text-[11.5px]" value={partnerRm}
+                  onChange={(e) => setPartnerRm(e.target.value)}>
+                  <option value="">— none / type below —</option>
+                  {(channels.find((ch) => ch.id === channelId) ? [] : []).map((x) => x)}
+                  {(partners.find((pp) => pp.id === channelId)?.contacts ?? []).map((c, i) => (
+                    <option key={i} value={c.name + (c.phone ? " · " + c.phone : "")}>{c.name}{c.phone ? " · " + c.phone : ""}{c.email ? " · " + c.email : ""}</option>
+                  ))}
+                </select>
+                {partnerRm === "" && (
+                  <input className="input !py-1 text-[11.5px] mono" style={{ width: 220 }} placeholder="RM name · phone · email"
+                    value={partnerRm} onChange={(e) => setPartnerRm(e.target.value)} />
+                )}
+              </div>
+            </div>
           )}
           {submissionType === "channel" && channelId && flags?.viewRevenue && (
             <p className="text-[10.5px] text-[var(--ink-faint)] mt-1 mb-0">

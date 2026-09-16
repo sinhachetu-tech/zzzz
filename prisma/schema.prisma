@@ -105,6 +105,7 @@ model LoanCase {
   source      String   @default("Direct") // Direct | Agent | Broker | Website | Referral
   partnerKind String?  // Agent | Broker | Referral
   partnerName String?
+  partnerRm   String? // the partner's RM/coordinator handling this file
   partnerSharePct Int?
   // Two-way commission: submission type (direct to bank vs through channel)
   submissionType String  @default("direct") // direct | channel
@@ -299,6 +300,7 @@ model BankItem {
   posPoints String  @default("") // negotiating intel — positives
   negPoints String  @default("") // negotiating intel — negatives
   website   String?
+  contactsJson String @default("[]") // bank RM contacts: [{name,phone,email,role}]
 
   products BankProduct[]
 }
@@ -355,6 +357,7 @@ model BankProduct {
   version      Int    @default(1)
   status       String @default("approved") // draft | approved
   effectiveDate String?
+  expiryDate   String @default("2099-12-31") // default 31-Dec-2099
   approvedBy   String?
   sourceFiles  String @default("")
   active       Boolean @default(true)
@@ -383,6 +386,7 @@ model PartnerItem {
   defaultSharePct   Int      @default(20)
   password          String   @default("agent123") // agent portal login
   active            Boolean  @default(true)
+  contactsJson      String   @default("[]") // partner RMs: [{name,phone,email,role}]
 
   @@unique([kind, name])
 }

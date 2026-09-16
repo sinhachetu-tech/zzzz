@@ -45,11 +45,11 @@ export async function POST(req: NextRequest) {
   const { kind } = body;
   try {
     if (kind === "bank") {
-      const item = await db.bankItem.create({ data: { name: body.name, ratePct: body.ratePct ?? 0, active: body.active ?? true } });
+      const item = await db.bankItem.create({ data: { name: body.name, ratePct: body.ratePct ?? 0, active: body.active ?? true, contactsJson: JSON.stringify(Array.isArray(body.contacts) ? body.contacts : []) } });
       return NextResponse.json({ item: serBank(item) });
     }
     if (kind === "partner") {
-      const item = await db.partnerItem.create({ data: { kind: body.partnerKind, name: body.name, defaultSharePct: body.defaultSharePct ?? 20, password: body.password || "agent123", active: body.active ?? true } });
+      const item = await db.partnerItem.create({ data: { kind: body.partnerKind, name: body.name, defaultSharePct: body.defaultSharePct ?? 20, password: body.password || "agent123", active: body.active ?? true, contactsJson: JSON.stringify(Array.isArray(body.contacts) ? body.contacts : []) } });
       return NextResponse.json({ item: serPartner(item) });
     }
     if (kind === "channel") {
@@ -60,6 +60,37 @@ export async function POST(req: NextRequest) {
       const max = await db.stageItem.aggregate({ _max: { sortOrder: true } });
       const item = await db.stageItem.create({ data: { label: body.label, active: true, sortOrder: body.sortOrder ?? (max._max.sortOrder ?? 0) + 1 } });
       return NextResponse.json({ item: serStage(item) });
+    }
+        if (kind === "bankproduct_version") {
+      const orig = await db.bankProduct.findUnique({ where: { id: Number(body.originalProductId) } });
+      if (!orig) return NextResponse.json({ error: "original product not found" }, { status: 404 });
+      const newEffective = body.effectiveDate ? String(body.effectiveDate).slice(0, 10) : new Date().toISOString().slice(0, 10);
+      const newExpiry = body.expiryDate ? String(body.expiryDate).slice(0, 10) : "2099-12-31";
+      
+      const prevDate = new Date(new Date(newEffective).getTime() - 86400000).toISOString().slice(0, 10);
+      await db.bankProduct.update({
+        where: { id: orig.id },
+        data: { expiryDate: prevDate },
+      });
+
+      const maxVersion = orig.version ?? 1;
+      const { id: _omitId, createdAt: _omitC, updatedAt: _omitU, ...origFields } = orig;
+      const item = await db.bankProduct.create({
+        data: {
+          ...origFields,
+          version: maxVersion + 1,
+          effectiveDate: newEffective,
+          expiryDate: newExpiry,
+          pricingJson: body.pricingJson ?? orig.pricingJson,
+          feesJson: body.feesJson ?? orig.feesJson,
+          insuranceJson: body.insuranceJson ?? orig.insuranceJson,
+          rateTable: body.rateTable ?? orig.rateTable,
+          notes: body.notes ?? orig.notes,
+          status: "approved",
+          approvedBy: g.me.name,
+        },
+      });
+      return NextResponse.json({ item });
     }
     if (kind === "master") {
       const item = await db.masterItem.create({ data: { kind: body.masterKind, label: body.label, active: true } });
@@ -122,11 +153,11 @@ export async function PATCH(req: NextRequest) {
   const numId = parseInt(id, 10);
   try {
     if (kind === "bank") {
-      const item = await db.bankItem.update({ where: { id: numId }, data: { name: body.name, ratePct: body.ratePct, active: body.active } });
+      const item = await db.bankItem.update({ where: { id: numId }, data: { name: body.name, ratePct: body.ratePct, active: body.active, ...(body.contacts !== undefined ? { contactsJson: JSON.stringify(Array.isArray(body.contacts) ? body.contacts : []) } : {}) } });
       return NextResponse.json({ item: serBank(item) });
     }
     if (kind === "partner") {
-      const item = await db.partnerItem.update({ where: { id: numId }, data: { name: body.name, kind: body.partnerKind, defaultSharePct: body.defaultSharePct, password: body.password || undefined, active: body.active } });
+      const item = await db.partnerItem.update({ where: { id: numId }, data: { name: body.name, kind: body.partnerKind, defaultSharePct: body.defaultSharePct, password: body.password || undefined, active: body.active, ...(body.contacts !== undefined ? { contactsJson: JSON.stringify(Array.isArray(body.contacts) ? body.contacts : []) } : {}) } });
       return NextResponse.json({ item: serPartner(item) });
     }
     if (kind === "channel") {
@@ -136,6 +167,37 @@ export async function PATCH(req: NextRequest) {
     if (kind === "stage") {
       const item = await db.stageItem.update({ where: { id: numId }, data: { label: body.label, active: body.active, sortOrder: body.sortOrder } });
       return NextResponse.json({ item: serStage(item) });
+    }
+        if (kind === "bankproduct_version") {
+      const orig = await db.bankProduct.findUnique({ where: { id: Number(body.originalProductId) } });
+      if (!orig) return NextResponse.json({ error: "original product not found" }, { status: 404 });
+      const newEffective = body.effectiveDate ? String(body.effectiveDate).slice(0, 10) : new Date().toISOString().slice(0, 10);
+      const newExpiry = body.expiryDate ? String(body.expiryDate).slice(0, 10) : "2099-12-31";
+      
+      const prevDate = new Date(new Date(newEffective).getTime() - 86400000).toISOString().slice(0, 10);
+      await db.bankProduct.update({
+        where: { id: orig.id },
+        data: { expiryDate: prevDate },
+      });
+
+      const maxVersion = orig.version ?? 1;
+      const { id: _omitId, createdAt: _omitC, updatedAt: _omitU, ...origFields } = orig;
+      const item = await db.bankProduct.create({
+        data: {
+          ...origFields,
+          version: maxVersion + 1,
+          effectiveDate: newEffective,
+          expiryDate: newExpiry,
+          pricingJson: body.pricingJson ?? orig.pricingJson,
+          feesJson: body.feesJson ?? orig.feesJson,
+          insuranceJson: body.insuranceJson ?? orig.insuranceJson,
+          rateTable: body.rateTable ?? orig.rateTable,
+          notes: body.notes ?? orig.notes,
+          status: "approved",
+          approvedBy: g.me.name,
+        },
+      });
+      return NextResponse.json({ item });
     }
     if (kind === "master") {
       const item = await db.masterItem.update({ where: { id: numId }, data: { label: body.label, active: body.active } });
@@ -186,7 +248,7 @@ export async function PATCH(req: NextRequest) {
       const data: Record<string, unknown> = {};
       const numFields = ["maxLtvNational","maxLtvExpatriate","minLoan","maxLoan","tenorYears","minSalary","totalTatDays","paTatDays","paValidityDays","folValidityDays","valuationValidityDays"] as const;
       for (const f of numFields) if (body[f] !== undefined) data[f] = body[f] === null || body[f] === "" ? null : Number(body[f]);
-      for (const f of ["rateTable","stressTest","fees","insurance","eligibility","documents","notes","effectiveDate","pricingJson"]) if (body[f] !== undefined) data[f] = body[f];
+      for (const f of ["rateTable","stressTest","fees","insurance","eligibility","documents","notes","effectiveDate","expiryDate","pricingJson","feesJson","insuranceJson","cardRulePct","bonusPct","rentalIncomePct","rentalCapPctOfSalary","dbrPct","stressBufferPct"]) if (body[f] !== undefined) data[f] = body[f];
       if (body.status !== undefined) {
         data.status = body.status;
         if (body.status === "approved") { data.approvedBy = g.me.name; data.effectiveDate = data.effectiveDate ?? new Date().toISOString().slice(0,10); }

@@ -87,6 +87,7 @@ interface HfmcState extends StateSnapshot {
     task?: { description: string; dueDate: string; waitingFor: string; whyPending: string; ownerId: number };
     submissionType?: "direct" | "channel"; channelId?: number | null; channelName?: string | null; channelRatePct?: number;
     transactionType?: string; propertyLocation?: string | null; coApplicantName?: string | null; bankRm?: string | null; statusNote?: string;
+    bankRms?: Record<string, string>; partnerRm?: string | null;
     employmentProfile?: string; propertyType?: string; residency?: string;
   }) => Promise<LoanCase>;
   updateCase: (id: number, patch: Record<string, unknown>) => Promise<void>;
@@ -197,9 +198,9 @@ export const useHfmcStore = create<HfmcState>((set, get) => ({
       const e = await res.json().catch(() => ({}));
       throw new Error(e.error || "Could not open case");
     }
-    const { case: c } = await res.json();
+    const data = await res.json();
     get().hydrate().catch(() => {}); // fire-and-forget — UI must not wait on the full-state reload
-    return c;
+    return { ...data.case, __cases: data.cases };
   },
   updateCase: async (id, patch) => {
     await fetch(`/api/cases/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });

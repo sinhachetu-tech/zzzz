@@ -32,6 +32,7 @@ type PrismaCase = {
   transactionType?: string;
   propertyLocation?: string | null;
   coApplicantName?: string | null;
+  partnerRm?: string | null;
   onHold?: boolean;
   holdReason?: string | null;
   holdUntil?: string | null;
@@ -81,6 +82,7 @@ export function serCase(c: PrismaCase): LoanCase {
     transactionType: c.transactionType ?? "",
     propertyLocation: c.propertyLocation ?? null,
     coApplicantName: c.coApplicantName ?? null,
+    partnerRm: (c as unknown as { partnerRm?: string | null }).partnerRm ?? null,
     onHold: c.onHold ?? false,
     holdReason: c.holdReason ?? null,
     holdUntil: c.holdUntil ?? null,
@@ -160,9 +162,11 @@ export function serActivity(a: PrismaActivity): Activity {
   };
 }
 
-type PrismaBank = { id: number; name: string; ratePct: number; active: boolean; logoData?: Uint8Array | Buffer | null; posPoints?: string | null; negPoints?: string | null; website?: string | null };
+type PrismaBank = { id: number; name: string; ratePct: number; active: boolean; logoData?: Uint8Array | Buffer | null; posPoints?: string | null; negPoints?: string | null; website?: string | null; contactsJson?: string | null };
 export function serBank(b: PrismaBank): BankItem {
-  return { id: b.id, name: b.name, ratePct: b.ratePct, hasLogo: !!b.logoData, posPoints: b.posPoints ?? "", negPoints: b.negPoints ?? "", website: b.website ?? "", active: b.active };
+  let contacts: import("./types").Contact[] = [];
+  try { const arr = JSON.parse(b.contactsJson ?? "[]"); if (Array.isArray(arr)) contacts = arr; } catch { contacts = []; }
+  return { id: b.id, name: b.name, ratePct: b.ratePct, hasLogo: !!b.logoData, posPoints: b.posPoints ?? "", negPoints: b.negPoints ?? "", website: b.website ?? "", active: b.active, contacts };
 }
 
 type PrismaBankProduct = {
@@ -195,14 +199,16 @@ export function serBankProduct(p: PrismaBankProduct): BankProduct {
     pricingJson: (p as unknown as { pricingJson?: string }).pricingJson ?? "{}",
     feesJson: (p as unknown as { feesJson?: string }).feesJson ?? "{}", insuranceJson: (p as unknown as { insuranceJson?: string }).insuranceJson ?? "{}",
     eligibility: p.eligibility, documents: p.documents, notes: p.notes, axes,
-    version: p.version, status: p.status as BankProduct["status"], effectiveDate: p.effectiveDate,
+    version: p.version, status: p.status as BankProduct["status"], effectiveDate: p.effectiveDate, expiryDate: (p as unknown as { expiryDate?: string }).expiryDate ?? '2099-12-31',
     approvedBy: p.approvedBy, sourceFiles: p.sourceFiles, active: p.active,
   };
 }
 
-type PrismaPartner = { id: number; kind: string; name: string; defaultSharePct: number; active: boolean };
+type PrismaPartner = { id: number; kind: string; name: string; defaultSharePct: number; active: boolean; contactsJson?: string | null };
 export function serPartner(p: PrismaPartner): PartnerItem {
-  return { id: p.id, kind: p.kind as PartnerItem["kind"], name: p.name, defaultSharePct: p.defaultSharePct, active: p.active };
+  let contacts: import("./types").Contact[] = [];
+  try { const arr = JSON.parse(p.contactsJson ?? "[]"); if (Array.isArray(arr)) contacts = arr; } catch { contacts = []; }
+  return { id: p.id, kind: p.kind as PartnerItem["kind"], name: p.name, defaultSharePct: p.defaultSharePct, active: p.active, contacts };
 }
 
 type PrismaStage = { id: number; label: string; active: boolean; sortOrder: number };

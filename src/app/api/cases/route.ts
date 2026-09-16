@@ -77,14 +77,26 @@ export async function POST(req: NextRequest) {
   if (!customer?.trim()) return NextResponse.json({ error: "Customer name is required." }, { status: 400 });
   if (!loanAmount || loanAmount <= 0) return NextResponse.json({ error: "Invalid loan amount." }, { status: 400 });
 
-  const count = await db.loanCase.count();
-  const caseNumber = `HFMC-${String(count + 1).padStart(4, "0")}`;
+  // Each bank runs its own journey (its own RM, TAT, approval path), so
+  // selecting multiple banks at creation opens one case per bank.
+  const bankList = Array.isArray(banks) ? banks : [];
+  const createdList: { id: number; caseNumber: string }[] = [];
+  const perBank = bankList.length > 1 ? bankList : [null];
+
+  const rmMap = (body.bankRms && typeof body.bankRms === "object") ? body.bankRms as Record<string, string> : {};
+  const partnerRm = typeof body.partnerRm === "string" ? body.partnerRm.trim() : "";
+  const last = await db.loanCase.findFirst({ orderBy: { caseNumber: "desc" }, select: { caseNumber: true } });
+  let seq = last ? parseInt(last.caseNumber.replace("HFMC-", ""), 10) || 0 : 0;
+  for (const singleBank of perBank) {
+  seq += 1;
+  const caseNumber = `HFMC-${String(seq).padStart(4, "0")}`;
 
   const created = await db.loanCase.create({
     data: {
       caseNumber,
       customer: customer.trim(),
-      banks: JSON.stringify(banks ?? []),
+      banks: JSON.stringify(singleBank ? [singleBank] : (banks ?? [])),
+      bankRm: singleBank ? (rmMap[singleBank] ?? bankRm ?? null) : (bankRm ?? null),
       wonBank: null,
       loanAmount,
       stage: stage || "WhatsApp Group Creation",
@@ -93,6 +105,7 @@ export async function POST(req: NextRequest) {
       source,
       partnerKind: partner?.kind ?? null,
       partnerName: partner?.name ?? null,
+      partnerRm: partnerRm || null,
       partnerSharePct: partner?.sharePct ?? null,
       whatsapp: whatsapp ?? "",
       waGroup: waGroup ?? null,
@@ -106,7 +119,6 @@ export async function POST(req: NextRequest) {
       residency: residency ?? "Resident Expatriate",
       // MIS operational
       statusNote: statusNote ?? "",
-      bankRm: bankRm ?? null,
       vrmId: vrmId ?? null,
       transactionType: transactionType ?? "",
       propertyLocation: propertyLocation ?? null,
@@ -142,25 +154,32 @@ export async function POST(req: NextRequest) {
   // link the primary applicant to the Client master (repeat-business anchor)
   await syncCaseClients(created.id).catch((e) => console.error("client sync failed:", e));
 
+  createdList.push({ id: created.id, caseNumber });
+  }
+
+  const created = (await db.loanCase.findUnique({ where: { id: createdList[0].id } }))!;
+
   if (task?.description?.trim()) {
-    await db.task.create({
-      data: {
-        caseId: created.id,
-        description: task.description.trim(),
-        ownerId: task.ownerId || ownerId,
-        createdBy: me.id,
-        waitingFor: task.waitingFor || "Internal",
-        whyPending: task.whyPending || "Internal review",
-        dueDate: task.dueDate,
-        status: "Open",
-        remarks: "",
-      },
-    });
-    await db.activity.create({
-      data: { caseId: created.id, userId: me.id, action: `added task “${task.description.trim()}”` },
-    });
+    for (const c of createdList) {
+      await db.task.create({
+        data: {
+          caseId: c.id,
+          description: task.description.trim(),
+          ownerId: task.ownerId || ownerId,
+          createdBy: me.id,
+          waitingFor: task.waitingFor || "Internal",
+          whyPending: task.whyPending || "Internal review",
+          dueDate: task.dueDate,
+          status: "Open",
+          remarks: "",
+        },
+      });
+      await db.activity.create({
+        data: { caseId: c.id, userId: me.id, action: `added task “${task.description.trim()}”` },
+      });
+    }
   }
 
   const fresh = await db.loanCase.findUnique({ where: { id: created.id } });
-  return NextResponse.json({ case: serCase(fresh!) });
+  return NextResponse.json({ case: serCase(fresh!), cases: createdList });
 }

@@ -206,6 +206,11 @@ export default function ProposalPage() {
                 <span className="font-disp font-bold text-[15px]">{r.bankName}</span>
               )}
               <span className="text-[12px] text-[var(--ink-dim)]">{r.productName}</span>
+              {(r as any).version && (
+                <span className="mono text-[10px] px-2 py-0.5 rounded font-semibold" style={{ background: "var(--amber-tint)", color: "var(--amber)" }}>
+                  v{(r as any).version} {(r as any).effectiveDate ? (" · Eff: " + (r as any).effectiveDate.slice(0, 10)) : (" · Exp: " + ((r as any).expiryDate ? (r as any).expiryDate.slice(0, 10) : "2099-12-31"))}
+                </span>
+              )}
               <span className="ml-auto mono text-[15px] font-bold" style={{ color: "var(--mint)" }}>{fmt(r.eligibleLoan)}</span>
             </div>
 
