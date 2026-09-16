@@ -77,6 +77,21 @@ export interface DashboardKpis {
   escalations: number;
 }
 
+/**
+ * Per-bank case splits (one engagement filed at several banks) must not
+ * multiply consolidated money numbers. Group cases by client + amount +
+ * creation day and keep one representative per engagement.
+ */
+export function dedupeEngagements(cases: LoanCase[]): LoanCase[] {
+  const seen = new Set<string>();
+  return cases.filter((c) => {
+    const key = (c.clientId ?? "c" + c.customer) + "|" + c.loanAmount + "|" + c.createdAt.slice(0, 10);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 export function computeKpis(
   cases: LoanCase[],
   tasks: Task[],
@@ -87,8 +102,10 @@ export function computeKpis(
   const active = cases.filter((c) => c.caseStatus === "Active");
   const statuses = active.map(statusOf);
   const openTasks = tasks.filter((t) => t.status === "Open");
-  const pipeline = active.reduce((s, c) => s + c.loanAmount, 0);
-  const commission = active.reduce((s, c) => s + commissionFor(c, banks).gross, 0);
+  // money numbers dedupe per-bank splits — 3 banks on one engagement = one pipeline
+  const uniqueEngagements = dedupeEngagements(active);
+  const pipeline = uniqueEngagements.reduce((s, c) => s + c.loanAmount, 0);
+  const commission = uniqueEngagements.reduce((s, c) => s + commissionFor(c, banks).gross, 0);
   return {
     openCases: active.length,
     overdue: statuses.filter((s) => s === "Overdue").length,

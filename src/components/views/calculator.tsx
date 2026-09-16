@@ -738,6 +738,17 @@ function ClientPicker({ clients, cases, onPick, onClose }: {
   );
 }
 
+const PRINT_CSS = `
+@media print {
+  aside, header, nav { display: none !important; }
+  .no-print { display: none !important; }
+  .xl\:grid-cols-\[1fr_420px\] { display: block !important; }
+  .xl\:sticky { position: static !important; max-height: none !important; overflow: visible !important; }
+  .card { break-inside: avoid; border-color: #ddd !important; background: white !important; }
+  body { background: white !important; }
+}
+`;
+
 export default function Calculator() {
   const { me, toast, nav, feeRules, docRules, clients, cases, bankProducts, eibor } = useHfmcStore();
   const [mode, setMode] = useState<CalcMode>("affordability");
@@ -758,6 +769,7 @@ export default function Calculator() {
   const [stressFinal, setStressFinal] = useState(0);
   const [useStressFinal, setUseStressFinal] = useState(false);
   const [fetchBank, setFetchBank] = useState("");
+  const printStyle = <style>{PRINT_CSS}</style>;
   const [fetchProduct, setFetchProduct] = useState("");
 
   const eiborPct = (t: string) => eibor.find((e) => e.tenor === t)?.ratePct ?? null;
@@ -967,9 +979,14 @@ export default function Calculator() {
             onChange={(v) => setMode(v === "Transfer Fees" ? "transfer" : "affordability")}
           />
           {mode === "affordability" && (
-            <button className="btn btn-ghost btn-sm" onClick={() => { setInput(defaultInput()); toast("info", "Calculator reset."); }}>
-              Reset
-            </button>
+            <>
+              <button className="btn btn-ghost btn-sm" onClick={() => { setInput(defaultInput()); toast("info", "Calculator reset."); }}>
+                Reset
+              </button>
+              <button className="btn btn-ghost btn-sm" title="Print the detailed working — inputs, all three rate stages, DBR 1/2/3, trail" onClick={() => window.print()}>
+                Print / Save PDF
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -1023,7 +1040,7 @@ export default function Calculator() {
                 <label className="label">Applicant name</label>
                 <div className="flex gap-1.5">
                   <input className="input" value={input.name} onChange={(e) => up({ name: e.target.value })} placeholder="e.g. Mohammed Al Mansoori" />
-                  <button className="btn btn-ghost btn-sm shrink-0" title="Search existing clients by name, mobile, email or EID" onClick={() => setPickerOpen(true)}>🔍</button>
+                  <button className="btn btn-ghost btn-sm shrink-0 no-print" title="Search existing clients by name, mobile, email or EID" onClick={() => setPickerOpen(true)}>🔍</button>
                 </div>
               </div>
               <div>
@@ -1253,7 +1270,7 @@ export default function Calculator() {
 
           <Section num="05" title="Rate scenario — intro / follow-on / stress" hint="DBR 1·2·3 at each stage, or fetch from a bank product">
             {/* optional engine fetch */}
-            <div className="flex flex-wrap items-end gap-2 mb-3 pb-3" style={{ borderBottom: "1px dashed var(--line)" }}>
+            <div className="no-print flex flex-wrap items-end gap-2 mb-3 pb-3" style={{ borderBottom: "1px dashed var(--line)" }}>
               <div>
                 <label className="label">Fetch from engine — optional</label>
                 <select className="select" style={{ width: 150 }} value={fetchBank}
@@ -1428,7 +1445,7 @@ export default function Calculator() {
           <TrailAndNotes r={r} />
 
           {/* save / new case actions */}
-          <div className="card p-4 anim-fade-up flex flex-col gap-2">
+          <div className="no-print card p-4 anim-fade-up flex flex-col gap-2">
             <button className="btn btn-mint justify-center" onClick={onSave}>
               <IDownload size={15} /> Save check to audit trail
             </button>
@@ -1441,10 +1458,14 @@ export default function Calculator() {
           </div>
 
           {/* AI advisor */}
-          <AdvisorPanel input={input} r={r} />
+          <div className="no-print">
+            <AdvisorPanel input={input} r={r} />
+          </div>
 
           {/* AI document reader */}
-          <DocReaderPanel onApply={applyDocRead} />
+          <div className="no-print">
+            <DocReaderPanel onApply={applyDocRead} />
+          </div>
         </div>
       </div>
 
