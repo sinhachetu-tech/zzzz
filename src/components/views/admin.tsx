@@ -2529,8 +2529,9 @@ function BankRulesTab() {
                 disabled={busy}
                 title="Save changed rates as a new version row with effective date"
                 onClick={async () => {
-                  const newEff = prompt("Enter Effective Date for the new version (YYYY-MM-DD):", new Date().toISOString().slice(0, 10));
-                  if (!newEff) return;
+                  // use the Effective-date field in the version strip (prompt() is
+                  // blocked in in-app browsers — it silently returned nothing there)
+                  const newEff = editing.effectiveDate ? editing.effectiveDate.slice(0, 10) : new Date().toISOString().slice(0, 10);
                   setBusy(true);
                   const res = await fetch("/api/admin", {
                     method: "POST",
