@@ -17,6 +17,7 @@ interface ProposalResult {
   quote: {
     rateType: string; ratePct?: number | null; marginPct?: number | null; termYears?: number | null;
     floorPct?: number | null; confidence?: string; sourceLine?: string;
+    effectiveFrom?: string | null; effectiveTo?: string | null;
     variableAfter?: { basis: string; marginPct: number; floorPct: number | null };
   } | null;
   schedule: { introRatePct: number | null; introTermYears: number | null; followOnRatePct: number | null; stressRatePct: number | null } | null;
@@ -420,6 +421,7 @@ function ProductInspector({ data }: { data: ProposalData }) {
             : <Row k="Margin over EIBOR" v={(q?.marginPct ?? 0).toFixed(3) + "%" + (q?.floorPct != null ? " (floor " + q.floorPct + "%)" : "")} tone="mint" />}
           {va && <Row k="After fixed term" v={va.basis.replace("_EIBOR", " EIBOR") + " + " + va.marginPct + "%" + (va.floorPct != null ? " (floor " + va.floorPct + "%)" : "")} tone="amber" />}
           <Row k="Quote source" v={q?.sourceLine ? String(q.sourceLine).slice(0, 60) : "—"} />
+          <Row k="Rate validity" v={(q?.effectiveFrom ?? "always") + " → " + (q?.effectiveTo && q.effectiveTo !== "2099-12-31" ? q.effectiveTo : "open")} />
           <Row k="Quote confidence" v={q?.confidence ?? "—"} />
           {q?.rateType !== "FIXED" && <Row k="EIBOR (3M / 6M)" v={(eiborFor("3M") ?? "—") + "% / " + (eiborFor("6M") ?? "—") + "%"} />}
           {q?.rateType !== "FIXED" && <Row k="EIBOR (1M / 1Y)" v={(eiborFor("1M") ?? "—") + "% / " + (eiborFor("1Y") ?? "—") + "%"} />}

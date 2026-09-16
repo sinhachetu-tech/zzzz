@@ -17,6 +17,11 @@ export interface RateQuote {
   ftvMax?: number | null;        // max finance-to-value band, null = any
   txn?: string | null;           // "any" | "Resale" | "Primary Handover" | "Buyout" | "Equity Release" | "Land" | "Self Construction" | "LAP"
   segment?: string | null;       // bank segment label (GECo, Premium, SZHP…)
+  // effective dating — a rate revision creates a NEW line (from = revision date,
+  // to = blank/2099-12-31) and closes the old line the day before. Null dates =
+  // always valid (legacy quotes). A rollback = re-apply: same mechanism, new line.
+  effectiveFrom?: string | null; // ISO date, inclusive
+  effectiveTo?: string | null;   // ISO date, inclusive; 2099-12-31 = open
   // the quote itself
   rateType: "FIXED" | "1M_EIBOR" | "3M_EIBOR" | "6M_EIBOR" | "1Y_EIBOR";
   ratePct?: number | null;       // for FIXED
@@ -41,6 +46,7 @@ export interface QuoteMatchInput {
   txn: string;               // canonical transaction
   segment?: string | null;
   ratePref?: "fixed" | "flexible"; // prefer fixed-for-term or EIBOR-linked quotes
+  on?: string;               // evaluation date (ISO). Default: today
 }
 
 /** Does a single quote match the requested dimensions? */
@@ -58,8 +64,19 @@ export function quoteMatches(q: RateQuote, req: QuoteMatchInput): boolean {
 /** Best (lowest) matching rate quote for a case, or null when not priced. */
 export function resolveQuote(pricing: ProductPricing | null, req: QuoteMatchInput): RateQuote | null {
   if (!pricing?.quotes?.length) return null;
-  let matches = pricing.quotes.filter((q) => quoteMatches(q, req));
+  const on = req.on ?? new Date().toISOString().slice(0, 10);
+  let matches = pricing.quotes.filter((q) => {
+    if (!quoteMatches(q, req)) return false;
+    const from = q.effectiveFrom ?? "";
+    const to = q.effectiveTo ?? "";
+    if (from && from > on) return false;  // scheduled revision not live yet
+    if (to && to !== "2099-12-31" && to < on) return false; // superseded line
+    return true;
+  });
   if (matches.length === 0) return null;
+  // overlapping dated lines: the latest effective-from wins, then best rate
+  matches = [...matches].sort((a, b) =>
+    (b.effectiveFrom ?? "").localeCompare(a.effectiveFrom ?? ""));
   // honour the rate preference when the bank offers that style; otherwise fall
   // back to the bank's best available quote (shown with its own rate type)
   if (req.ratePref === "fixed") {

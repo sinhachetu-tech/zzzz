@@ -765,9 +765,10 @@ export default function Calculator() {
   const [foSpread, setFoSpread] = useState(0);
   const [foFinal, setFoFinal] = useState(0);
   const [useFoFinal, setUseFoFinal] = useState(false);
-  const [stressSpread, setStressSpread] = useState(0);
-  const [stressFinal, setStressFinal] = useState(0);
-  const [useStressFinal, setUseStressFinal] = useState(false);
+  // stress inference: spread filled -> follow-on + spread; else the direct ROI
+  // typed in the second box; both empty -> follow-on itself
+  const [stressSpread, setStressSpread] = useState("");
+  const [stressFinal, setStressFinal] = useState("");
   const [fetchBank, setFetchBank] = useState("");
   const printStyle = <style>{PRINT_CSS}</style>;
   const [fetchProduct, setFetchProduct] = useState("");
@@ -798,16 +799,17 @@ export default function Calculator() {
   // three-scenario rates: explicit inputs, or auto-filled from the chosen bank product.
   // DBR1/2/3 use the calculator's own qualifying income + existing obligations.
   const scenario = (() => {
+    const sSpread = stressSpread.trim() === "" ? null : Number(stressSpread);
+    const sFinal = stressFinal.trim() === "" ? null : Number(stressFinal);
+    const stressOf = (base: number) => (sSpread != null ? base + sSpread : sFinal ?? base);
     if (rateStyle === "variable") {
       const eib = eiborPct(foTenor) ?? 0;
       const rate = eib + foSpread;
-      const stress = useStressFinal ? stressFinal : rate + stressSpread;
-      return { intro: rate, introYears: 0, followOn: rate, stress };
+      return { intro: rate, introYears: 0, followOn: rate, stress: stressOf(rate) };
     }
     const eib = eiborPct(foTenor) ?? 0;
     const followOn = useFoFinal ? foFinal : eib + foSpread;
-    const stress = useStressFinal ? stressFinal : followOn + stressSpread;
-    return { intro: introRate, introYears, followOn, stress };
+    return { intro: introRate, introYears, followOn, stress: stressOf(followOn) };
   })();
   const [whif, setWhif] = useState<WhifTab>("liab");
   const [cardId, setCardId] = useState("");
@@ -1310,8 +1312,9 @@ export default function Calculator() {
                       if (!prod) return;
                       const pricing = parsePricing(prod.pricingJson) ?? { quotes: [] };
                       // try the requested 3y first, then other tenors, then day-1 variable
-                      const quote = [3, 1, 5, 2, 4].map((t) => resolveQuote(pricing, { stl: true, termYears: t, ftv: prod.maxLtvExpatriate ?? 80, txn: "Resale" })).find(Boolean)
-                        || resolveQuote(pricing, { stl: true, termYears: null, ftv: prod.maxLtvExpatriate ?? 80, txn: "Resale" });
+                      const today = new Date().toISOString().slice(0, 10);
+                      const quote = [3, 1, 5, 2, 4].map((t) => resolveQuote(pricing, { stl: true, termYears: t, ftv: prod.maxLtvExpatriate ?? 80, txn: "Resale", on: today })).find(Boolean)
+                        || resolveQuote(pricing, { stl: true, termYears: null, ftv: prod.maxLtvExpatriate ?? 80, txn: "Resale", on: today });
                       if (!quote) { toast("error", "That product has no rate quotes filed yet."); setFetched(null); setIntroRate(0); return; }
                       setFetched({ bankName: prod.bankName, quotes: pricing.quotes });
                       const sched = rateSchedule(quote, { ON: eiborPct("ON") ?? 0, "1M": eiborPct("1M") ?? 0, "3M": eiborPct("3M") ?? 0, "6M": eiborPct("6M") ?? 0, "1Y": eiborPct("1Y") ?? 0 }, prod.stressBufferPct ?? 0);
@@ -1320,10 +1323,10 @@ export default function Calculator() {
                         const fo = sched.followOnRatePct ?? 0;
                         const basis = (quote.variableAfter?.basis ?? "3M") as "1M" | "3M" | "6M" | "1Y";
                         setFoTenor(basis); setUseFoFinal(true); setFoFinal(fo);
-                        setUseStressFinal(true); setStressFinal(sched.stressRatePct ?? fo);
+                        setStressSpread(""); setStressFinal(String(sched.stressRatePct ?? fo));
                       } else {
                         setRateStyle("variable"); setFoTenor((quote.rateType.replace("_EIBOR", "") || "3M") as "1M" | "3M" | "6M" | "1Y");
-                        setFoSpread(quote.marginPct ?? 0); setUseStressFinal(true); setStressFinal(sched.stressRatePct ?? 0);
+                        setFoSpread(quote.marginPct ?? 0); setStressSpread(""); setStressFinal(String(sched.stressRatePct ?? 0));
                       }
                       toast("success", prod.bankName + " rates loaded — edit freely, engine link is optional.");
                     }}>
@@ -1383,13 +1386,14 @@ export default function Calculator() {
                 </div>
               </div>
               <div>
-                <label className="label">Stress rate</label>
+                <label className="label">Stress — spread + <span className="normal-case tracking-normal" style={{ color: "var(--ink-faint)" }}>or any ROI</span></label>
                 <div className="flex gap-1">
-                  <button type="button" className="chip transition-all" style={!useStressFinal ? { background: "var(--amber-tint)", borderColor: "var(--amber)", color: "var(--amber)" } : { background: "var(--bg2)", borderColor: "var(--line)", color: "var(--ink-faint)" }}
-                    onClick={() => setUseStressFinal(false)}>spread +</button>
-                  {useStressFinal
-                    ? <input className="input mono !w-24" type="number" step={0.01} value={stressFinal || ""} onChange={(e) => setStressFinal(Number(e.target.value) || 0)} placeholder="final %" />
-                    : <input className="input mono !w-20" type="number" step={0.05} value={stressSpread || ""} onChange={(e) => setStressSpread(Number(e.target.value) || 0)} placeholder="%" />}
+                  <input className="input mono !w-20" type="number" step={0.05} value={stressSpread}
+                    title="If filled: stress = follow-on rate + this spread"
+                    onChange={(e) => setStressSpread(e.target.value)} placeholder="spread" />
+                  <input className="input mono !w-24" type="number" step={0.01} value={stressFinal}
+                    title="Used only when spread is empty — the stress ROI as a direct figure"
+                    onChange={(e) => setStressFinal(e.target.value)} placeholder="or ROI" />
                 </div>
               </div>
             </div>

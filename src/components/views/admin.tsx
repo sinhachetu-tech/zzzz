@@ -2990,6 +2990,28 @@ function QuoteRowsEditor({ quotes, rateTable, onChange, productId, onFeesDraft }
           </div>
           <input className="input !py-1 text-[11px]" placeholder="note (optional)" value={q.note ?? ""}
             onChange={(e) => update(i, { note: e.target.value })} />
+          <div className="flex flex-wrap items-center gap-1.5 text-[10.5px] text-[var(--ink-faint)]">
+            <span>valid:</span>
+            <input className="input mono !py-0.5 !px-1.5 text-[10.5px] !w-32" type="date" value={q.effectiveFrom ?? ""}
+              title="Effective from — blank = always"
+              onChange={(e) => update(i, { effectiveFrom: e.target.value || null })} />
+            <span>upto</span>
+            <input className="input mono !py-0.5 !px-1.5 text-[10.5px] !w-32" type="date" value={q.effectiveTo ?? ""}
+              title="Upto — blank/2099 = continues until revised"
+              onChange={(e) => update(i, { effectiveTo: e.target.value || null })} />
+            <button type="button" className="btn btn-ghost btn-xs no-print"
+              title="Rate revision: copies this line with effective-from = today and closes the old line the day before. Change the figure on the copy."
+              onClick={() => {
+                const today = new Date().toISOString().slice(0, 10);
+                const yest = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+                if (q.effectiveTo && q.effectiveTo !== "2099-12-31" && q.effectiveTo < today) {
+                  toast("error", "This line already ended on " + q.effectiveTo + " — revise the current line instead.");
+                  return;
+                }
+                update(i, { effectiveTo: yest });
+                onChange([...quotes, { ...q, effectiveFrom: today, effectiveTo: null, note: (q.note ? q.note + " — " : "") + "revised " + today } ]);
+              }}>↻ Revise rate</button>
+          </div>
         </div>
       ))}
     </div>

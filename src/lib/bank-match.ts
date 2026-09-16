@@ -278,7 +278,7 @@ export async function runBankMatch(input: MatchInput): Promise<MatchResult[]> {
     }
 
     const pricing = parsePricing(p.pricingJson);
-    const baseReq = { stl: input.stl, ftv: p.maxLtvExpatriate ?? 80, txn };
+    const baseReq = { stl: input.stl, ftv: p.maxLtvExpatriate ?? 80, txn, on: today };
     let quote: RateQuote | null = null;
     if (input.ratePref === "flexible") {
       quote = resolveQuote(pricing, { ...baseReq, termYears: null, ratePref: "flexible" });
