@@ -771,6 +771,8 @@ export default function Calculator() {
   const [fetchBank, setFetchBank] = useState("");
   const printStyle = <style>{PRINT_CSS}</style>;
   const [fetchProduct, setFetchProduct] = useState("");
+  // null = assessment rate auto-follows the scenario's stress rate
+  const [manualAssessment, setManualAssessment] = useState<number | null>(null);
 
   const eiborPct = (t: string) => eibor.find((e) => e.tenor === t)?.ratePct ?? null;
 
@@ -1288,7 +1290,9 @@ export default function Calculator() {
                       const prod = bankProducts.find((b) => String(b.id) === e.target.value);
                       if (!prod) return;
                       const pricing = parsePricing(prod.pricingJson);
-                      const quote = resolveQuote(pricing, { stl: true, termYears: 3, ftv: 80, txn: "Resale" });
+                      // try the requested 3y first, then other tenors, then day-1 variable
+                      const quote = [3, 1, 5, 2, 4].map((t) => resolveQuote(pricing, { stl: true, termYears: t, ftv: prod.maxLtvExpatriate ?? 80, txn: "Resale" })).find(Boolean)
+                        || resolveQuote(pricing, { stl: true, termYears: null, ftv: prod.maxLtvExpatriate ?? 80, txn: "Resale" });
                       if (!quote) { toast("error", "That product has no rate quotes filed yet."); return; }
                       const sched = rateSchedule(quote, { ON: eiborPct("ON") ?? 0, "1M": eiborPct("1M") ?? 0, "3M": eiborPct("3M") ?? 0, "6M": eiborPct("6M") ?? 0, "1Y": eiborPct("1Y") ?? 0 }, prod.stressBufferPct ?? 0);
                       if (sched.introTermYears && sched.introTermYears > 0) {
@@ -1389,55 +1393,125 @@ export default function Calculator() {
               );
             })()}
 
+            {/* assessment follows the stress rate automatically; rare overrides live in Advanced */}
             <div className="flex flex-wrap items-center gap-x-6 gap-y-3 mt-3.5 pt-3.5" style={{ borderTop: "1px dashed var(--line)" }}>
-              <div>
-                <label className="label">Assessment rate % — drives MPBF</label>
-                <input className="input mono" type="number" step={0.05} min={0} value={input.actualRate}
-                  onChange={(e) => up({ actualRate: Number(e.target.value) || 0 })} />
-              </div>
-              <button type="button" className="btn btn-ghost btn-sm self-end" title="Copy the stress rate into the assessment rate"
-                onClick={() => up({ actualRate: Math.round(scenario.stress * 100) / 100, stressOverride: null })}>
-                Use stress ({scenario.stress.toFixed(2)}%) as assessment
-              </button>
-              <div>
-                <label className="label">Load factor</label>
-                <div className="flex gap-1.5 flex-wrap">
-                  {[1.5, 2, 3, 4].map((l) => (
-                    <button key={l} type="button" className="chip transition-all"
-                      style={input.loadFactor === l && input.stressOverride == null ? { background: "var(--amber-tint)", borderColor: "var(--amber)", color: "var(--amber)" } : { background: "var(--bg2)", borderColor: "var(--line)", color: "var(--ink-faint)" }}
-                      onClick={() => up({ loadFactor: l, stressOverride: null })}>
-                      +{l}%
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <label className="label">Manual stress rate — optional</label>
-                <input className="input mono" type="number" step={0.05} min={0} value={input.stressOverride ?? ""} placeholder={`auto: ${fmtPct(input.actualRate + input.loadFactor)}`}
-                  onChange={(e) => up({ stressOverride: e.target.value === "" ? null : Number(e.target.value) || 0 })} />
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-x-6 gap-y-3 mt-3.5 pt-3.5" style={{ borderTop: "1px dashed var(--line)" }}>
-              <Stat label="Assessment rate" value={fmtPct(r.assessmentRate)} tone="var(--amber)" />
-              <div>
-                <label className="label">Income multiplier cap</label>
-                <select className="select" style={{ width: 130 }} value={input.multiplierX} onChange={(e) => up({ multiplierX: Number(e.target.value) })}>
-                  <option value={0}>Off</option>
-                  {[5, 6, 7, 8].map((x) => <option key={x} value={x}>{x}× annual</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="label">Tenor override (mo)</label>
-                <input className="input mono" type="number" min={12} step={12} value={input.tenorOverrideMonths ?? ""} placeholder="auto (age)"
-                  onChange={(e) => up({ tenorOverrideMonths: e.target.value === "" ? null : Number(e.target.value) || 0 })} />
-              </div>
+              <Stat label="Assessment rate (auto = stress)" value={fmtPct(r.assessmentRate)} tone="var(--amber)" />
               <Stat label="Tenor used" value={tenorLabel(r.maxTenorMonths)} />
+              <details className="no-print text-[12px]" style={{ minWidth: 260 }}>
+                <summary className="cursor-pointer font-disp font-semibold text-[var(--ink-faint)]">Advanced — rarely needed</summary>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2.5">
+                  <div>
+                    <label className="label">Override assessment %</label>
+                    <input className="input mono" type="number" step={0.05} min={0} value={manualAssessment ?? ""}
+                      placeholder={`auto: ${fmtPct(scenario.stress)}`}
+                      onChange={(e) => setManualAssessment(e.target.value === "" ? null : Number(e.target.value) || 0)} />
+                  </div>
+                  <div>
+                    <label className="label">Fallback load factor <span className="normal-case tracking-normal text-[var(--ink-faint)]">(only when scenario above is empty)</span></label>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {[1.5, 2, 3, 4].map((l) => (
+                        <button key={l} type="button" className="chip transition-all"
+                          style={input.loadFactor === l ? { background: "var(--amber-tint)", borderColor: "var(--amber)", color: "var(--amber)" } : { background: "var(--bg2)", borderColor: "var(--line)", color: "var(--ink-faint)" }}
+                          onClick={() => up({ loadFactor: l, stressOverride: null })}>
+                          +{l}%
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="label">Income multiplier cap</label>
+                    <select className="select" value={input.multiplierX} onChange={(e) => up({ multiplierX: Number(e.target.value) })}>
+                      <option value={0}>Off</option>
+                      {[5, 6, 7, 8].map((x) => <option key={x} value={x}>{x}× annual</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="label">Tenor override (mo)</label>
+                    <input className="input mono" type="number" min={12} step={12} value={input.tenorOverrideMonths ?? ""} placeholder="auto (age)"
+                      onChange={(e) => up({ tenorOverrideMonths: e.target.value === "" ? null : Number(e.target.value) || 0 })} />
+                  </div>
+                </div>
+              </details>
             </div>
           </Section>
         </div>
 
         {/* ================= results column ================= */}
         <div className="space-y-4">
+          {/* proposal-style preview — the full working on one sheet, prints as-is */}
+          <div className="card anim-fade-up" style={{ background: "var(--surface)" }}>
+            <div className="flex items-center justify-between px-4 pt-3.5 pb-2.5" style={{ borderBottom: "2px solid var(--amber)" }}>
+              <div>
+                <div className="font-disp font-bold text-[14px]">Eligibility working{input.name ? ` · ${input.name}` : ""}</div>
+                <div className="text-[10px] uppercase tracking-[0.14em] text-[var(--ink-faint)]">HFMC · indicative, not a bank approval</div>
+              </div>
+              <div className="text-right mono text-[11px] text-[var(--ink-faint)]">
+                {dealEmirate} · {dealTxn}
+                <div>{new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}</div>
+              </div>
+            </div>
+            <div className="px-4 py-3 space-y-2.5">
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="rounded-lg px-2 py-1.5" style={{ background: "var(--tint)" }}>
+                  <div className="text-[9px] uppercase tracking-[0.1em] text-[var(--ink-faint)] font-disp font-semibold">Property value</div>
+                  <div className="mono text-[13px] font-semibold">{fmtAED(input.propertyValue)}</div>
+                </div>
+                <div className="rounded-lg px-2 py-1.5" style={{ background: "var(--amber-tint)" }}>
+                  <div className="text-[9px] uppercase tracking-[0.1em] font-disp font-semibold" style={{ color: "var(--amber)" }}>Finance sought</div>
+                  <div className="mono text-[13px] font-bold" style={{ color: "var(--amber)" }}>{fmtAED(input.requested)}</div>
+                </div>
+                <div className="rounded-lg px-2 py-1.5" style={{ background: "var(--tint)" }}>
+                  <div className="text-[9px] uppercase tracking-[0.1em] text-[var(--ink-faint)] font-disp font-semibold">Eligible income</div>
+                  <div className="mono text-[13px] font-semibold">{fmtAED(r.eligibleIncome)}/mo</div>
+                </div>
+              </div>
+
+              <table className="w-full text-[11.5px]">
+                <thead>
+                  <tr className="text-[var(--ink-faint)] text-left">
+                    <th className="py-1 font-disp text-[10px] uppercase tracking-[0.08em]">Stage</th>
+                    <th>Rate</th><th>EMI</th><th>DBR</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(() => {
+                    const months = r.maxTenorMonths || 300;
+                    const emiFor = (rate: number) => rate > 0 ? Math.round((input.requested * (rate / 100 / 12)) / (1 - Math.pow(1 + rate / 100 / 12, -months))) || 0 : 0;
+                    const dbr = (e: number) => r.eligibleIncome > 0 ? Math.round(((e + r.existingEmis) / r.eligibleIncome) * 1000) / 10 : 0;
+                    const rows: [string, number, string][] = rateStyle === "fixed"
+                      ? [["1 · Intro (fixed)", scenario.intro, scenario.introYears ? `${scenario.introYears}y fixed` : "intro"],
+                         ["2 · After intro", scenario.followOn, `${foTenor} EIBOR + ${foSpread}%`],
+                         ["3 · Stress-qualified", scenario.stress, "qualifying rate"]]
+                      : [["1 · Day-1 rate", scenario.intro, `${foTenor} EIBOR + ${foSpread}%`],
+                         ["2 · Ongoing", scenario.followOn, "same basis"],
+                         ["3 · Stress-qualified", scenario.stress, "qualifying rate"]];
+                    return rows.map(([label, rate, note], i) => (
+                      <tr key={label} style={{ borderTop: "1px dashed var(--line)" }}>
+                        <td className="py-1.5">{label}<span className="text-[10px] text-[var(--ink-faint)]"> · {note}</span></td>
+                        <td className="mono text-center">{rate.toFixed(2)}%</td>
+                        <td className="mono text-center">{fmtAED(emiFor(rate))}</td>
+                        <td className="mono text-center font-semibold" style={{ color: i === 2 ? "var(--amber)" : undefined }}>{dbr(emiFor(rate))}%</td>
+                      </tr>
+                    ));
+                  })()}
+                  <tr style={{ borderTop: "1px dashed var(--line)" }}>
+                    <td className="py-1.5 text-[var(--ink-dim)]">Existing obligations</td>
+                    <td /><td className="mono text-center">{fmtAED(r.existingEmis)}</td>
+                    <td className="mono text-center">{r.currentDbr}%</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <div className="flex flex-wrap gap-x-5 gap-y-1 pt-2 mono text-[11.5px]" style={{ borderTop: "1px solid var(--line)" }}>
+                <span>Assessment: <strong style={{ color: "var(--amber)" }}>{fmtPct(r.assessmentRate)}</strong></span>
+                <span>Tenor: <strong>{tenorLabel(r.maxTenorMonths)}</strong></span>
+                <span>DBR ceiling: <strong>{r.maxDbr}%</strong></span>
+                <span>Available EMI: <strong>{fmtAED(r.availableEmi)}</strong></span>
+                <span>MPBF: <strong style={{ color: "var(--mint)" }}>{fmtAED(r.finalMpbf ?? 0)}</strong></span>
+              </div>
+            </div>
+          </div>
+
           <MpbfHeadline r={r} input={input} />
 
           <KeyMetrics r={r} />
