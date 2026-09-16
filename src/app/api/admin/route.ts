@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ item: serPartner(item) });
     }
     if (kind === "channel") {
-      const item = await db.channelItem.create({ data: { name: body.name, commissionPct: body.commissionPct ?? 0.4, active: body.active ?? true } });
+      const item = await db.channelItem.create({ data: { name: body.name, commissionPct: body.commissionPct ?? 0.4, active: body.active ?? true, contactsJson: JSON.stringify(Array.isArray(body.contacts) ? body.contacts : []) } });
       return NextResponse.json({ item: serChannel(item) });
     }
     if (kind === "stage") {
@@ -161,7 +161,7 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ item: serPartner(item) });
     }
     if (kind === "channel") {
-      const item = await db.channelItem.update({ where: { id: numId }, data: { name: body.name, commissionPct: body.commissionPct, active: body.active } });
+      const item = await db.channelItem.update({ where: { id: numId }, data: { name: body.name, commissionPct: body.commissionPct, active: body.active, ...(body.contacts !== undefined ? { contactsJson: JSON.stringify(Array.isArray(body.contacts) ? body.contacts : []) } : {}) } });
       return NextResponse.json({ item: serChannel(item) });
     }
     if (kind === "stage") {

@@ -1160,7 +1160,7 @@ function blankStage(nextOrder: number): StageDraft {
 function ChannelsTab() {
   const { channels, hydrate, toast } = useHfmcStore();
   const [draft, setDraft] = useState({ name: "", commissionPct: 0.4 });
-  const [edit, setEdit] = useState<{ id: number; name: string; commissionPct: number; active: boolean } | null>(null);
+  const [edit, setEdit] = useState<{ id: number; name: string; commissionPct: number; active: boolean; contacts: { name: string; phone?: string; email?: string; role?: string }[] } | null>(null);
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
@@ -1185,7 +1185,7 @@ function ChannelsTab() {
     try {
       const res = await fetch("/api/admin", {
         method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind: "channel", id: edit.id, name: edit.name, commissionPct: edit.commissionPct, active: edit.active }),
+        body: JSON.stringify({ kind: "channel", id: edit.id, name: edit.name, commissionPct: edit.commissionPct, active: edit.active, contacts: edit.contacts.filter((c) => c.name.trim()) }),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Update failed");
       toast("success", "Channel updated.");
@@ -1222,7 +1222,7 @@ function ChannelsTab() {
                 <td className="mono">{ch.commissionPct}%</td>
                 <td>{ch.active ? <span style={{ color: "var(--mint)" }}>●</span> : <span style={{ color: "var(--ink-faint)" }}>○</span>}</td>
                 <td className="text-right">
-                  <button className="btn btn-ghost btn-sm" onClick={() => setEdit({ id: ch.id, name: ch.name, commissionPct: ch.commissionPct, active: ch.active })}>Edit</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setEdit({ id: ch.id, name: ch.name, commissionPct: ch.commissionPct, active: ch.active, contacts: ch.contacts ?? [] })}>Edit</button>
                   <button className="btn btn-ghost btn-sm" onClick={() => del(ch.id, ch.name)}>Delete</button>
                 </td>
               </tr>
@@ -1237,6 +1237,12 @@ function ChannelsTab() {
             <div><label className="label">Name</label><input className="input" value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} /></div>
             <div><label className="label">Commission % (of loan amount)</label><input className="input mono" type="number" step={0.05} min={0} max={2} value={edit.commissionPct} onChange={(e) => setEdit({ ...edit, commissionPct: Number(e.target.value) || 0 })} /></div>
             <div><label className="label">Active</label><button className="btn btn-ghost btn-sm" onClick={() => setEdit({ ...edit, active: !edit.active })}>{edit.active ? "● Active" : "○ Inactive"}</button></div>
+            <div>
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--ink-faint)]">Channel RM / coordinator contacts</span>
+              <div className="mt-1.5">
+                <ContactsEditor contacts={edit.contacts} onChange={(contacts) => setEdit({ ...edit, contacts })} />
+              </div>
+            </div>
           </div>
         </Modal>
       )}
@@ -2523,44 +2529,7 @@ function BankRulesTab() {
               <button className="btn btn-ghost" disabled={busy} onClick={async () => { setBusy(true); await saveBankProduct(editing.id, { status: "draft" }); setEditing({ ...editing, status: "draft" }); setBusy(false); }}>
                 Move to draft
               </button>
-              <button
-                type="button"
-                className="btn btn-mint"
-                disabled={busy}
-                title="Save changed rates as a new version row with effective date"
-                onClick={async () => {
-                  // use the Effective-date field in the version strip (prompt() is
-                  // blocked in in-app browsers — it silently returned nothing there)
-                  const newEff = editing.effectiveDate ? editing.effectiveDate.slice(0, 10) : new Date().toISOString().slice(0, 10);
-                  setBusy(true);
-                  const res = await fetch("/api/admin", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      kind: "bankproduct_version",
-                      originalProductId: editing.id,
-                      effectiveDate: newEff,
-                      expiryDate: editing.expiryDate || "2099-12-31",
-                      pricingJson: editing.pricingJson,
-                      feesJson: editing.feesJson,
-                      insuranceJson: editing.insuranceJson,
-                      rateTable: editing.rateTable,
-                      notes: editing.notes,
-                    }),
-                  });
-                  const json = await res.json();
-                  setBusy(false);
-                  if (res.ok) {
-                    toast("success", "New rate version created with effective date " + newEff);
-                    await hydrate();
-                    setEditing(null);
-                  } else {
-                    toast("error", json.error || "Failed to create new version.");
-                  }
-                }}
-              >
-                Save as new version
-              </button>
+              
               <button
                 className="btn btn-primary"
                 disabled={busy || productIssues(editing).filter((i) => i.blocking).length > 0}
@@ -2587,26 +2556,7 @@ function BankRulesTab() {
                   v{editing.version ?? 1}
                 </span>
               </div>
-              <div className="flex items-center gap-1.5">
-                <label className="text-[11px] font-medium text-[var(--ink-dim)]">Effective:</label>
-                <input
-                  type="date"
-                  className="input !py-1 !px-2 text-[11.5px] mono !w-36"
-                  value={editing.effectiveDate ? editing.effectiveDate.slice(0, 10) : ""}
-                  onChange={(e) => setEditing({ ...editing, effectiveDate: e.target.value || null })}
-                  title="Date this rate sheet starts"
-                />
-              </div>
-              <div className="flex items-center gap-1.5">
-                <label className="text-[11px] font-medium text-[var(--ink-dim)]">Upto / Expiry:</label>
-                <input
-                  type="date"
-                  className="input !py-1 !px-2 text-[11.5px] mono !w-36"
-                  value={editing.expiryDate ? editing.expiryDate.slice(0, 10) : "2099-12-31"}
-                  onChange={(e) => setEditing({ ...editing, expiryDate: e.target.value || "2099-12-31" })}
-                  title="Defaults to 31-Dec-2099"
-                />
-              </div>
+              
               <span className="text-[10px] text-[var(--ink-faint)] ml-auto">Default: 31-Dec-2099 (active indefinitely)</span>
             </div>
             <div className="flex items-center justify-between pb-1">
@@ -2872,7 +2822,7 @@ function QuoteRowsEditor({ quotes, rateTable, onChange, productId, onFeesDraft }
     onChange(quotes.map((q, idx) => (idx === i ? { ...q, ...patch } : q)));
   const remove = (i: number) => onChange(quotes.filter((_, idx) => idx !== i));
   const add = () =>
-    onChange([...quotes, { stl: true, termYears: 3, rateType: "FIXED", ratePct: undefined, txn: "any", note: "" }]);
+    onChange([...quotes, { stl: true, termYears: 3, rateType: "FIXED", ratePct: undefined, txn: "any", note: "", effectiveFrom: new Date().toISOString().slice(0, 10), effectiveTo: null }]);
 
   const autoDraft = () => {
     const parsed = parseRateTable(rateTable);

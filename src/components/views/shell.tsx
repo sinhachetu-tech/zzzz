@@ -378,8 +378,7 @@ function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void })
                 <select className="select !w-auto !py-1 text-[11.5px]" value={partnerRm}
                   onChange={(e) => setPartnerRm(e.target.value)}>
                   <option value="">— none / type below —</option>
-                  {(channels.find((ch) => ch.id === channelId) ? [] : []).map((x) => x)}
-                  {(partners.find((pp) => pp.id === channelId)?.contacts ?? []).map((c, i) => (
+                  {(channels.find((ch) => ch.id === channelId)?.contacts ?? []).map((c, i) => (
                     <option key={i} value={c.name + (c.phone ? " · " + c.phone : "")}>{c.name}{c.phone ? " · " + c.phone : ""}{c.email ? " · " + c.email : ""}</option>
                   ))}
                 </select>

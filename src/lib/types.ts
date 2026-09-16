@@ -146,6 +146,8 @@ export interface ChannelItem {
   name: string;
   commissionPct: number;
   active: boolean;
+
+  contacts: Contact[]; // channel RMs
 }
 
 export interface Task {

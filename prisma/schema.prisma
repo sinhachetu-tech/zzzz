@@ -474,6 +474,7 @@ model ChannelItem {
   name          String   @unique
   commissionPct Float    @default(0.4) // % of loan amount the channel takes
   active        Boolean  @default(true)
+  contactsJson  String   @default("[]") // channel RMs: [{name,phone,email,role}]
 }
 
 // Stage change log — powers the client portal timeline and the Case 360 history.

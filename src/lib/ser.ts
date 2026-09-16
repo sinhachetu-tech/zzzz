@@ -130,9 +130,11 @@ export function serClient(c: PrismaClientRow): ClientDto {
   };
 }
 
-type PrismaChannel = { id: number; name: string; commissionPct: number; active: boolean };
+type PrismaChannel = { id: number; name: string; commissionPct: number; active: boolean; contactsJson?: string | null };
 export function serChannel(ch: PrismaChannel) {
-  return { id: ch.id, name: ch.name, commissionPct: ch.commissionPct, active: ch.active };
+  let contacts: import("./types").Contact[] = [];
+  try { const arr = JSON.parse(ch.contactsJson ?? "[]"); if (Array.isArray(arr)) contacts = arr; } catch { contacts = []; }
+  return { id: ch.id, name: ch.name, commissionPct: ch.commissionPct, active: ch.active, contacts };
 }
 
 type PrismaTask = {
