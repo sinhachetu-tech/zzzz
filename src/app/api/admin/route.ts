@@ -290,6 +290,7 @@ export async function DELETE(req: NextRequest) {
     else if (kind === "user") await db.user.delete({ where: { id: numId } });
     else if (kind === "designation") await db.designation.delete({ where: { id: numId } });
     else if (kind === "sla") await db.slaRule.delete({ where: { id: numId } });
+    else if (kind === "bankproduct") await db.bankProduct.delete({ where: { id: numId } });
     else if (kind === "docrule") await db.docRule.delete({ where: { id: numId } });
     else if (kind === "feerule") await db.feeRule.delete({ where: { id: numId } });
     else return NextResponse.json({ error: "unknown kind" }, { status: 400 });

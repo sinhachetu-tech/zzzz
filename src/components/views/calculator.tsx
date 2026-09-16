@@ -778,6 +778,23 @@ export default function Calculator() {
 
   const eiborPct = (t: string) => eibor.find((e) => e.tenor === t)?.ratePct ?? null;
 
+  // current-version products only — same selection rule as the match engine
+  // (skip future-effective, skip expired, keep max version per product identity)
+  const currentProducts = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const map = new Map<string, typeof bankProducts[number]>();
+    for (const p of bankProducts.filter((b) => b.active && b.status === "approved")) {
+      const eff = p.effectiveDate ? p.effectiveDate.slice(0, 10) : "";
+      const exp = (p as unknown as { expiryDate?: string }).expiryDate?.slice(0, 10) ?? "2099-12-31";
+      if (eff && eff > today) continue;
+      if (exp && exp < today) continue;
+      const key = p.bankId + "__" + p.name.trim().toLowerCase();
+      const existing = map.get(key);
+      if (!existing || (p.version ?? 1) > (existing.version ?? 1)) map.set(key, p);
+    }
+    return Array.from(map.values());
+  }, [bankProducts]);
+
   // three-scenario rates: explicit inputs, or auto-filled from the chosen bank product.
   // DBR1/2/3 use the calculator's own qualifying income + existing obligations.
   const scenario = (() => {
@@ -1280,7 +1297,7 @@ export default function Calculator() {
                 <select className="select" style={{ width: 150 }} value={fetchBank}
                   onChange={(e) => { setFetchBank(e.target.value); setFetchProduct(""); setFetched(null); setIntroRate(0); }}>
                   <option value="">— bank —</option>
-                  {[...new Set(bankProducts.filter((b) => b.active).map((b) => b.bankName))].sort().map((bn) => <option key={bn}>{bn}</option>)}
+                  {[...new Set(currentProducts.map((b) => b.bankName))].sort().map((bn) => <option key={bn}>{bn}</option>)}
                 </select>
               </div>
               {fetchBank && (
@@ -1311,7 +1328,7 @@ export default function Calculator() {
                       toast("success", prod.bankName + " rates loaded — edit freely, engine link is optional.");
                     }}>
                     <option value="">— product —</option>
-                    {bankProducts.filter((b) => b.active && b.bankName === fetchBank).map((b) => <option key={b.id} value={String(b.id)}>{b.name}</option>)}
+                    {currentProducts.filter((b) => b.bankName === fetchBank).map((b) => <option key={b.id} value={String(b.id)}>{b.name}</option>)}
                   </select>
                 </div>
               )}
