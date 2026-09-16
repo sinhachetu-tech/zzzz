@@ -773,6 +773,8 @@ export default function Calculator() {
   const [fetchProduct, setFetchProduct] = useState("");
   // null = assessment rate auto-follows the scenario's stress rate
   const [manualAssessment, setManualAssessment] = useState<number | null>(null);
+  // quotes of the last fetched product — tenure switches re-resolve from these
+  const [fetched, setFetched] = useState<{ bankName: string; quotes: NonNullable<ReturnType<typeof parsePricing>>["quotes"] } | null>(null);
 
   const eiborPct = (t: string) => eibor.find((e) => e.tenor === t)?.ratePct ?? null;
 
@@ -1276,7 +1278,7 @@ export default function Calculator() {
               <div>
                 <label className="label">Fetch from engine — optional</label>
                 <select className="select" style={{ width: 150 }} value={fetchBank}
-                  onChange={(e) => { setFetchBank(e.target.value); setFetchProduct(""); }}>
+                  onChange={(e) => { setFetchBank(e.target.value); setFetchProduct(""); setFetched(null); setIntroRate(0); }}>
                   <option value="">— bank —</option>
                   {[...new Set(bankProducts.filter((b) => b.active).map((b) => b.bankName))].sort().map((bn) => <option key={bn}>{bn}</option>)}
                 </select>
@@ -1289,11 +1291,12 @@ export default function Calculator() {
                       setFetchProduct(e.target.value);
                       const prod = bankProducts.find((b) => String(b.id) === e.target.value);
                       if (!prod) return;
-                      const pricing = parsePricing(prod.pricingJson);
+                      const pricing = parsePricing(prod.pricingJson) ?? { quotes: [] };
                       // try the requested 3y first, then other tenors, then day-1 variable
                       const quote = [3, 1, 5, 2, 4].map((t) => resolveQuote(pricing, { stl: true, termYears: t, ftv: prod.maxLtvExpatriate ?? 80, txn: "Resale" })).find(Boolean)
                         || resolveQuote(pricing, { stl: true, termYears: null, ftv: prod.maxLtvExpatriate ?? 80, txn: "Resale" });
-                      if (!quote) { toast("error", "That product has no rate quotes filed yet."); return; }
+                      if (!quote) { toast("error", "That product has no rate quotes filed yet."); setFetched(null); setIntroRate(0); return; }
+                      setFetched({ bankName: prod.bankName, quotes: pricing.quotes });
                       const sched = rateSchedule(quote, { ON: eiborPct("ON") ?? 0, "1M": eiborPct("1M") ?? 0, "3M": eiborPct("3M") ?? 0, "6M": eiborPct("6M") ?? 0, "1Y": eiborPct("1Y") ?? 0 }, prod.stressBufferPct ?? 0);
                       if (sched.introTermYears && sched.introTermYears > 0) {
                         setRateStyle("fixed"); setIntroRate(sched.introRatePct ?? 0); setIntroYears(sched.introTermYears);
@@ -1331,7 +1334,17 @@ export default function Calculator() {
                   </div>
                   <div>
                     <label className="label">Fixed for</label>
-                    <select className="select" value={introYears} onChange={(e) => setIntroYears(Number(e.target.value))}>
+                    <select className="select" value={introYears}
+                      onChange={(e) => {
+                        const y = Number(e.target.value);
+                        setIntroYears(y);
+                        // re-resolve from the fetched card: that tenor's rate, or blank when not filed
+                        if (fetched) {
+                          const hit = fetched.quotes.find((qq) => qq.termYears === y && (qq.stl == null || qq.stl) && qq.rateType === "FIXED");
+                          setIntroRate(hit?.ratePct ?? 0);
+                          if (!hit) toast("info", fetched.bankName + " has no " + y + "-year rate filed — enter it manually.");
+                        }
+                      }}>
                       {[1, 2, 3, 4, 5].map((y) => <option key={y} value={y}>{y} year{y > 1 ? "s" : ""}</option>)}
                     </select>
                   </div>
