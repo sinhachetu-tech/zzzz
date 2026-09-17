@@ -3,29 +3,46 @@
 import { useState } from "react";
 import { useClientStore } from "./client-store";
 import { LogoMark } from "@/components/icons";
+import { ThemeToggle } from "@/components/hfmc/ui";
 
 export function ClientLogin() {
   const { hydrate } = useClientStore();
   const [mode, setMode] = useState<"login" | "register">("login");
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4" style={{ background: "var(--bg)" }}>
-      <div className="app-bg" />
-      <div className="w-full max-w-[400px] anim-fade-up">
-        <div className="flex items-center gap-2.5 mb-8 justify-center">
-          <LogoMark size={36} />
-          <div>
-            <div className="font-disp font-bold text-[18px] tracking-[0.04em] leading-none">HFMC</div>
-            <div className="text-[9px] uppercase tracking-[0.18em] text-[var(--ink-faint)] mt-0.5">Client Portal</div>
+    <div className="min-h-screen relative flex items-center justify-center px-4 overflow-hidden" style={{ background: "var(--bg)" }}>
+      {/* Dubai backdrop — slow Ken Burns drift (zoom + pan), Unsplash license */}
+      <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute inset-0" style={{
+          backgroundImage: "url(/dubai-login.jpg)",
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          filter: "brightness(1.16) saturate(1.22) contrast(1.03)",
+          animation: "kenburns 26s ease-in-out infinite alternate",
+        }} />
+        <div className="absolute inset-0" style={{
+          background: "linear-gradient(180deg, rgba(6,13,17,0.18) 0%, rgba(6,13,17,0.10) 45%, rgba(6,13,17,0.45) 100%)",
+        }} />
+      </div>
+      <style>{`@keyframes kenburns { 0%{transform:scale(1) translate(0,0)} 100%{transform:scale(1.12) translate(-1.5%,1.5%)} }`}</style>
+      <div className="absolute top-3 right-3 z-20"><ThemeToggle compact /></div>
+      <div className="w-full max-w-[400px] anim-fade-up relative z-10">
+        <div className="flex items-center gap-2.5 mb-6 justify-center">
+          <div className="rounded-xl px-4 py-2.5 flex items-center gap-2.5" style={{ background: "var(--raised)", border: "1px solid var(--line)" }}>
+            <LogoMark size={34} />
+            <div>
+              <div className="font-disp font-bold text-[18px] tracking-[0.04em] leading-none" style={{ color: "var(--amber)" }}>HFMC</div>
+              <div className="text-[9px] uppercase tracking-[0.18em] mt-0.5" style={{ color: "var(--ink-faint)" }}>Client Portal</div>
+            </div>
           </div>
         </div>
 
         {/* Mode toggle */}
         <div className="flex gap-1.5 mb-4">
-          <button className="chip transition-all flex-1 justify-center" style={mode === "login" ? { background: "rgba(242,176,76,0.14)", borderColor: "var(--amber)", color: "var(--amber)" } : { background: "var(--bg2)", borderColor: "var(--line)", color: "var(--ink-faint)" }} onClick={() => setMode("login")}>
+          <button className="chip transition-all flex-1 justify-center" style={mode === "login" ? { background: "color-mix(in srgb, var(--amber) 24%, var(--raised))", borderColor: "var(--amber)", color: "var(--amber)" } : { background: "var(--bg2)", borderColor: "var(--line)", color: "var(--ink)" }} onClick={() => setMode("login")}>
             I have a case
           </button>
-          <button className="chip transition-all flex-1 justify-center" style={mode === "register" ? { background: "rgba(67,214,155,0.12)", borderColor: "var(--mint)", color: "var(--mint)" } : { background: "var(--bg2)", borderColor: "var(--line)", color: "var(--ink-faint)" }} onClick={() => setMode("register")}>
+          <button className="chip transition-all flex-1 justify-center" style={mode === "register" ? { background: "color-mix(in srgb, var(--mint) 22%, var(--raised))", borderColor: "var(--mint)", color: "var(--mint)" } : { background: "var(--bg2)", borderColor: "var(--line)", color: "var(--ink)" }} onClick={() => setMode("register")}>
             I&apos;m new — apply
           </button>
         </div>
@@ -58,7 +75,7 @@ function LoginForm({ hydrate }: { hydrate: () => Promise<void> }) {
   };
 
   return (
-    <div className="card p-6">
+    <div className="p-6 rounded-2xl" style={{ background: "var(--raised)", border: "1px solid var(--line)", boxShadow: "0 24px 60px -24px rgba(0,0,0,0.55)" }}>
       <h1 className="font-disp font-bold text-[22px] tracking-tight m-0 mb-1">Track your case</h1>
       <p className="text-[13px] text-[var(--ink-dim)] mt-0 mb-5">Enter your case number and phone to see live status.</p>
       <label className="label">Case number</label>
@@ -101,7 +118,7 @@ function RegisterForm({ hydrate }: { hydrate: () => Promise<void> }) {
   };
 
   return (
-    <div className="card p-6">
+    <div className="p-6 rounded-2xl" style={{ background: "var(--raised)", border: "1px solid var(--line)", boxShadow: "0 24px 60px -24px rgba(0,0,0,0.55)" }}>
       <h1 className="font-disp font-bold text-[22px] tracking-tight m-0 mb-1">Apply for a mortgage</h1>
       <p className="text-[13px] text-[var(--ink-dim)] mt-0 mb-5">Fill in your details — an advisor will contact you within 24 hours.</p>
       <label className="label">Full name *</label>

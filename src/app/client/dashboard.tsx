@@ -5,6 +5,7 @@ import { useHfmcStore } from "@/lib/client-store";
 import { useClientStore } from "./client-store";
 import { fmtMoney, fmtDate, relTime, todayISO } from "@/lib/format";
 import { LogoMark, ICheck, IWhatsapp, IDownload, IUpload, ILogout, IUsers, IHome, IMenu } from "@/components/icons";
+import { ThemeToggle } from "@/components/hfmc/ui";
 import { parseCaseProfile, ageFromDob, type CaseProfile } from "@/lib/case-profile";
 
 /* ============================================================
@@ -50,6 +51,7 @@ export function ClientDashboard() {
             <div className="text-[8px] uppercase tracking-[0.16em] text-[var(--ink-faint)] mt-0.5">Client Portal</div>
           </div>
           <span className="mono text-[11px] text-[var(--ink-faint)] hidden sm:inline">{c.caseNumber}</span>
+          <ThemeToggle compact />
           <button className="text-[var(--ink-faint)] hover:text-[var(--coral)] transition-colors" onClick={logout} title="Sign out">
             <ILogout size={16} />
           </button>
