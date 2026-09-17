@@ -805,6 +805,58 @@ export default function Calculator() {
 
   const eiborPct = (t: string) => eibor.find((e) => e.tenor === t)?.ratePct ?? null;
 
+  // resolve a product's live quote against the CURRENT deal shape, with a
+  // relaxation cascade so any filed quote can be found (exact -> any txn ->
+  // either STL -> day-1 variable). No more "only DIB fetches".
+  const applyProduct = (prod: (typeof bankProducts)[number], allowRaw = false) => {
+    const pricing = parsePricing(prod.pricingJson) ?? { quotes: [] };
+    const today = new Date().toISOString().slice(0, 10);
+    const ftv = prod.maxLtvExpatriate ?? 80;
+    const txnMap: Record<string, string | null> = {
+      "Resale": "Resale", "Primary Handover": "Primary Handover", "Buyout": "Buyout",
+      "Buyout + Equity Release": "Buyout + Equity Release", "Equity Release": "Equity Release",
+    };
+    const txn = txnMap[dealTxn] ?? null;
+    const attempts: Parameters<typeof resolveQuote>[1][] = [];
+    for (const t of [3, 1, 5, 2, 4]) {
+      attempts.push({ stl: true, termYears: t, ftv, txn: txn ?? "any", on: today });
+      attempts.push({ stl: true, termYears: t, ftv, txn: "any", on: today });
+    }
+    attempts.push({ stl: true, termYears: null, ftv, txn: txn ?? "any", on: today });
+    attempts.push({ stl: true, termYears: null, ftv, txn: "any", on: today });
+    attempts.push({ stl: true, termYears: null, ftv, txn: "any", on: today });
+    let quote = attempts.map((a) => resolveQuote(pricing, a)).find(Boolean);
+    if (!quote && allowRaw) {
+      // relaxed rescue: any quote valid today, axes ignored (banks file odd txn/STL combos)
+      quote = pricing.quotes.find((qq) => {
+        const f = qq.effectiveFrom ?? "";
+        const t = qq.effectiveTo ?? "";
+        return (!f || f <= today) && (!t || t === "2099-12-31" || t >= today);
+      }) ?? null;
+      if (quote) toast("info", "Closest match — this product's quotes are filed under different txn/STL axes; verify the figure.");
+    }
+    if (!quote) {
+      toast("error", "That product has no rate quotes filed yet.");
+      setFetched(null); setIntroRate(0); setFoSpread(0); setFoFinal(0);
+      setStressSpread(""); setStressFinal("");
+      return false;
+    }
+    setFetched({ bankName: prod.bankName, quotes: pricing.quotes });
+    const sched = rateSchedule(quote, { ON: eiborPct("ON") ?? 0, "1M": eiborPct("1M") ?? 0, "3M": eiborPct("3M") ?? 0, "6M": eiborPct("6M") ?? 0, "1Y": eiborPct("1Y") ?? 0 }, prod.stressBufferPct ?? 0);
+    if (sched.introTermYears && sched.introTermYears > 0) {
+      setRateStyle("fixed"); setIntroRate(sched.introRatePct ?? 0); setIntroYears(sched.introTermYears);
+      const fo = sched.followOnRatePct ?? 0;
+      const basis = (quote.variableAfter?.basis ?? "3M") as "1M" | "3M" | "6M" | "1Y";
+      setFoTenor(basis); setUseFoFinal(true); setFoFinal(fo);
+      setStressSpread(""); setStressFinal(String(sched.stressRatePct ?? fo));
+    } else {
+      setRateStyle("variable"); setFoTenor((quote.rateType.replace("_EIBOR", "") || "3M") as "1M" | "3M" | "6M" | "1Y");
+      setFoSpread(quote.marginPct ?? 0); setUseFoFinal(false); setFoFinal(0);
+      setStressSpread(""); setStressFinal(String(sched.stressRatePct ?? 0));
+    }
+    return true;
+  };
+
   // current-version products only — same selection rule as the match engine
   // (skip future-effective, skip expired, keep max version per product identity)
   const currentProducts = useMemo(() => {
@@ -1323,7 +1375,25 @@ export default function Calculator() {
               <div>
                 <label className="label">Fetch from engine — optional</label>
                 <select className="select" style={{ width: 150 }} value={fetchBank}
-                  onChange={(e) => { setFetchBank(e.target.value); setFetchProduct(""); setFetched(null); setIntroRate(0); }}>
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setFetchBank(v); setFetchProduct(""); setFetched(null);
+                    setIntroRate(0); setFoSpread(0); setFoFinal(0);
+                    setStressSpread(""); setStressFinal("");
+                    if (!v) return; // bank cleared -> every fetched figure cleared with it
+                    // auto-select: prefer a product whose filed axes match the deal,
+                    // then relax only if nothing strict resolves
+                    const bankProductsOf = currentProducts.filter((b) => b.bankName === v);
+                    for (const b of bankProductsOf) {
+                      setFetchProduct(String(b.id));
+                      if (applyProduct(b, false)) return;
+                    }
+                    for (const b of bankProductsOf) {
+                      setFetchProduct(String(b.id));
+                      if (applyProduct(b, true)) return;
+                    }
+                    setFetchProduct("");
+                  }}>
                   <option value="">— bank —</option>
                   {[...new Set(currentProducts.map((b) => b.bankName))].sort().map((bn) => <option key={bn}>{bn}</option>)}
                 </select>
@@ -1336,25 +1406,7 @@ export default function Calculator() {
                       setFetchProduct(e.target.value);
                       const prod = bankProducts.find((b) => String(b.id) === e.target.value);
                       if (!prod) return;
-                      const pricing = parsePricing(prod.pricingJson) ?? { quotes: [] };
-                      // try the requested 3y first, then other tenors, then day-1 variable
-                      const today = new Date().toISOString().slice(0, 10);
-                      const quote = [3, 1, 5, 2, 4].map((t) => resolveQuote(pricing, { stl: true, termYears: t, ftv: prod.maxLtvExpatriate ?? 80, txn: "Resale", on: today })).find(Boolean)
-                        || resolveQuote(pricing, { stl: true, termYears: null, ftv: prod.maxLtvExpatriate ?? 80, txn: "Resale", on: today });
-                      if (!quote) { toast("error", "That product has no rate quotes filed yet."); setFetched(null); setIntroRate(0); return; }
-                      setFetched({ bankName: prod.bankName, quotes: pricing.quotes });
-                      const sched = rateSchedule(quote, { ON: eiborPct("ON") ?? 0, "1M": eiborPct("1M") ?? 0, "3M": eiborPct("3M") ?? 0, "6M": eiborPct("6M") ?? 0, "1Y": eiborPct("1Y") ?? 0 }, prod.stressBufferPct ?? 0);
-                      if (sched.introTermYears && sched.introTermYears > 0) {
-                        setRateStyle("fixed"); setIntroRate(sched.introRatePct ?? 0); setIntroYears(sched.introTermYears);
-                        const fo = sched.followOnRatePct ?? 0;
-                        const basis = (quote.variableAfter?.basis ?? "3M") as "1M" | "3M" | "6M" | "1Y";
-                        setFoTenor(basis); setUseFoFinal(true); setFoFinal(fo);
-                        setStressSpread(""); setStressFinal(String(sched.stressRatePct ?? fo));
-                      } else {
-                        setRateStyle("variable"); setFoTenor((quote.rateType.replace("_EIBOR", "") || "3M") as "1M" | "3M" | "6M" | "1Y");
-                        setFoSpread(quote.marginPct ?? 0); setStressSpread(""); setStressFinal(String(sched.stressRatePct ?? 0));
-                      }
-                      toast("success", prod.bankName + " rates loaded — edit freely, engine link is optional.");
+                      if (applyProduct(prod, true)) toast("success", prod.bankName + " rates loaded — edit freely, engine link is optional.");
                     }}>
                     <option value="">— product —</option>
                     {currentProducts.filter((b) => b.bankName === fetchBank).map((b) => <option key={b.id} value={String(b.id)}>{b.name}</option>)}
@@ -1386,7 +1438,7 @@ export default function Calculator() {
                         setIntroYears(y);
                         // re-resolve from the fetched card: that tenor's rate, or blank when not filed
                         if (fetched) {
-                          const hit = fetched.quotes.find((qq) => qq.termYears === y && (qq.stl == null || qq.stl) && qq.rateType === "FIXED");
+                          const hit = fetched.quotes.find((qq) => qq.termYears === y && qq.rateType === "FIXED");
                           setIntroRate(hit?.ratePct ?? 0);
                           if (!hit) toast("info", fetched.bankName + " has no " + y + "-year rate filed — enter it manually.");
                         }
