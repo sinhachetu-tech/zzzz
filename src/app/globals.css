@@ -1,7 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-@custom-variant dark (&:is(.dark *));
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 /* ============ HFMC theme tokens ============
    Ported from the original smallhfmc design system.
@@ -15,7 +15,8 @@
   --line-soft: #e8edf3;
   --ink: #0f172a;
   --ink-dim: #475569;
-  --ink-faint: #8296ab;
+  /* AA-tuned (was #8296ab → 2.84:1): 4.72:1 on --bg across all 400+ faint usages */
+  --ink-faint: #5f7085;
   --amber: #b45309;
   --amber-deep: #92400e;
   --amber-ink: #fff8ec;
@@ -24,7 +25,7 @@
   --sky: #0369a1;
   --slate: #64748b;
   --mint-ink: #ecfdf5;
-  --hover: rgba(15, 23, 42, 0.045);
+  --hover: rgba(15, 23, 42, 0.06);
   --tint: rgba(15, 23, 42, 0.04);
   --track: rgba(15, 23, 42, 0.08);
   --amber-tint: rgba(180, 83, 9, 0.09);
@@ -38,16 +39,65 @@
   color-scheme: light;
 }
 
+/* ---------- shadcn token bridge ----------
+   src/components/ui/* references shadcn semantic tokens, but only HFMC tokens
+   were defined — so those utilities generated nothing. These alias the shadcn
+   names onto HFMC ones (indirection, so they follow light/dark for free);
+   the @theme inline block below turns them into real Tailwind utilities. */
+:root {
+  --background: var(--bg);
+  --foreground: var(--ink);
+  --card: var(--surface);
+  --card-foreground: var(--ink);
+  --popover: var(--raised);
+  --popover-foreground: var(--ink);
+  --primary: var(--amber);
+  --primary-foreground: var(--amber-ink);
+  --secondary: var(--tint);
+  --secondary-foreground: var(--ink-dim);
+  --muted: var(--tint);
+  --muted-foreground: var(--ink-dim);
+  --accent: var(--tint);
+  --accent-foreground: var(--ink);
+  --destructive: var(--coral);
+  --border: var(--line);
+  --input: var(--line);
+  --ring: var(--amber);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+}
+
 [data-theme="dark"] {
   --bg: #0b171d;
   --bg2: #0e1d24;
-  --surface: #12242c;
-  --raised: #172d36;
-  --line: #20404b;
+  /* +1 step of lift so surfaces separate from the page without the black halo */
+  --surface: #14262f;
+  --raised: #1a323c;
+  --line: #2a4c58;
   --line-soft: #18313b;
   --ink: #e8f1ef;
   --ink-dim: #9cb3b1;
-  --ink-faint: #617e7c;
+  /* AA-tuned (was #617e7c → 4.14 bg / 3.64 card): 6.98 bg / 6.13 card */
+  --ink-faint: #8aa6a3;
   --amber: #f2b04c;
   --amber-deep: #d99427;
   --amber-ink: #231a08;
@@ -56,25 +106,27 @@
   --sky: #57c2ea;
   --slate: #8ca6b0;
   --mint-ink: #062317;
-  --hover: rgba(232, 241, 239, 0.045);
+  --hover: rgba(232, 241, 239, 0.065);
   --tint: rgba(232, 241, 239, 0.04);
   --track: rgba(232, 241, 239, 0.07);
   --amber-tint: rgba(242, 176, 76, 0.09);
   --amber-line: rgba(242, 176, 76, 0.28);
   --neutral: rgba(232, 241, 239, 0.25);
-  --shadow: 0 10px 30px -14px rgba(0, 0, 0, 0.55);
+  /* shallow by design: in-flow cards separate via borders; the deep black
+     shadow is reserved for overlays (.modal-pop) so dark never goes muddy */
+  --shadow: 0 1px 0 rgba(0, 0, 0, 0.25), 0 8px 24px -16px rgba(0, 0, 0, 0.6);
   color-scheme: dark;
 }
 
 .side-dark {
   --bg2: #0e1d24;
-  --surface: #12242c;
-  --raised: #172d36;
-  --line: #20404b;
+  --surface: #14262f;
+  --raised: #1a323c;
+  --line: #2a4c58;
   --line-soft: #18313b;
   --ink: #e8f1ef;
   --ink-dim: #9cb3b1;
-  --ink-faint: #617e7c;
+  --ink-faint: #8aa6a3;
   --amber: #f2b04c;
   --amber-deep: #d99427;
   --mint: #43d69b;
@@ -82,7 +134,7 @@
   --sky: #57c2ea;
   --slate: #8ca6b0;
   --mint-ink: #062317;
-  --hover: rgba(232, 241, 239, 0.045);
+  --hover: rgba(232, 241, 239, 0.065);
   --tint: rgba(232, 241, 239, 0.04);
   --track: rgba(232, 241, 239, 0.07);
   --amber-tint: rgba(242, 176, 76, 0.09);
@@ -141,9 +193,8 @@ body {
   mask-image: radial-gradient(ellipse 90% 80% at 50% 20%, black 30%, transparent 75%);
 }
 [data-theme="dark"] .app-bg::before {
-  background-image:
-    linear-gradient(rgba(232, 241, 239, 0.025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(232, 241, 239, 0.025) 1px, transparent 1px);
+  display: none; /* grid reads as noise on dark + costs a masked tiled layer —
+                    the WebView keeps the radials only */
 }
 .app-bg::after {
   content: "";
@@ -162,16 +213,24 @@ body {
   box-shadow: var(--shadow);
   transition: background 0.25s ease, border-color 0.25s ease;
 }
+/* Tier 2 (clickable cards, a handful per screen): 1px lift + one step brighter
+   border. In dark the border brightens instead of the shadow deepening. */
 .card-hover { transition: border-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease; }
-.card-hover:hover {
-  border-color: var(--line);
-  box-shadow: 0 10px 30px -14px rgba(0, 0, 0, 0.28);
-  transform: translateY(-1px);
+@media (hover: hover) and (pointer: fine) {
+  .card-hover:hover {
+    border-color: var(--line);
+    box-shadow: 0 10px 30px -14px rgba(0, 0, 0, 0.28);
+    transform: translateY(-1px);
+  }
+  [data-theme="dark"] .card-hover:hover { border-color: var(--line); box-shadow: none; }
 }
-[data-theme="dark"] .card-hover:hover { box-shadow: 0 10px 30px -14px rgba(0, 0, 0, 0.55); }
 
 .rowlink { transition: background 0.13s ease; }
-.rowlink:hover { background: var(--hover); }
+/* hover only on capable pointers — on touch it sticks to the last-tapped row */
+@media (hover: hover) and (pointer: fine) {
+  .rowlink:hover { background: var(--hover); }
+}
+.rowlink:active { background: var(--hover); transform: translateY(0.5px); }
 
 /* ---------- controls ---------- */
 .btn {
@@ -186,23 +245,23 @@ body {
   padding: 8px 14px;
   border: 1px solid transparent;
   cursor: pointer;
-  transition: all 0.16s ease;
+  transition: background 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease, color 0.16s ease, transform 0.1s ease;
   white-space: nowrap;
 }
 .btn:active { transform: translateY(1px); }
 .btn-primary { background: var(--amber); color: #fff8ec; }
 :root .btn-primary { color: #fffaf1; }
 [data-theme="dark"] .btn-primary { color: #231a08; }
-.btn-primary:hover { background: var(--amber-deep); box-shadow: 0 6px 20px -8px rgba(180, 83, 9, 0.45); }
-[data-theme="dark"] .btn-primary:hover { background: #ffca70; box-shadow: 0 6px 20px -8px rgba(242, 176, 76, 0.55); }
-.btn-ghost { background: transparent; color: var(--ink-dim); border-color: var(--line); }
-.btn-ghost:hover { color: var(--ink); border-color: var(--ink-faint); background: var(--hover); }
-.btn-mint { background: var(--mint); color: var(--mint-ink); }
-.btn-mint:hover { filter: brightness(1.08); box-shadow: 0 6px 20px -8px rgba(4, 120, 87, 0.45); }
-.btn-danger { background: rgba(217, 45, 32, 0.09); color: var(--coral); border-color: rgba(217, 45, 32, 0.32); }
-.btn-danger:hover { background: rgba(217, 45, 32, 0.16); }
+/* Tier 3 (controls): hover is a colour/border/shadow change, touch-safe. */
+@media (hover: hover) and (pointer: fine) {
+  .btn-primary:hover { background: var(--amber-deep); box-shadow: 0 6px 20px -8px rgba(180, 83, 9, 0.45); }
+  [data-theme="dark"] .btn-primary:hover { background: #ffca70; box-shadow: 0 6px 20px -8px rgba(242, 176, 76, 0.55); }
+  .btn-ghost:hover { color: var(--ink); border-color: var(--ink-faint); background: var(--hover); }
+  .btn-mint:hover { filter: brightness(1.08); box-shadow: 0 6px 20px -8px rgba(4, 120, 87, 0.45); }
+  .btn-danger:hover { background: rgba(217, 45, 32, 0.16); }
+  [data-theme="dark"] .btn-danger:hover { background: rgba(242, 115, 99, 0.22); }
+}
 [data-theme="dark"] .btn-danger { background: rgba(242, 115, 99, 0.12); border-color: rgba(242, 115, 99, 0.35); }
-[data-theme="dark"] .btn-danger:hover { background: rgba(242, 115, 99, 0.22); }
 .btn-sm { padding: 5px 10px; font-size: 12px; border-radius: 7px; }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; box-shadow: none; }
 
@@ -243,13 +302,13 @@ body {
   font-family: var(--font-disp);
   font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.09em;
+  letter-spacing: 0.07em; /* was 0.09em — calmer tracking, still reads as a label */
   text-transform: uppercase;
   color: var(--ink-faint);
   margin-bottom: 5px;
 }
-input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0.55; cursor: pointer; }
-[data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7) sepia(0.2); }
+input[type="date"]::-webkit-calendar-picker-indicator, input[type="time"]::-webkit-calendar-picker-indicator { opacity: 0.55; cursor: pointer; }
+[data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator, [data-theme="dark"] input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(0.7) sepia(0.2); }
 
 /* ---------- table ---------- */
 .tbl { width: 100%; border-collapse: collapse; }
@@ -257,7 +316,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0.55; cursor: p
   font-family: var(--font-disp);
   font-size: 10.5px;
   font-weight: 600;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.07em; /* was 0.10em — opens the letterforms without growing the box */
   text-transform: uppercase;
   color: var(--ink-faint);
   text-align: left;
@@ -276,7 +335,9 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0.55; cursor: p
   font-size: 13.5px;
 }
 .tbl tbody tr { cursor: pointer; transition: background 0.13s ease; }
-.tbl tbody tr:hover { background: var(--hover); }
+@media (hover: hover) and (pointer: fine) {
+  .tbl tbody tr:hover { background: var(--hover); }
+}
 .tbl tbody tr:last-child td { border-bottom: none; }
 
 /* ---------- chips ---------- */
@@ -305,16 +366,27 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0.55; cursor: p
   font-size: 13.5px;
   color: var(--ink-dim);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background 0.13s ease, color 0.13s ease;
   border: 1px solid transparent;
   position: relative;
 }
-.nav-item:hover { color: var(--ink); background: var(--hover); }
+@media (hover: hover) and (pointer: fine) {
+  .nav-item:hover { color: var(--ink); background: var(--hover); }
+}
+.nav-item:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+.nav-item:active { transform: translateY(0.5px); }
 .nav-item.active {
   color: var(--ink);
   background: var(--amber-tint);
   border-color: var(--amber-line);
 }
+
+/* shared keyboard ring — invisible to mouse/touch users, visible to keyboard ones */
+button:focus-visible, a:focus-visible, [role="button"]:focus-visible, [tabindex]:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+}
+:focus:not(:focus-visible) { outline: none; }
 .nav-item.active::before {
   content: "";
   position: absolute;
@@ -326,8 +398,16 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0.55; cursor: p
   background: var(--amber);
 }
 
+/* ---------- collapsible left panel ---------- */
+/* width lives on the element (inline) so the rail can animate; .side-shell is
+   added on the first toggle, keeping the opening paint still (no fold-in) */
+.side-shell { transition: width 0.22s cubic-bezier(0.22, 1, 0.36, 1); }
+/* collapsed = icon rail: labels are dropped in JSX, so centre what is left */
+.nav-rail .nav-item { justify-content: center; gap: 0; padding-left: 0; padding-right: 0; }
+.nav-rail .nav-item.active::before { left: 0; }
+
 /* ---------- animation ---------- */
-@keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes scaleIn { from { opacity: 0; transform: scale(0.96) translateY(8px); } to { opacity: 1; transform: scale(1) translateY(0); } }
 @keyframes slideInRight { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: translateX(0); } }
@@ -340,10 +420,12 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0.55; cursor: p
 @keyframes pulseDot { 0%, 100% { box-shadow: 0 0 0 0 rgba(217, 45, 32, 0.45); } 60% { box-shadow: 0 0 0 6px rgba(217, 45, 32, 0); } }
 @keyframes pulseDotMint { 0%, 100% { box-shadow: 0 0 0 0 rgba(4, 120, 87, 0.4); } 60% { box-shadow: 0 0 0 6px rgba(4, 120, 87, 0); } }
 @keyframes tickerPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+@keyframes stagePulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(242, 176, 76, 0.45); } 60% { box-shadow: 0 0 0 7px rgba(242, 176, 76, 0); } }
+.dot-stage-live { width: 10px; height: 10px; border-radius: 50%; background: var(--amber); animation: stagePulse 2.4s ease-out infinite; }
 @keyframes flowDash { to { stroke-dashoffset: -26; } }
 
-.anim-fade-up { animation: fadeUp 0.45s cubic-bezier(0.22, 1, 0.36, 1) both; }
-.anim-fade-in { animation: fadeIn 0.3s ease both; }
+.anim-fade-up { animation: fadeUp 0.28s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.anim-fade-in { animation: fadeIn 0.22s ease both; }
 .anim-scale-in { animation: scaleIn 0.28s cubic-bezier(0.22, 1, 0.36, 1) both; }
 .anim-slide-right { animation: slideInRight 0.3s cubic-bezier(0.22, 1, 0.36, 1) both; }
 .anim-shake { animation: shake 0.5s ease; }
@@ -356,16 +438,75 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0.55; cursor: p
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 6px; border: 2px solid var(--bg); }
-::-webkit-scrollbar-thumb:hover { background: var(--ink-faint); }
+::-webkit-scrollbar-thumb:hover { background: var(--ink-dim); }
 
-/* staggered reveal helper */
-.stagger > * { animation: fadeUp 0.45s cubic-bezier(0.22, 1, 0.36, 1) both; }
+/* staggered reveal helper — a short ladder for a few siblings, capped at four
+   before it reads as busy; 5+ children land together at 0s (total settle ≈ 0.4s) */
+.stagger > * { animation: fadeUp 0.28s cubic-bezier(0.22, 1, 0.36, 1) both; }
 .stagger > *:nth-child(1) { animation-delay: 0.02s; }
-.stagger > *:nth-child(2) { animation-delay: 0.07s; }
-.stagger > *:nth-child(3) { animation-delay: 0.12s; }
-.stagger > *:nth-child(4) { animation-delay: 0.17s; }
-.stagger > *:nth-child(5) { animation-delay: 0.22s; }
-.stagger > *:nth-child(6) { animation-delay: 0.27s; }
+.stagger > *:nth-child(2) { animation-delay: 0.05s; }
+.stagger > *:nth-child(3) { animation-delay: 0.08s; }
+.stagger > *:nth-child(4) { animation-delay: 0.11s; }
+.stagger > *:nth-child(1n+5) { animation-delay: 0s; }
+
+/* one quiet entrance for the whole view — once it has mounted, inner
+   .anim-fade-up/.stagger cards suppress theirs so later navigations feel
+   instant instead of replaying the full cascade (replay: rapid, reveal: alive) */
+.view-in { animation: fadeIn 0.18s ease both; }
+.view-in.settled .anim-fade-up, .view-in.settled .stagger > * { animation: none; }
+
+/* in-view reveals keep ONE short entrance so conditional content feels alive */
+.anim-reveal { animation: fadeUp 0.28s cubic-bezier(0.22, 1, 0.36, 1) both !important; }
+
+/* ---------- reduced motion ----------
+   Full kill-switch: zero support before this block. Nothing disappears —
+   the layout simply arrives already settled. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .anim-fade-up, .anim-fade-in, .anim-reveal, .anim-scale-in, .anim-slide-right,
+  .anim-shake, .stagger > *, .dot-live, .dot-overdue, .blink, .flow-line,
+  .btn:active, .nav-item:active, .rowlink:active {
+    animation: none !important;
+    transform: none !important;
+  }
+}
+
+/* ---------- deal-won ritual ----------
+   One-shot celebration when a case is Booked: a single ring pulse + 14 tiny
+   amber/mint/sky/coral bits that fly out once and vanish (~1s). No library,
+   no persistent state; the global reduced-motion switch silences it. */
+.deal-burst-bit {
+  position: absolute;
+  border-radius: 2px;
+  transform: translate(-50%, -50%);
+  animation: dealBurst 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  pointer-events: none;
+}
+.deal-burst-ring {
+  position: absolute;
+  left: 50%;
+  top: 42%;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--amber);
+  transform: translate(-50%, -50%);
+  animation: dealRing 0.75s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  pointer-events: none;
+}
+@keyframes dealBurst {
+  from { transform: translate(-50%, -50%) rotate(0deg); opacity: 1; }
+  to { transform: translate(calc(-50% + var(--tx, 0px)), calc(-50% + var(--ty, -80px))) rotate(220deg); opacity: 0; }
+}
+@keyframes dealRing {
+  from { transform: translate(-50%, -50%) scale(1); opacity: 0.85; }
+  to { transform: translate(-50%, -50%) scale(16); opacity: 0; }
+}
 
 /* prose for AI markdown responses */
 .prose-ai { line-height: 1.65; }

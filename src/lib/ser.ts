@@ -10,9 +10,13 @@ type PrismaUser = {
   active: boolean; createdAt: Date;
 };
 
+// SECURITY: the password hash is deliberately NOT serialized — every signed-in
+// user's browser receives this DTO via /api/state, and shipping bcrypt hashes
+// to clients was a leak. If some legacy UI ever needs a placeholder, it can
+// check truthiness on an empty string.
 export function serUser(u: PrismaUser): User {
   return {
-    id: u.id, name: u.name, email: u.email, password: u.password, role: u.role, team: u.team,
+    id: u.id, name: u.name, email: u.email, password: "", role: u.role, team: u.team,
     active: u.active, createdAt: u.createdAt.toISOString(),
   };
 }
@@ -385,9 +389,13 @@ type PrismaCaseDocumentRow = {
   rejectionReason: string; notes: string; fileName: string | null; fileType: string | null;
   fileSize: number | null; expiryDate: string | null; uploadedByKind: string;
   uploadedAt: Date | null; verifiedAt: Date | null; createdAt: Date;
+  // storage columns (nullable for legacy rows created before the R2 migration)
+  storageKey?: string | null; compressedKey?: string | null; compressedSize?: number | null;
+  selectedVersion?: string | null; driveFileId?: string | null; fileData?: unknown;
 };
 
 export function serCaseDocument(d: PrismaCaseDocumentRow): CaseDocument {
+  const hasFile = !!d.storageKey || d.fileData != null;
   return {
     id: d.id, caseId: d.caseId, templateId: d.templateId, title: d.title, category: d.category,
     status: d.status as CaseDocument["status"], mandatory: d.mandatory,
@@ -398,6 +406,13 @@ export function serCaseDocument(d: PrismaCaseDocumentRow): CaseDocument {
     uploadedAt: d.uploadedAt ? d.uploadedAt.toISOString() : null,
     verifiedAt: d.verifiedAt ? d.verifiedAt.toISOString() : null,
     createdAt: d.createdAt.toISOString(),
+    hasFile,
+    hasCompressed: !!d.compressedKey,
+    compressedSize: d.compressedSize ?? null,
+    selectedVersion: d.selectedVersion === "compressed" ? "compressed" : "original",
+    // independent Google Drive archive copy (never deleted by the app)
+    driveFileId: d.driveFileId ?? null,
+    driveLink: d.driveFileId ? `https://drive.google.com/file/d/${d.driveFileId}/view` : null,
   };
 }
 
@@ -436,8 +451,8 @@ type PrismaProposalRow = {
 export function serProposal(v: PrismaProposalRow): Proposal {
   let productIds: number[] = [];
   let inputs: Record<string, unknown> = {};
-  try { productIds = JSON.parse(v.productIds); } catch {}
-  try { inputs = JSON.parse(v.inputs); } catch {}
+  try { productIds = JSON.parse(v.productIds); } catch { }
+  try { inputs = JSON.parse(v.inputs); } catch { }
   return {
     id: v.id, caseId: v.caseId, productIds, inputs,
     mode: v.mode as Proposal["mode"], status: v.status as Proposal["status"],

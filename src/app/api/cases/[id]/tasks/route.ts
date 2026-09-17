@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { currentUser } from "@/lib/auth";
 import { serTask } from "@/lib/ser";
+import { parseTaskDue } from "@/lib/format";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const me = await currentUser();
@@ -15,6 +16,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   };
 
   if (!description?.trim()) return NextResponse.json({ error: "description required" }, { status: 400 });
+  // Accept legacy "YYYY-MM-DD" or the new UAE wall-clock "YYYY-MM-DDTHH:mm";
+  // anything else is rejected here rather than silently breaking overdue logic.
+  if (typeof dueDate !== "string" || !parseTaskDue(dueDate)) {
+    return NextResponse.json({ error: "dueDate must be YYYY-MM-DD or YYYY-MM-DDTHH:mm" }, { status: 400 });
+  }
 
   const created = await db.task.create({
     data: {

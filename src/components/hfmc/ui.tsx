@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ReactNode } from "react";
 import type { CaseStatus, Tone } from "@/lib/types";
-import { STATUS_TONE, dueInfo, initials } from "@/lib/format";
+import { STATUS_TONE, dueInfo, fmtDue, initials } from "@/lib/format";
 import { IMoon, ISun, IX, ICheck, IAlert } from "../icons";
 
 /* ---------------- theme toggle ---------------- */
@@ -67,9 +67,13 @@ export function StatusChip({ status }: { status: CaseStatus }) {
   return <Chip tone={STATUS_TONE[status]} dot={status === "Overdue"}>{status}</Chip>;
 }
 
-export function DueChip({ dueISO }: { dueISO: string }) {
+export function DueChip({ dueISO, title }: { dueISO: string; title?: string }) {
   const d = dueInfo(dueISO);
-  return <Chip tone={d.tone}>{d.label}</Chip>;
+  return (
+    <span title={title ?? fmtDue(dueISO)}>
+      <Chip tone={d.tone}>{d.label}</Chip>
+    </span>
+  );
 }
 
 /* ---------------- avatar ---------------- */

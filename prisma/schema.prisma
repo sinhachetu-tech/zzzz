@@ -47,6 +47,7 @@ model Designation {
   super     Boolean  @default(false)
   viewRevenue Boolean @default(false) // commission rates & earnings are restricted
   editEibor Boolean  @default(false) // may update the daily EIBOR benchmark table
+  manageDocs Boolean @default(true)  // may upload/verify/reject/waive/delete/compress vault documents
   builtIn  Boolean  @default(false)
 }
 
@@ -600,6 +601,12 @@ model CaseDocument {
   verifiedAt      DateTime?
   createdAt       DateTime @default(now())
   sortOrder       Int      @default(0)
+  // --- Object storage (Cloudflare R2). Null storageKey = legacy Postgres-bytes row. ---
+  storageKey      String?  // R2 key of the ORIGINAL file (full quality, bank-submission grade)
+  compressedKey   String?  // R2 key of the compressed version (null until a team member compresses)
+  compressedSize  Int?
+  selectedVersion String   @default("original") // which version downloads/ZIP use: "original" | "compressed"
+  driveFileId     String?  // Google Drive mirror file id (optional integration)
 
   case LoanCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
 }

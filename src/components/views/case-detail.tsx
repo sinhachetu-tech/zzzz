@@ -7,7 +7,7 @@ import { useHfmcStore } from "@/lib/client-store";
 import type { LoanCase, Reply, Task } from "@/lib/types";
 import { EMPLOYMENT_PROFILES, LOAN_TYPES, PROPERTY_LOCATIONS, PROPERTY_TYPES, RESIDENCIES, TRANSACTION_TYPES } from "@/lib/types";
 import {
-  ageDays, caseStatusOf, fmtDate, fmtDateTime, fmtMoney, inDaysISO, primaryBank, relTime, todayISO,
+  ageDays, caseStatusOf, daysBetween, fmtDate, fmtDateTime, fmtMoney, inDaysISO, isOverdueDue, parseTaskDue, primaryBank, relTime, todayISO,
 } from "@/lib/format";
 import { Avatar, Chip, DueChip, Modal, SectionLabel, StatusChip } from "@/components/hfmc/ui";
 import { BankChips, CaseStateChip, CommissionPanel, ConfirmModal, SourceChip, WaButtons } from "@/components/hfmc/bits";
@@ -53,16 +53,21 @@ function AddTaskModal({ open, onClose, caseId }: { open: boolean; onClose: () =>
   const [waitingFor, setWaitingFor] = useState("Client");
   const [whyPending, setWhyPending] = useState("Documents awaited");
   const [dueDate, setDueDate] = useState(inDaysISO(3));
+  // Optional clock time — empty keeps the legacy end-of-day reading ("date only")
+  const [dueTime, setDueTime] = useState("");
   const [err, setErr] = useState("");
 
   if (!open) return null;
 
   const submit = async () => {
     if (!description.trim()) return setErr("What needs doing?");
+    if (!dueDate) return setErr("Pick a due date.");
+    // "2026-03-04" + "14:30" → "2026-03-04T14:30" (local wall-clock, no zone)
+    const due = dueTime ? `${dueDate}T${dueTime}` : dueDate;
     try {
-      await addTask(caseId, { description: description.trim(), ownerId, waitingFor, whyPending, dueDate });
+      await addTask(caseId, { description: description.trim(), ownerId, waitingFor, whyPending, dueDate: due });
       toast("success", "Task added.");
-      setDescription(""); setErr(""); onClose();
+      setDescription(""); setDueTime(""); setErr(""); onClose();
     } catch (e) { setErr(e instanceof Error ? e.message : "Could not add task."); }
   };
 
@@ -84,6 +89,10 @@ function AddTaskModal({ open, onClose, caseId }: { open: boolean; onClose: () =>
           <div>
             <label className="label">Due date</label>
             <input className="input mono" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+          </div>
+          <div>
+            <label className="label">Due time <span className="normal-case tracking-normal" style={{ color: "var(--ink-faint)" }}>— optional</span></label>
+            <input className="input mono" type="time" value={dueTime} onChange={(e) => setDueTime(e.target.value)} />
           </div>
           <div>
             <label className="label">Waiting for</label>
@@ -162,6 +171,10 @@ function OutcomeModal({ open, onClose, caseId }: { open: boolean; onClose: () =>
     const patch: Record<string, unknown> = { caseStatus: status };
     if (status === "Closed") patch.wonBank = wonBank || null;
     await updateCase(caseId, patch);
+    if (status === "Closed") {
+      // deal-won ritual — Shell renders the one-shot burst on this event
+      window.dispatchEvent(new CustomEvent("hfmc:deal-won", { detail: { customer: c.customer } }));
+    }
     toast("success", status === "Closed" ? `Booked! Won by ${wonBank}.` : "Marked lost.");
     onClose();
   };
@@ -663,6 +676,7 @@ export default function CaseDetail({ id }: { id: number }) {
               <div key={s.id} className="flex items-center gap-1 shrink-0">
                 <button onClick={() => canEdit && setShowStage(true)} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg transition-all"
                   style={current ? { background: "rgba(242,176,76,0.12)", border: "1px solid var(--amber)" } : { border: "1px solid transparent" }}>
+                  {current && c.caseStatus === "Active" ? <span className="dot-stage-live shrink-0" aria-hidden="true" /> : null}
                   <span className="w-5 h-5 rounded-full flex items-center justify-center mono text-[10px] font-semibold"
                     style={{ background: done ? "var(--mint)" : current ? "var(--amber)" : "var(--track)", color: done || current ? "#fff" : "var(--ink-faint)" }}>
                     {done ? <ICheck size={11} /> : i + 1}
@@ -695,7 +709,7 @@ export default function CaseDetail({ id }: { id: number }) {
           {(caseTab === "daily") && <DailyMisTab c={c} />}
 
           {/* tasks */}
-          {(caseTab === "tasks") && (<><div className="card anim-fade-up">
+          {(caseTab === "tasks") && (<><div className="card anim-fade-up anim-reveal">
             <div className="flex items-center justify-between p-4 border-b" style={{ borderColor: "var(--line-soft)" }}>
               <div className="flex items-center gap-2">
                 <h3 className="font-disp font-semibold text-[14px] m-0">Tasks</h3>
@@ -706,10 +720,10 @@ export default function CaseDetail({ id }: { id: number }) {
             </div>
             <div className="divide-y" style={{ borderColor: "var(--line-soft)" }}>
               {caseTasks.length === 0 && <p className="p-5 text-[13px] text-[var(--ink-faint)] m-0">No tasks yet — add the first action.</p>}
-              {[...caseTasks].sort((a, b) => (a.status === b.status ? a.dueDate.localeCompare(b.dueDate) : a.status === "Open" ? -1 : 1)).map((t) => {
+              {[...caseTasks].sort((a, b) => (a.status === b.status ? (parseTaskDue(a.dueDate)?.getTime() ?? 0) - (parseTaskDue(b.dueDate)?.getTime() ?? 0) : a.status === "Open" ? -1 : 1)).map((t) => {
                 const tOwner = userById(t.ownerId);
                 const isOpen = t.status === "Open";
-                const od = isOpen && t.dueDate < todayISO();
+                const od = isOpen && isOverdueDue(t.dueDate);
                 const canTouch = flags?.super || flags?.admin || t.ownerId === me?.id || t.createdBy === me?.id;
                 return (
                   <div key={t.id} className="p-4 flex items-start gap-3">

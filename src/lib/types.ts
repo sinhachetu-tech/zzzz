@@ -36,6 +36,7 @@ export interface Designation {
   admin: boolean;
   super: boolean;
   viewRevenue: boolean; // commission rates & earnings are restricted
+  manageDocs: boolean; // may upload/verify/reject/waive/delete/compress vault documents
   builtIn: boolean;
 }
 
@@ -412,6 +413,14 @@ export interface CaseDocument {
   uploadedAt: string | null;
   verifiedAt: string | null;
   createdAt: string;
+  // --- Storage (Cloudflare R2) ---
+  hasFile: boolean; // a file exists (R2 or legacy bytes) — gates the View/Download buttons
+  hasCompressed: boolean; // a compressed version exists — gates Compress/compare UI
+  compressedSize: number | null;
+  selectedVersion: "original" | "compressed";
+  // --- Independent Google Drive archive (optional, env-driven) ---
+  driveFileId: string | null; // set once the file was copied into Drive's per-case folder
+  driveLink: string | null; // webViewLink so the team can open the archive copy
 }
 
 // SOP §6.9 — transfer fee rule (Admin → Fee rules); feeds the Calculator's Transfer Fees tab

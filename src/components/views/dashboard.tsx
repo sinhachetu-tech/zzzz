@@ -7,7 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useHfmcStore } from "@/lib/client-store";
 import type { BulletinItem } from "@/lib/types";
 import { activityPerDay, computeKpis } from "@/lib/domain";
-import { TONE_HEX, caseStatusOf, fmtMoney, relTime, todayISO } from "@/lib/format";
+import { TONE_HEX, caseStatusOf, dueDay, fmtDue, fmtMoney, isOverdueDue, parseTaskDue, relTime, todayISO } from "@/lib/format";
 import { Avatar } from "@/components/hfmc/ui";
 import { BarList, Donut, Spark, useCountUp } from "@/components/hfmc/charts";
 import { IArrowR, IFlag } from "@/components/icons";
@@ -63,7 +63,7 @@ export default function Dashboard() {
     .filter((s) => s.value > 0);
 
   const ownerRows = Array.from(new Set(openTasks.map((t) => t.ownerId)))
-    .map((id) => ({ id, name: userById(id)?.name ?? "Unassigned", open: openTasks.filter((t) => t.ownerId === id).length, od: openTasks.filter((t) => t.ownerId === id && t.dueDate < todayISO()).length }))
+    .map((id) => ({ id, name: userById(id)?.name ?? "Unassigned", open: openTasks.filter((t) => t.ownerId === id).length, od: openTasks.filter((t) => t.ownerId === id && isOverdueDue(t.dueDate)).length }))
     .sort((a, b) => b.open - a.open)
     .slice(0, 6);
 
@@ -83,8 +83,9 @@ export default function Dashboard() {
   const leadsWaiting = visCases.filter((c) => c.caseStatus === "Active" && c.stage === "Lead");
 
   // my tasks due today (or overdue)
+  // My urgent tasks — due today or overdue. Exact instant ordering (9am above 6pm).
   const myDueToday = me
-    ? openTasks.filter((t) => t.ownerId === me.id && t.dueDate <= todayISO()).sort((a, b) => a.dueDate.localeCompare(b.dueDate)).slice(0, 6)
+    ? openTasks.filter((t) => t.ownerId === me.id && dueDay(t.dueDate) <= todayISO()).sort((a, b) => (parseTaskDue(a.dueDate)?.getTime() ?? 0) - (parseTaskDue(b.dueDate)?.getTime() ?? 0)).slice(0, 6)
     : [];
 
   const liveToday = (b: BulletinItem) => !b.isTemplate && !b.dropped && b.status === "Open" && b.date === todayISO();
@@ -143,7 +144,7 @@ export default function Dashboard() {
               const c = cases.find((x) => x.id === t.caseId);
               return (
                 <button key={t.id} className="rowlink w-full text-left flex items-center gap-2.5 rounded-lg px-2 py-1.5" onClick={() => c && nav({ name: "case", id: c.id })}>
-                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: t.dueDate < todayISO() ? "var(--coral)" : "var(--amber)" }} />
+                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: isOverdueDue(t.dueDate) ? "var(--coral)" : "var(--amber)" }} />
                   <span className="text-[12.5px] flex-1 truncate">{t.description}</span>
                   <span className="mono text-[10.5px] text-[var(--ink-faint)]">{c?.caseNumber}</span>
                 </button>

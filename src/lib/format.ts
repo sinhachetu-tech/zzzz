@@ -24,8 +24,10 @@ export function inDaysISO(n: number): string {
 }
 
 export function parseDate(iso: string): Date {
-  const [y, m, d] = iso.split("-").map(Number);
-  return new Date(y, m - 1, d);
+  // tolerant: accepts "YYYY-MM-DD" and "YYYY-MM-DDTHH:mm" (task datetimes)
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || "");
+  if (!m) return new Date(NaN);
+  return new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
 }
 
 export function daysBetween(aISO: string, bISO: string): number {
@@ -43,18 +45,79 @@ export interface DueInfo {
   overdue: boolean;
 }
 
-export function dueInfo(dueISO: string): DueInfo {
-  const days = daysBetween(todayISO(), dueISO);
-  if (days < 0) return { label: `${-days}d overdue`, tone: "coral", days, overdue: true };
-  if (days === 0) return { label: "due today", tone: "amber", days, overdue: false };
-  if (days === 1) return { label: "due tomorrow", tone: "amber", days, overdue: false };
-  if (days <= 2) return { label: `due in ${days}d`, tone: "amber", days, overdue: false };
-  return { label: `due in ${days}d`, tone: "slate", days, overdue: false };
+/* Task deadlines use UAE wall-clock time (UTC+4, no DST). Legacy dates
+   remain end-of-day; the existing String column needs no migration. */
+export function taskToday(now: Date = new Date()): string {
+  return new Date(now.getTime() + 4 * 3600000).toISOString().slice(0, 10);
+}
+export function dueDay(dueISO: string): string {
+  return (dueISO || "").slice(0, 10);
+}
+
+export function dueTime(dueISO: unknown): string | null {
+  const s = typeof dueISO === "string" ? dueISO : "";
+  const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})$/.exec(s);
+  if (!m) return null;
+  let h = parseInt(m[2], 10);
+  const min = m[3];
+  const ap = h >= 12 ? "PM" : "AM";
+  h = h % 12;
+  if (h === 0) h = 12;
+  return `${h}:${min} ${ap}`;
+}
+
+/** Strict UAE deadline parser. Date-only remains valid through 23:59:59.999. */
+export function parseTaskDue(dueISO: unknown): Date | null {
+  if (typeof dueISO !== "string") return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?$/.exec(dueISO);
+  if (!m) return null;
+  const [, y, mo, d, h, min] = m;
+  if (+y < 1000 || +mo < 1 || +mo > 12 || +d < 1 || +d > 31 || (h !== undefined && (+h > 23 || +min > 59))) return null;
+  const calendar = new Date(Date.UTC(+y, +mo - 1, +d));
+  if (calendar.getUTCMonth() !== +mo - 1 || calendar.getUTCDate() !== +d) return null;
+  return new Date(`${y}-${mo}-${d}T${h === undefined ? "23:59:59.999" : `${h}:${min}:00.000`}+04:00`);
+}
+
+export function compareTaskDue(a: string, b: string): number {
+  const x = parseTaskDue(a)?.getTime() ?? Infinity;
+  const y = parseTaskDue(b)?.getTime() ?? Infinity;
+  return x === y ? 0 : x < y ? -1 : 1;
+}
+
+export function isOverdueDue(dueISO: unknown, now: Date = new Date()): boolean {
+  const d = parseTaskDue(dueISO);
+  return !!d && d.getTime() < now.getTime();
+}
+
+/** "17 Sep" or "17 Sep · 3:30 PM (GST)" — compact due stamp, UAE time. */
+export function fmtDue(dueISO: unknown): string {
+  const s = typeof dueISO === "string" ? dueISO : "";
+  if (!s) return "—";
+  const day = fmtDate(s.slice(0, 10));
+  const t = dueTime(s);
+  return t ? `${day} · ${t}` : day;
+}
+
+export function dueInfo(dueISO: unknown, now: Date = new Date()): DueInfo {
+  const s = typeof dueISO === "string" ? dueISO : "";
+  const days = daysBetween(taskToday(now), s.slice(0, 10));
+  const t = dueTime(s);
+  const overdue = isOverdueDue(s, now);
+  if (overdue) {
+    if (days < 0) return { label: `${-days}d overdue`, tone: "coral", days, overdue: true };
+    // overdue earlier today — name the missed time so it stings usefully
+    return { label: t ? `overdue · ${t}` : "overdue today", tone: "coral", days, overdue: true };
+  }
+  if (days === 0) return { label: t ? `today · ${t}` : "due today", tone: "amber", days, overdue: false };
+  if (days === 1) return { label: t ? `tomorrow · ${t}` : "due tomorrow", tone: "amber", days, overdue: false };
+  if (days <= 2) return { label: `due in ${days}d${t ? ` · ${t}` : ""}`, tone: "amber", days, overdue: false };
+  return { label: `due in ${days}d${t ? ` · ${t}` : ""}`, tone: "slate", days, overdue: false };
 }
 
 export function fmtDate(iso: string): string {
   if (!iso) return "—";
-  const d = iso.length > 10 ? new Date(iso) : parseDate(iso);
+  // slice-first: task datetimes ("YYYY-MM-DDTHH:mm") render as their day
+  const d = parseDate((iso || "").slice(0, 10));
   return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
 }
 
@@ -168,10 +231,11 @@ export function caseStatusOf(c: LoanCase, tasks: Task[]): CaseStatus {
   if (c.caseStatus !== "Active") return "On Track";
   const open = tasks.filter((t) => t.caseId === c.id && t.status === "Open");
   if (open.length === 0) return "No Action";
-  const today = todayISO();
-  const soonest = open.reduce((min, t) => (t.dueDate < min ? t.dueDate : min), open[0].dueDate);
-  const gap = daysBetween(today, soonest);
-  if (gap < 0) return "Overdue";
+  const today = taskToday();
+  // instant-aware: a timed task due 09:00 today is stricter than a date-only one
+  const soonest = open.reduce((min, t) => (compareTaskDue(t.dueDate, min) < 0 ? t.dueDate : min), open[0].dueDate);
+  if (isOverdueDue(soonest)) return "Overdue";
+  const gap = daysBetween(today, soonest.slice(0, 10));
   if (gap <= 2) return "At Risk";
   return "On Track";
 }

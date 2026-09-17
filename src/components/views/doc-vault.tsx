@@ -23,8 +23,16 @@ const STATUS_TONE: Record<string, "mint" | "amber" | "coral" | "sky" | "slate"> 
 
 const CATEGORY_ORDER = ["KYC", "Income", "Property", "Bank & Liabilities", "Valuation", "Transfer", "Internal Underwriting"];
 
+/** Human-readable file size for the storage line under each document. */
+function kb(n?: number | null): string {
+  if (!n) return "—";
+  return n < 1024 * 1024 ? `${Math.round(n / 1024)} KB` : `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export function DocVault({ c }: { c: LoanCase }) {
-  const { caseDocuments, docRules, saveDoc, deleteDoc, addAdhocDoc, uploadDoc, toast } = useHfmcStore();
+  const { caseDocuments, docRules, saveDoc, deleteDoc, addAdhocDoc, uploadDoc, compressDoc, selectDocVersion, flags, toast } = useHfmcStore();
+  // document writes (upload/verify/reject/waive/delete/compress) are permission-gated
+  const canManage = !!(flags?.manageDocs || flags?.super || flags?.admin);
   const docs = useMemo(() => caseDocuments.filter((d) => d.caseId === c.id), [caseDocuments, c.id]);
   const [adding, setAdding] = useState(false);
   const [rejecting, setRejecting] = useState<CaseDocument | null>(null);
@@ -32,8 +40,16 @@ export function DocVault({ c }: { c: LoanCase }) {
   const [deleting, setDeleting] = useState<CaseDocument | null>(null);
   const [editing, setEditing] = useState<CaseDocument | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [compressId, setCompressId] = useState<number | null>(null);
   const uploadTarget = useRef<number | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+
+  // rebuilds the preview copy; the original for the bank is never touched
+  const onCompress = async (d: CaseDocument) => {
+    setCompressId(d.id);
+    await compressDoc(d.id, d.hasCompressed);
+    setCompressId(null);
+  };
 
   const grouped = useMemo(() => {
     const map = new Map<string, CaseDocument[]>();
@@ -90,9 +106,11 @@ export function DocVault({ c }: { c: LoanCase }) {
             {pendingReview.length} awaiting review
           </span>
         )}
-        <button className="btn btn-primary sm:btn-sm" onClick={() => setAdding(true)}>
-          <IPlus size={14} /> Add document
-        </button>
+        {canManage && (
+          <button className="btn btn-primary sm:btn-sm" onClick={() => setAdding(true)}>
+            <IPlus size={14} /> Add document
+          </button>
+        )}
       </div>
       {(() => {
         const prof = parseCaseProfile(c.profileJson, { customer: c.customer, coApplicantName: c.coApplicantName });
@@ -138,17 +156,57 @@ export function DocVault({ c }: { c: LoanCase }) {
                         <p className="text-[11px] text-[var(--ink-faint)] m-0 mt-0.5 truncate">{d.notes}</p>
                       )}
                       {d.fileName && (
-                        <a href={`/api/documents/${d.id}/file`} target="_blank" rel="noreferrer" className="text-[11px] mono mt-0.5 inline-block" style={{ color: "var(--sky)" }}>
-                          {d.fileName} · {((d.fileSize ?? 0) / 1024).toFixed(0)} KB ↗
-                        </a>
+                        <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                          <span className="text-[11px] mono text-[var(--ink-faint)]">
+                            {d.fileName} · {kb(d.fileSize)}
+                            {d.hasCompressed && (
+                              <>
+                                {" → "}
+                                <span style={{ color: "var(--mint)" }}>{kb(d.compressedSize)}</span>
+                              </>
+                            )}
+                          </span>
+                          <a href={`/api/documents/${d.id}/file`} target="_blank" rel="noreferrer" className="text-[11px] mono" style={{ color: "var(--sky)" }}>
+                            View ↗
+                          </a>
+                          <a href={`/api/documents/${d.id}/file?download=1`} className="text-[11px] mono" style={{ color: "var(--sky)" }}>
+                            Download
+                          </a>
+                          {d.driveLink && (
+                            <a href={d.driveLink} target="_blank" rel="noreferrer" className="text-[11px] mono" style={{ color: "var(--mint)" }} title="Independent archive copy on Google Drive">
+                              Drive ✓
+                            </a>
+                          )}
+                          {d.hasCompressed && (
+                            <span className="inline-flex items-center gap-1">
+                              <span className="text-[10px] text-[var(--ink-faint)]">send:</span>
+                              <button
+                                className="chip !px-1.5 !py-0.5 text-[10px]"
+                                title="Full quality — the version banks want"
+                                onClick={() => selectDocVersion(d.id, "original")}
+                                style={d.selectedVersion === "original" ? { borderColor: "var(--sky)", color: "var(--sky)" } : undefined}
+                              >
+                                original
+                              </button>
+                              <button
+                                className="chip !px-1.5 !py-0.5 text-[10px]"
+                                title="Smaller copy — WhatsApp / email"
+                                onClick={() => selectDocVersion(d.id, "compressed")}
+                                style={d.selectedVersion === "compressed" ? { borderColor: "var(--mint)", color: "var(--mint)" } : undefined}
+                              >
+                                compressed
+                              </button>
+                            </span>
+                          )}
+                        </div>
                       )}
                     </div>
                     <Chip tone={STATUS_TONE[d.status] ?? "slate"}>{d.status}</Chip>
                     <div className="flex items-center gap-1.5">
-                      <button className="btn btn-ghost btn-sm !px-2" title={d.clientCanUpload ? "Upload file" : "Staff upload"} onClick={() => onPickFile(d.id)} disabled={busyId === d.id}>
+                      <button className="btn btn-ghost btn-sm !px-2" title={canManage ? (d.clientCanUpload ? "Upload file" : "Staff upload") : "Your designation cannot upload documents"} onClick={() => onPickFile(d.id)} disabled={busyId === d.id || !canManage}>
                         <IUpload size={13} />
                       </button>
-                      {d.status !== "Verified" && d.status !== "Waived" && (
+                      {canManage && d.status !== "Verified" && d.status !== "Waived" && (
                         <button
                           className="btn btn-ghost btn-sm !px-2"
                           title="Verify"
@@ -159,7 +217,7 @@ export function DocVault({ c }: { c: LoanCase }) {
                           <ICheck size={13} />
                         </button>
                       )}
-                      {d.status !== "Rejected" && (
+                      {canManage && d.status !== "Rejected" && (
                         <button
                           className="btn btn-ghost btn-sm !px-2"
                           title="Reject with reason"
@@ -169,15 +227,31 @@ export function DocVault({ c }: { c: LoanCase }) {
                           <IX size={13} />
                         </button>
                       )}
-                      <button className="btn btn-ghost btn-sm !px-1 text-[10.5px]" title="Waive" onClick={() => saveDoc(d.id, { status: "Waived", notes: d.notes || "Waived — see activity log" })}>
-                        Waive
-                      </button>
-                      <button className="btn btn-ghost btn-sm !px-1 text-[10.5px]" title="Edit" onClick={() => setEditing(d)}>
-                        Edit
-                      </button>
-                      <button className="btn btn-ghost btn-sm !px-2" title="Delete" style={{ color: "var(--coral)" }} onClick={() => setDeleting(d)}>
-                        <ITrash size={12} />
-                      </button>
+                      {canManage && (
+                        <button className="btn btn-ghost btn-sm !px-1 text-[10.5px]" title="Waive" onClick={() => saveDoc(d.id, { status: "Waived", notes: d.notes || "Waived — see activity log" })}>
+                          Waive
+                        </button>
+                      )}
+                      {d.hasFile && canManage && (
+                        <button
+                          className="btn btn-ghost btn-sm !px-1 text-[10.5px]"
+                          title={d.hasCompressed ? "Re-compress (replaces the preview copy)" : "Make a smaller copy for WhatsApp / email"}
+                          disabled={compressId === d.id}
+                          onClick={() => onCompress(d)}
+                        >
+                          {compressId === d.id ? "…" : d.hasCompressed ? "↻ shrink" : "Compress"}
+                        </button>
+                      )}
+                      {canManage && (
+                        <button className="btn btn-ghost btn-sm !px-1 text-[10.5px]" title="Edit" onClick={() => setEditing(d)}>
+                          Edit
+                        </button>
+                      )}
+                      {canManage && (
+                        <button className="btn btn-ghost btn-sm !px-2" title="Delete" style={{ color: "var(--coral)" }} onClick={() => setDeleting(d)}>
+                          <ITrash size={12} />
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}

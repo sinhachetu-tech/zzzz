@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import ZAI from "z-ai-web-dev-sdk";
 import { db } from "@/lib/db";
 import { currentUser } from "@/lib/auth";
-import { commissionFor, caseStatusOf, fmtMoneyFull, fmtDate, todayISO } from "@/lib/format";
+import { commissionFor, caseStatusOf, fmtMoneyFull, fmtDate, todayISO, isOverdueDue } from "@/lib/format";
 import { serCase, serTask, serActivity } from "@/lib/ser";
 
 export async function POST(req: NextRequest) {
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
   const partner = partners.find((p) => p.name === caseDto.partner?.name);
 
   const openTasks = taskDtos.filter((t) => t.status === "Open");
-  const overdueTasks = openTasks.filter((t) => t.dueDate < todayISO());
+  const overdueTasks = openTasks.filter((t) => isOverdueDue(t.dueDate));
   const recentActivity = c.activities.slice(0, 12).map(serActivity);
 
   const ctx = {
@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
       waitingFor: t.waitingFor,
       whyPending: t.whyPending,
       dueDate: t.dueDate,
-      overdue: t.dueDate < todayISO(),
+      overdue: isOverdueDue(t.dueDate),
     })),
     overdueCount: overdueTasks.length,
     recentActivity: recentActivity.map((a) => ({

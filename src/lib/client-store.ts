@@ -122,6 +122,10 @@ interface HfmcState extends StateSnapshot {
   saveDoc: (id: number, patch: Record<string, unknown>) => Promise<void>;
   deleteDoc: (id: number) => Promise<void>;
   uploadDoc: (id: number, file: File) => Promise<void>;
+  // build a compressed copy (original untouched); force=true rebuilds an existing one
+  compressDoc: (id: number, force?: boolean) => Promise<void>;
+  // pick which stored version downloads/previews use
+  selectDocVersion: (id: number, version: "original" | "compressed") => Promise<void>;
 
   // email review queue
   linkEmail: (unmatchedId: number, caseId: number) => Promise<void>;
@@ -363,6 +367,32 @@ export const useHfmcStore = create<HfmcState>((set, get) => ({
       return;
     }
     get().toast("success", "Document uploaded — pending review.");
+    get().hydrate().catch(() => {}); // fire-and-forget — UI must not wait on the full-state reload
+  },
+  compressDoc: async (id, force) => {
+    const res = await fetch(`/api/documents/${id}/compress${force ? "?force=1" : ""}`, { method: "POST" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      get().toast("error", data.error || "Could not compress this document.");
+      return;
+    }
+    if (data.sameSize) {
+      get().toast("info", data.error || "No saving available — original left as is.");
+      return;
+    }
+    get().toast("success", `Compressed — ${data.savedPct}% smaller. Original kept for the bank.`);
+    get().hydrate().catch(() => {}); // fire-and-forget — UI must not wait on the full-state reload
+  },
+  selectDocVersion: async (id, version) => {
+    const res = await fetch(`/api/documents/${id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ selectedVersion: version }),
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      get().toast("error", e.error || "Could not switch the version.");
+      return;
+    }
+    get().toast("success", version === "compressed" ? "Downloads now use the compressed copy." : "Downloads now use the original.");
     get().hydrate().catch(() => {}); // fire-and-forget — UI must not wait on the full-state reload
   },
 

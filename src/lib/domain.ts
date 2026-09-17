@@ -10,6 +10,7 @@ export interface RoleFlags {
   super: boolean;
   viewRevenue: boolean;
   editEibor: boolean; // may update the daily EIBOR benchmark table (granted per designation)
+  manageDocs: boolean; // may upload/verify/reject/waive/delete/compress vault documents
 }
 
 /* ---------- visibility scoping ---------- */
@@ -21,6 +22,16 @@ export function visibleCases(cases: LoanCase[], users: User[], user: User, flags
     return cases.filter((c) => teamIds.has(c.ownerId));
   }
   return cases.filter((c) => c.ownerId === user.id);
+}
+
+// Access guard for document routes: staff need the manageDocs designation
+// permission (plus an authenticated session); clients are validated separately
+// in the route via currentClient() + doc.caseId/visibleToClient checks.
+export async function requireDocManager(
+  me: { id: number } | null,
+  flags: RoleFlags | null
+): Promise<boolean> {
+  return !!(me && flags && (flags.manageDocs || flags.super || flags.admin));
 }
 
 export function visibleTasks(tasks: Task[], cases: LoanCase[], users: User[], user: User, flags: RoleFlags): Task[] {

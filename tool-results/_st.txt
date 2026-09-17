@@ -1,0 +1,18 @@
+﻿ M src/app/api/documents/[id]/file/route.ts
+ M src/app/api/documents/[id]/route.ts
+ M src/app/api/documents/[id]/upload/route.ts
+ M src/app/client/client-store.ts
+ M src/app/globals.css
+ M src/components/views/admin.tsx
+ M src/components/views/doc-vault.tsx
+ M src/components/views/shell.tsx
+ M src/lib/auth.ts
+ M src/lib/client-store.ts
+ M src/lib/domain.ts
+ M src/lib/ser.ts
+ M src/lib/types.ts
+?? src/app/api/admin/storage/
+?? src/app/api/documents/[id]/compress/
+?? src/hooks/use-collapsible-sidebar.ts
+?? src/lib/drive.ts
+?? src/lib/r2.ts

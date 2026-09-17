@@ -340,7 +340,39 @@ Task: Make HFMC fully mobile-responsive + verify PWA
 
 Work Log:
 Shell (responsive layout):
-- Desktop (md+): keeps the 228px sidebar, no hamburger, no bottom nav
+---
+Task ID: DOCS-R2+DRIVE
+Agent: cline
+Task: Document management — Cloudflare R2 live store + Google Drive independent archive
+
+Work Log:
+- prisma/schema.prisma — CaseDocument += storageKey / compressedKey / compressedSize / selectedVersion / driveFileId; Designation += manageDocs (default true). db:push + prisma generate (dev server killed first — stale-client EPERM, per CODEBASE rule 3).
+- src/lib/r2.ts — Cloudflare R2 client (S3 protocol via @aws-sdk/client-s3; endpoint *.r2.cloudflarestorage.com — storage is 100% Cloudflare, the SDK is just the protocol client): r2Configured(), put/get/delete, presigned GET (15-min expiry, inline vs attachment), docKey layout cases/{caseId}/{docId}/{ts}-{name}.
+- src/app/api/documents/[id]/upload/route.ts — rewritten: staff uploads gated by manageDocs, clients restricted to visibleToClient + clientCanUpload on their own case; 25 MB cap on R2 (4 MB legacy fallback when R2 unconfigured); original quality preserved; clears stale compressed state; best-effort Google Drive archive afterwards (never fails the upload).
+- src/app/api/documents/[id]/file/route.ts — NEW preview/download endpoint: 302 to a presigned R2 URL (inline, or attachment with ?download=1) or streams legacy DB bytes; serves team + client portals with per-case access checks.
+- src/app/api/documents/[id]/compress/route.ts — NEW: builds a smaller copy (sharp for images, pdf-lib for PDFs), keeps the original untouched, discards a "compressed" file that isn't actually smaller.
+- src/app/api/documents/[id]/route.ts — PATCH/DELETE gated by manageDocs; selectedVersion switch (original/compressed); DELETE removes R2 objects (original + compressed) but never the Drive copy.
+- src/lib/domain.ts + auth.ts — RoleFlags.manageDocs wired from Designation; requireDocManager guard.
+- src/lib/ser.ts — serCaseDocument exposes hasFile/hasCompressed/compressedSize/selectedVersion/driveFileId/driveLink; SECURITY FIX: serUser no longer serializes the password hash (was leaking bcrypt hashes to every browser via /api/state).
+- src/lib/drive.ts — NEW Google Drive archive, an INDEPENDENT store (not an R2 mirror): service-account JWT (RS256 via node:crypto, no SDK), token cache, find-or-create folder tree {root}/{CASE-NO — Customer}/{Category}/, multipart upload, driveTestConnection probe (create/list/delete a test folder).
+- src/app/api/admin/storage/route.ts — GET: R2/Drive key presence + vault counts (+archivedOnDrive); POST: kind=r2 probe (write/read/delete in bucket) or kind=drive probe. Secrets never echoed back.
+- scripts/migrate-docs-to-r2.mjs — one-off: moves legacy in-DB files to R2 (--dry-run first; writes to R2 before clearing bytes, safe to re-run).
+- views/doc-vault.tsx — per-file View ↗ / Download, size line original → compressed, Compress / ↻ shrink, send-as original/compressed chips, Drive ✓ archive link; write actions gated by manageDocs.
+- app/client/dashboard.tsx — client portal vault rows gained View ↗ / Download (upload existed).
+- views/admin.tsx — NEW Storage tab: R2 card (key checklist, Copy .env block, live write/read/delete probe), Vault contents stats, Google Drive card (status, archived count, Copy .env block, Test connection, full setup steps); Designations got a "manages documents" toggle + badge.
+- lib/client-store.ts — compressDoc(), selectDocVersion(); app/client/client-store.ts — removed a stray server-side `import { db }` that pulled Prisma into the browser bundle.
+- .env.example — four R2_* + three GOOGLE_DRIVE_* keys, documented. CODEBASE.md — storage rows + Drive architecture documented.
+
+Verification:
+- npx tsc --noEmit: clean (only pre-existing examples/websocket errors). eslint on all touched files: clean.
+- Live: /api/admin/storage 403 (guard), /api/state 401, / 200, /client 200, upload+file routes compile and execute, driveFileId present in the SQL log.
+
+Owner setup remaining:
+1. Cloudflare → R2 → private bucket → API token (Object Read & Write) → paste 4 R2_* in .env → restart → Admin → Storage → Test connection → run scripts/migrate-docs-to-r2.mjs.
+2. Google Cloud: enable Drive API, service account + JSON key, share one Drive folder (Editor), paste 3 GOOGLE_DRIVE_* in .env → restart → Admin → Storage → Drive Test connection.
+
+Stage Summary:
+- Documents: R2 primary store with presigned links (no egress cost), optional compressed copies, staff permissions (manageDocs), client-portal upload/preview, and an independent Google Drive archive organized per case/category. Deleting in the app never touches Drive; Drive never affects R2; extra files can be dropped into Drive folders by hand.
 - Mobile (<md): sidebar hidden, hamburger in header opens a drawer (260px, max 80vw) with full nav + SLA breaches + user card; bottom nav bar (fixed) with 5 icons + badge counts; main gets pb-20 so bottom nav doesn't cover content
 - Extracted SidebarContent component so the same nav renders in both the desktop aside and the mobile drawer
 - Fixed md:hidden specificity issue (Tailwind v4 @layer vs .btn display:inline-flex) with md:!hidden on the hamburger
@@ -385,7 +417,42 @@ Work Log:
 - Header button: bumped from btn-sm to full btn (8px×14px → 8px×14px padding, 13px font, full "Add client" label visible from sm up)
 - Desktop dashboard: added a prominent CTA banner right below the pipeline header — full-width card with amber left border, a 48px amber rounded icon tile, "Add a new client" title, one-line description, and "Open form →" hint. It's the first thing you see after the pipeline title.
 - Mobile: added a floating action button (FAB) — 56px circular, amber, bottom-right at 72px from bottom (above the 57px bottom nav with a 15px gap), always visible on every view. Standard mobile pattern (Gmail/WhatsApp/Maps). Hidden on desktop via md:hidden.
-- Verified: desktop CTA opens modal, mobile FAB opens modal, FAB hidden on desktop, header button visible on desktop, zero overflow at both viewports, lint clean
 
 Stage Summary:
 - "Add client" is now the most prominent action in the app: a dashboard CTA banner on desktop (first thing below the pipeline title), a header button on every view, and a mobile FAB that floats above every screen. Three ways to reach it, all calling the same store action.
+
+---
+
+Task ID: SIDEBAR-COLLAPSE
+Agent: orchestrator
+Task: Make the left panel of the webapp smartly collapsible
+
+Work Log:
+- New hook `src/hooks/use-collapsible-sidebar.ts` — three inputs decide the rail width: the viewport (a narrow desktop, ≤1180px, starts collapsed), the user (an explicit toggle is pinned in `localStorage["hfmc.sidebar"]`, matching the `hfmc.theme` convention, wrapped in try/catch for private mode), and the crossing itself (resizing across the breakpoint drops the pin, so the panel goes back to being smart instead of stuck on a choice made on another screen size)
+- Width transition is switched on by the *first toggle* rather than on mount: the panel opens at its final width, so there is no fold-in that reflows the page on every load
+- `shell.tsx`: desktop `<aside>` width moved from the Tailwind class to an inline style (228px ↔ 68px) so it can animate, plus `overflow-hidden` to curtain the labels; added `id="app-sidebar"` + `aria-controls`/`aria-expanded`
+- Two toggle affordances, both desktop-only: a chevron in the header (next to the mobile hamburger, `!hidden md:!inline-flex`) and a smaller chevron in the rail's brand row — the mobile drawer is untouched (`collapsed` defaults to false, no `onToggle`)
+- `SidebarContent` gained `collapsed` + `onToggle`: brand text hidden (logo only, stacked with the chevron), nav items render icon-only with `aria-label` + native `title` tooltips, badge/instr chips degrade to a 8px dot with a ring on the icon (a chip would be clipped), the SLA card folds into a dot + count tile whose tooltip keeps the full sentence + pipeline figure, and the user block becomes avatar + sign-out
+- `globals.css`: small `/* collapsible left panel */` block — `.side-shell { transition: width 0.22s cubic-bezier(.22,1,.36,1) }`, `.nav-rail .nav-item` centres the remaining icon, `.nav-rail .nav-item.active::before { left: 0 }` keeps the amber active bar visible in the rail
+- Verified: `npx tsc --noEmit` → no errors in `src` (only the pre-existing `examples/websocket/*` socket.io ones), `npx eslint src/components/views/shell.tsx src/hooks/use-collapsible-sidebar.ts` → exit 0, dev server returns 200, the served CSS contains `.nav-rail`/`.side-shell`, and the compiled client chunk `src_components_views_shell_tsx_*.js` contains the hook
+
+Stage Summary:
+- The left panel now folds to an icon rail: it opens the way you left it on that device, starts folded on smaller laptops, and un-folds on its own when you move to a wide screen. Labels/badges/tooltips, the SLA tile and the sign-out row all survive the narrow state, and nothing in the page jumps on load.
+
+---
+
+Task ID: EYE-SOOTHING-0-4
+Agent: orchestrator
+Task: Soothing UI/UX for light + dark — contrast, calm interactions, light motion, WebView perf, theme wiring fixes
+
+Work Log:
+- Phase 0 (globals.css tokens): --ink-faint light #8296ab→#5f7085 (2.84:1→4.72:1 on bg, clears AA across ~430 usages); dark #617e7c→#8aa6a3 (4.14→6.98 bg, 3.64→5.98 on card); dark surfaces lifted one step (--surface #14262f, --raised #1a323c, --line #2a4c58 → line 1.97:1 vs bg so borders carry structure); dark --shadow swapped from a black halo to a shallow hairline+soft-lift (deep shadow reserved for overlays); .side-dark synced to the same values; --hover raised 0.045→0.06/0.065 (barely visible→noticeable); .tbl th/.label tracking 0.10/0.09→0.07em (opens letterforms, same box width); scrollbar thumb hover → --ink-dim
+- Phase 1 (interactions): 3-tier hover vocabulary — rows/nav (tint only) vs clickable cards (1px lift + border) vs controls (colour/border/shadow); ALL :hover rules guarded by @media (hover:hover) and (pointer:fine) so touch stops sticking; shared :focus-visible amber ring for button/a/[role=button]/[tabindex] + :focus:not(:focus-visible) outline strip; :active press on nav-item/rowlink; the 2 transition:all (.btn, .nav-item) replaced with explicit property lists
+- Phase 2 (motion): entrance 450ms/10px→280ms/6px, fade-in 300→220ms, stagger ladder 20→110ms capped at 4 (settles ≈0.4s); new .view-in shell wrapper (180ms fade) + .settled suppresses inner .anim-fade-up/.stagger replays on later navigations (Shell: key-forced reflow via viewRef classList+offsetWidth, re-settle 240ms timeout, zero extra renders); new .anim-reveal always-animates conditional panels (case-detail tasks, reports ReportCard); full prefers-reduced-motion reduce kill-switch (was 0)
+- Phase 3 (WebView): shell.tsx backdrop blurs removed where nothing scrolls (rail, header→94% alpha, drawer scrim 0.70→0.76 solid, bottom nav 92%→96% alpha no blur); [data-theme=dark] .app-bg::before grid display:none (masked tiled layer gone, radials stay); agent/client portal headers keep static-state blur (no scroll cost)
+- Phase 4 (wiring): @custom-variant dark now targets [data-theme=dark] (was .dark — all dark: utilities were dead); new shadcn token bridge (:root vars + @theme inline mapping to HFMC tokens, indirection so they follow themes); ui/sonner.tsx rewritten off next-themes (no provider was ever mounted) onto document data-theme MutationObserver + HFMC toastOptions styling so toasts can never disagree with the page; tooltip.tsx/sidebar.tsx/etc untouched (only sonner's reachable from providers.tsx)
+- CODEBASE.md: shell.tsx row + "Left panel collapse" + "Change X→files?" rows updated to eye-soothing rules
+
+Stage Summary:
+- Light and dark both clear text legibility (faint text hits AA everywhere it appears); dark mode gained real surface elevation without the muddy halo; hovers are tiered and touch-safe; entrances are one short fade plus reveals-only thereafter; the WebView paints 1–2 fewer layers around the clock; theme utilities and sonner toasts follow hfmc.theme.
+- Verified: node-computed ratios before/after (light faint 2.84→4.72, dark 4.14→6.98 bg / 3.64→5.98 card, dark line 1.64→1.97); tsc SRC_ERRORS=0 (2 pre-existing examples/socket.io only); eslint exit 0 on all touched TS/TSX; dev 200 with .view-in/.anim-reveal/prefers-reduced-motion/side-shell/nav-rail/hover-guard in served CSS; shell settle logic present in compiled shell chunk (SHELL_SETTLE_JS hit).

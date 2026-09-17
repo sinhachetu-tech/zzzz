@@ -1,0 +1,6 @@
+TESTS: # tests 8 | # pass 8 | # fail 0
+ARC_CHUNK src_components_1iq97q0._.js
+LABEL_CHUNK src_components_views_calculator_tsx_03tx7ro._.js
+ARC_CHUNK src_components_1bsi8ls._.js
+LABEL_CHUNK src_components_views_calculator_tsx_0kuihvy._.js
+SUMMARY arcChunks=2 labelChunks=2

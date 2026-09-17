@@ -4,9 +4,14 @@ import { useMemo, useState } from "react";
 import { useHfmcStore } from "@/lib/client-store";
 import type { RoleFlags } from "@/lib/domain";
 import type { LoanCase, Task, Tone } from "@/lib/types";
-import { fmtDateTime, relTime, todayISO } from "@/lib/format";
+import { dueDay, fmtDateTime, fmtDue, isOverdueDue, parseTaskDue, relTime, todayISO } from "@/lib/format";
 import { Avatar, Chip, DueChip, EmptyState, Modal, Seg } from "@/components/hfmc/ui";
 import { ICheck, ISearch, ITasks } from "@/components/icons";
+
+/** Exact due instant: a 9am task outranks a 6pm one on the same day. */
+function byDueInstant(a: Task, b: Task) {
+  return (parseTaskDue(a.dueDate)?.getTime() ?? 0) - (parseTaskDue(b.dueDate)?.getTime() ?? 0);
+}
 
 type Tab = "open" | "done" | "all";
 
@@ -95,6 +100,8 @@ export default function Tasks() {
 
   const all = useMemo(() => visibleTasks(), [visibleTasks]);
 
+  // Sorting / filtering helpers (shared with the case-detail list below)
+
   // Lookup map for cases — prefer scoped cases, but fall back to the full
   // list so that tasks pointing at closed/deleted cases still resolve.
   const caseMap = useMemo(() => {
@@ -114,7 +121,6 @@ export default function Tasks() {
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [all, userById]);
 
-  // eslint-disable-next-line react-hooks/preserve-manual-memoization -- userById/caseMap are stable enough; compiler can't infer store fns
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     let list = all;
@@ -135,13 +141,13 @@ export default function Tasks() {
     return [...list].sort((a, b) => {
       if (a.status !== b.status) return a.status === "Open" ? -1 : 1;
       if (a.status === "Open") {
-        return a.dueDate.localeCompare(b.dueDate) || (a.dueDate < today ? -1 : 1);
+        return byDueInstant(a, b);
       }
       return (b.completedAt ?? "").localeCompare(a.completedAt ?? "");
     });
   }, [all, tab, ownerF, waitingF, query, caseMap, userById]);
 
-  const overdue = open.filter((t) => t.dueDate < todayISO()).length;
+  const overdue = open.filter((t) => isOverdueDue(t.dueDate)).length;
   const meId = me?.id;
   const canEdit = (t: Task) => canEditTask(t, meId, flags ?? null);
 
@@ -231,7 +237,7 @@ export default function Tasks() {
                   const c = caseMap.get(t.caseId);
                   const owner = userById(t.ownerId);
                   const isOpen = t.status === "Open";
-                  const od = isOpen && t.dueDate < todayISO();
+                  const od = isOpen && isOverdueDue(t.dueDate);
                   return (
                     <tr
                       key={t.id}

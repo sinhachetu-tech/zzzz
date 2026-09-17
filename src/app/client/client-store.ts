@@ -1,7 +1,6 @@
 "use client";
 
 import { create } from "zustand";
-import { db as dbType } from "@/lib/db";
 
 interface ClientUser {
   caseId: number;

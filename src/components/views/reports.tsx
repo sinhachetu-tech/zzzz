@@ -7,7 +7,7 @@ import type { BankItem, CaseSource, LoanCase, User } from "@/lib/types";
 import { SOURCES } from "@/lib/types";
 import { computeEscalations, activityPerDay } from "@/lib/domain";
 import {
-  TONE_HEX, ageDays, commissionFor, downloadCSV, fmtDate, fmtMoney, fmtMoneyFull, fmtRate,
+  TONE_HEX, ageDays, commissionFor, downloadCSV, fmtDate, fmtDue, fmtMoney, fmtMoneyFull, fmtRate,
   primaryBank, todayISO,
 } from "@/lib/format";
 import { Avatar, Chip, EmptyState, SectionLabel } from "@/components/hfmc/ui";
@@ -40,7 +40,7 @@ interface ReportCardProps {
 
 function ReportCard({ title, sub, icon, span, extra, children }: ReportCardProps) {
   return (
-    <div className={`card p-4 anim-fade-up ${span ? "lg:col-span-2" : ""}`}>
+    <div className={`card p-4 anim-fade-up anim-reveal ${span ? "lg:col-span-2" : ""}`}>
       <div className="flex items-start justify-between gap-3 mb-1">
         <div className="flex items-start gap-2.5 min-w-0">
           <span
@@ -455,7 +455,7 @@ export default function Reports() {
       const c = cases.find((x) => x.id === t.caseId);
       return [
         c?.caseNumber ?? "", t.description, userById(t.ownerId)?.name ?? "",
-        t.status, t.waitingFor, t.whyPending, t.dueDate, t.createdAt.slice(0, 10),
+        t.status, t.waitingFor, t.whyPending, fmtDue(t.dueDate), t.createdAt.slice(0, 10),
       ];
     });
     downloadCSV("hfmc-tasks.csv", header, rows);

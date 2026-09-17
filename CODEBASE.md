@@ -18,6 +18,8 @@ HFMC — a UAE mortgage brokerage case tracker. Three portals:
 
 ## Key concepts (read before touching the data layer)
 
+- **Document storage is dual-path**: new uploads go to **Cloudflare R2** (`src/lib/r2.ts`, storageKey + compressedKey on CaseDocument; compress endpoint; `scripts/migrate-docs-to-r2.mjs` migrates legacy rows); rows with null storageKey still read from legacy Postgres bytes. `manageDocs` designation permission gates upload/verify/waive/delete. Admin → Storage configures the bucket (`.env`: R2_*).
+
 - **Client master vs case profile.** `Client` = the person (KYC: EID unique > passport > phone+name; phone alone never merges). `profileJson` on each case = the applicant's snapshot *as filed* on that engagement. Saving a case profile refreshes the client master (fills gaps, never erases).
 - **Co-borrower vs co-applicant** (`src/lib/case-profile.ts`): co-borrower incomes are pooled into affordability (DBR); co-applicant is title/KYC only. Both get their own Client row.
 - **Fees live in two places:** `FeeRule` table = government/transfer fees (per emirate × txn type, universal). `BankProduct.feesJson` = bank charges (processing, pre-approval, early/partial settlement, valuation) — parsed/computed by `src/lib/bank-fees.ts`.

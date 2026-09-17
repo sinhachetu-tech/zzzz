@@ -658,9 +658,24 @@ export default function BulletinView() {
           {dayItems.map((b) => (
             <DirectiveCard key={b.id} b={b} />
           ))}
-          <div className="flex items-center gap-2 px-1 pt-1 text-[11px] text-[var(--ink-faint)]">
-            <IHistory size={12} />
-            <span>
+          {/* day progress — the "run of show" bar: done share of the day's real work */}
+          <div className="flex items-center gap-2.5 px-1 pt-1 text-[11px] text-[var(--ink-faint)]">
+            <IHistory size={12} className="shrink-0" />
+            <div className="h-[5px] rounded-full overflow-hidden flex-1 max-w-[220px]" style={{ background: "var(--track)" }}>
+              <div
+                className="h-full rounded-full"
+                style={{
+                  width: `${(() => {
+                    const real = dayItems.filter((b) => !b.dropped);
+                    const done = real.filter((b) => b.status === "Done").length;
+                    return real.length ? Math.round((done / real.length) * 100) : 0;
+                })()}%`,
+                  background: "var(--mint)",
+                  transition: "width 0.5s cubic-bezier(0.22,1,0.36,1)",
+                }}
+              />
+            </div>
+            <span className="whitespace-nowrap">
               {dayItems.filter((b) => b.status === "Done" && !b.dropped).length} done ·{" "}
               {dayItems.filter((b) => b.dropped).length} dropped ·{" "}
               {dayItems.filter((b) => b.status === "Open" && !b.dropped).length} open

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useHfmcStore } from "@/lib/client-store";
 import type {
   BankItem, BankProduct, Designation, DocRule, FeeRule, MasterItem, PartnerItem, PartnerKind,
@@ -19,7 +19,7 @@ import {
 
 /* ------------------------------ types ------------------------------ */
 
-type Tab = "users" | "designations" | "banks" | "bankrules" | "partners" | "channels" | "stages" | "masters" | "sla" | "docrules" | "feerules";
+type Tab = "users" | "designations" | "banks" | "bankrules" | "partners" | "channels" | "stages" | "masters" | "sla" | "docrules" | "feerules" | "storage";
 type MasterKind = "whyPending" | "waitingFor";
 
 const TEAMS = ["Management", "Dubai", "Abu Dhabi"];
@@ -36,6 +36,7 @@ const TAB_OPTIONS: { value: Tab; label: string }[] = [
   { value: "sla", label: "SLA rules" },
   { value: "docrules", label: "Doc Rules" },
   { value: "feerules", label: "Fee rules" },
+  { value: "storage", label: "Storage" },
 ];
 
 // Two-level admin navigation: group row on top, tabs for the active group below.
@@ -44,7 +45,7 @@ const GROUPS: { key: string; label: string; tabs: { value: Tab; label: string }[
   { key: "team", label: "Team & Access", tabs: TAB_OPTIONS.filter((t) => ["users", "designations"].includes(t.value)) },
   { key: "market", label: "Marketplace", tabs: TAB_OPTIONS.filter((t) => ["banks", "bankrules", "partners", "channels"].includes(t.value)) },
   { key: "workflow", label: "Workflow", tabs: TAB_OPTIONS.filter((t) => ["stages", "masters", "sla"].includes(t.value)) },
-  { key: "docs", label: "Docs & Fees", tabs: TAB_OPTIONS.filter((t) => ["docrules", "feerules"].includes(t.value)) },
+  { key: "docs", label: "Docs & Fees", tabs: TAB_OPTIONS.filter((t) => ["docrules", "feerules", "storage"].includes(t.value)) },
 ];
 
 const DOC_CATEGORIES = ["KYC", "Income", "Approval", "Property", "Valuation", "Transfer"];
@@ -219,6 +220,7 @@ export default function Admin() {
 
       {tab === "users" && <UsersTab />}
       {tab === "designations" && <DesignationsTab />}
+        {tab === "storage" && <StorageTab />}
       {tab === "banks" && <BanksTab />}
       {tab === "bankrules" && <BankRulesTab />}
       {tab === "partners" && <PartnersTab />}
@@ -459,11 +461,12 @@ interface DesigDraft {
   admin: boolean;
   super: boolean;
   viewRevenue: boolean;
+  manageDocs: boolean;
   builtIn: boolean;
 }
 
 function blankDesig(): DesigDraft {
-  return { id: 0, name: "", scope: "own", issueTasks: false, admin: false, super: false, viewRevenue: false, builtIn: false };
+  return { id: 0, name: "", scope: "own", issueTasks: false, admin: false, super: false, viewRevenue: false, manageDocs: true, builtIn: false };
 }
 
 function DesignationsTab() {
@@ -493,6 +496,7 @@ function DesignationsTab() {
       admin: editing.admin,
       super: editing.super,
       viewRevenue: editing.viewRevenue,
+      manageDocs: editing.manageDocs,
     };
     const res = creating
       ? await adminPost(body)
@@ -564,6 +568,7 @@ function DesignationsTab() {
                       <Chip tone={d.issueTasks ? "mint" : "slate"}>{d.issueTasks ? "issues tasks" : "no tasks"}</Chip>
                       <Chip tone={d.admin ? "mint" : "slate"}>{d.admin ? "admin" : "no admin"}</Chip>
                       <Chip tone={d.viewRevenue ? "amber" : "slate"}>{d.viewRevenue ? "sees revenue" : "no revenue"}</Chip>
+                      <Chip tone={d.manageDocs ? "mint" : "slate"}>{d.manageDocs ? "manages docs" : "no docs"}</Chip>
                     </span>
                   </td>
                   <td className="text-[12.5px] text-[var(--ink-dim)] mono">{holders}</td>
@@ -646,6 +651,11 @@ function DesignationsTab() {
                   onClick={() => setEditing({ ...editing, viewRevenue: !editing.viewRevenue })}
                   label="sees revenue"
                 />
+                <Toggle
+                  on={editing.manageDocs}
+                  onClick={() => setEditing({ ...editing, manageDocs: !editing.manageDocs })}
+                  label="manages documents"
+                />
               </div>
               {editing.super && (
                 <p className="text-[11.5px] text-[var(--ink-faint)] mt-1.5 mb-0">
@@ -673,6 +683,238 @@ function DesignationsTab() {
     </div>
   );
 }
+
+/* ------------------------------ storage ------------------------------ */
+
+interface StorageStatus {
+  r2: {
+    configured: boolean; accountId: boolean; accessKeyId: boolean;
+    secretAccessKey: boolean; bucket: boolean; bucketName: string; endpoint: string;
+  };
+  drive: { configured: boolean; clientEmail: boolean; privateKey: boolean; folderId: boolean };
+  stats: {
+    totalDocuments: number; filesOnR2: number; compressedCopies: number;
+    legacyInDatabase: number; originalBytes: number; compressedBytes: number;
+    archivedOnDrive: number;
+  };
+}
+
+function sizeLabel(n: number): string {
+  if (!n) return "0 KB";
+  return n < 1024 * 1024 ? `${Math.round(n / 1024)} KB` : `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** One credential line: green tick when present, faint dash when missing. */
+function KeyRow({ label, envName, present }: { label: string; envName: string; present: boolean }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 py-1.5" style={{ borderBottom: "1px solid var(--line-soft)" }}>
+      <span className="text-[12.5px]" style={{ color: present ? "var(--mint)" : "var(--ink-faint)" }}>{present ? "✓" : "—"}</span>
+      <span className="text-[12.5px] font-medium min-w-[150px]">{label}</span>
+      <code className="mono text-[11px] text-[var(--ink-dim)]">{envName}</code>
+      <span className="ml-auto text-[11px]" style={{ color: present ? "var(--mint)" : "var(--ink-faint)" }}>
+        {present ? "set" : "missing"}
+      </span>
+    </div>
+  );
+}
+
+function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
+  return (
+    <div className="rounded-lg px-3 py-2.5" style={{ background: "var(--tint)" }}>
+      <div className="text-[10.5px] uppercase tracking-[0.1em] text-[var(--ink-faint)] font-disp font-semibold">{label}</div>
+      <div className="mono text-[15px] mt-0.5">{value}</div>
+      {hint && <div className="text-[10.5px] text-[var(--ink-faint)] mt-0.5">{hint}</div>}
+    </div>
+  );
+}
+
+function StorageTab() {
+  const { toast } = useHfmcStore();
+  const [status, setStatus] = useState<StorageStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [probe, setProbe] = useState<string | null>(null);
+  const [driveProbe, setDriveProbe] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    const res = await fetch("/api/admin/storage", { cache: "no-store" });
+    if (res.ok) setStatus(await res.json());
+  }, []);
+
+  // fetch on mount — setState happens after the await, never during render
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const res = await fetch("/api/admin/storage", { cache: "no-store" });
+      if (!alive || !res.ok) return;
+      setStatus(await res.json());
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  const copyEnv = async () => {
+    const block = ["R2_ACCOUNT_ID=", "R2_ACCESS_KEY_ID=", "R2_SECRET_ACCESS_KEY=", "R2_BUCKET="].join("\n");
+    try {
+      await navigator.clipboard.writeText(block);
+      toast("success", "Copied — paste into .env and fill in the four values.");
+    } catch {
+      toast("error", "Clipboard blocked by the browser — copy them from .env.example instead.");
+    }
+  };
+
+  const test = async () => {
+    setBusy(true); setProbe(null);
+    const res = await fetch("/api/admin/storage", { method: "POST" });
+    const data = await res.json().catch(() => ({}));
+    setBusy(false);
+    const steps = data.steps
+      ? `write ${data.steps.write ? "✓" : "✗"} · read ${data.steps.read ? "✓" : "✗"} · delete ${data.steps.delete ? "✓" : "✗"}`
+      : "";
+    if (res.ok && data.ok) {
+      setProbe(`Connected — probe passed (${steps})`);
+      toast("success", "Cloud storage is connected and working.");
+    } else {
+      setProbe(`${data.error ?? "Test failed"} ${steps}`.trim());
+      toast("error", "Storage test failed — see the details on the card.");
+    }
+    load();
+  };
+
+  const copyDriveEnv = async () => {
+    const block = ["GOOGLE_DRIVE_CLIENT_EMAIL=", "GOOGLE_DRIVE_PRIVATE_KEY=", "GOOGLE_DRIVE_FOLDER_ID="].join("\n");
+    try {
+      await navigator.clipboard.writeText(block);
+      toast("success", "Copied — paste into .env and fill in the three values.");
+    } catch {
+      toast("error", "Clipboard blocked by the browser — copy them from .env.example instead.");
+    }
+  };
+
+  const testDrive = async () => {
+    setBusy(true); setDriveProbe(null);
+    const res = await fetch("/api/admin/storage", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "drive" }),
+    });
+    const data = await res.json().catch(() => ({}));
+    setBusy(false);
+    const steps = data.steps
+      ? `create ${data.steps.write ? "✓" : "✗"} · read ${data.steps.read ? "✓" : "✗"} · delete ${data.steps.delete ? "✓" : "✗"}`
+      : "";
+    if (res.ok && data.ok) {
+      setDriveProbe(`Connected — probe passed (${steps})`);
+      toast("success", "Google Drive is connected and working.");
+    } else {
+      setDriveProbe(`${data.error ?? "Test failed"} ${steps}`.trim());
+      toast("error", "Drive test failed — see the details on the card.");
+    }
+    load();
+  };
+
+  const r2 = status?.r2;
+  const drive = status?.drive;
+  const stats = status?.stats;
+
+  return (
+    <div className="space-y-4 anim-fade-up">
+      <div className="card">
+        <CardHeader
+          title="Document storage · Cloudflare R2"
+          sub="Where every uploaded client file lives. Files sit in a private bucket and reach the browser through short-lived signed links — a leaked URL expires in 15 minutes."
+          action={
+            <span className="flex gap-1.5">
+              <button className="btn btn-ghost sm:btn-sm" onClick={copyEnv}><IPlus size={13} /> Copy .env block</button>
+              <button className="btn btn-primary sm:btn-sm" onClick={test} disabled={busy || !r2?.configured}>
+                <ICheck size={14} /> {busy ? "Testing…" : "Test connection"}
+              </button>
+            </span>
+          }
+        />
+        <div className="p-4 space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Chip tone={r2?.configured ? "mint" : "amber"}>
+              {r2?.configured ? "connected" : "not configured — running on the database fallback"}
+            </Chip>
+            {r2?.bucketName && <span className="mono text-[11.5px] text-[var(--ink-dim)]">bucket: {r2.bucketName}</span>}
+            {r2?.endpoint && <span className="mono text-[11.5px] text-[var(--ink-faint)]">{r2.endpoint}</span>}
+          </div>
+
+          <div>
+            <KeyRow label="Account ID" envName="R2_ACCOUNT_ID" present={!!r2?.accountId} />
+            <KeyRow label="Access Key ID" envName="R2_ACCESS_KEY_ID" present={!!r2?.accessKeyId} />
+            <KeyRow label="Secret Access Key" envName="R2_SECRET_ACCESS_KEY" present={!!r2?.secretAccessKey} />
+            <KeyRow label="Bucket name" envName="R2_BUCKET" present={!!r2?.bucket} />
+          </div>
+
+          {probe && (
+            <p className="text-[12px] m-0 mono" style={{ color: probe.startsWith("Connected") ? "var(--mint)" : "var(--coral)" }}>{probe}</p>
+          )}
+
+          <p className="text-[11.5px] text-[var(--ink-faint)] m-0">
+            Paste the four values into <code className="mono">.env</code> — Cloudflare dashboard → R2 → your bucket →
+            <span className="font-medium"> Manage R2 API Tokens</span> → create a token with <span className="font-medium">Object Read &amp; Write</span> —
+            then <span className="font-medium">restart the server</span>; environment values are read once at start-up. The secret key is shown only once.
+          </p>
+        </div>
+      </div>
+      <div className="card">
+        <CardHeader title="Vault contents" sub="What is on Cloudflare versus still in the database — and what compression has saved." />
+        <div className="p-4 grid grid-cols-2 md:grid-cols-3 gap-3">
+          <Stat label="Documents" value={String(stats?.totalDocuments ?? 0)} />
+          <Stat label="Files on R2" value={String(stats?.filesOnR2 ?? 0)} />
+          <Stat label="Legacy in database" value={String(stats?.legacyInDatabase ?? 0)} hint="re-upload to move them across" />
+          <Stat label="Originals stored" value={sizeLabel(stats?.originalBytes ?? 0)} />
+          <Stat label="Compressed copies" value={String(stats?.compressedCopies ?? 0)} hint={sizeLabel(stats?.compressedBytes ?? 0)} />
+          <Stat label="Archived on Drive" value={String(stats?.archivedOnDrive ?? 0)} hint="independent archive" />
+          <Stat label="Free tier" value="10 GB" hint="$0 egress — downloads cost nothing" />
+        </div>
+      </div>
+
+      <div className="card">
+        <CardHeader
+          title="Google Drive archive · independent"
+          sub="A separate dump, not a mirror: uploads are copied into Drive's own folder tree and live their own life — nothing here touches the R2 bucket."
+          action={
+            <span className="flex gap-1.5">
+              <button className="btn btn-ghost sm:btn-sm" onClick={copyDriveEnv}><IPlus size={13} /> Copy .env block</button>
+              <button className="btn btn-primary sm:btn-sm" onClick={testDrive} disabled={busy || !drive?.configured}>
+                <ICheck size={14} /> {busy ? "Testing…" : "Test connection"}
+              </button>
+            </span>
+          }
+        />
+        <div className="p-4 space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Chip tone={drive?.configured ? "mint" : "slate"}>{drive?.configured ? "connected" : "not configured — optional archive"}</Chip>
+            <span className="text-[12px] text-[var(--ink-dim)]">Archived files: <span className="mono">{stats?.archivedOnDrive ?? 0}</span></span>
+          </div>
+          <p className="text-[12px] text-[var(--ink-dim)] m-0">
+            When configured, every upload (staff <span className="font-medium">or client</span>) is <span className="font-medium">also</span> copied to
+            Drive under <code className="mono">{"{CASE-NO} — {Customer}"}/{"{Category}"}</code> — both folder levels are created automatically.
+            It is <span className="font-medium">independent</span>: deleting a document here never deletes the Drive copy, R2 objects are untouched,
+            and you can drop extra files into those folders by hand anytime. Client-portal serving stays on R2 — Drive links never expire, so
+            nothing is ever served to clients from Drive.
+          </p>
+          <div>
+            <KeyRow label="Service-account email" envName="GOOGLE_DRIVE_CLIENT_EMAIL" present={!!drive?.clientEmail} />
+            <KeyRow label="Service-account private key" envName="GOOGLE_DRIVE_PRIVATE_KEY" present={!!drive?.privateKey} />
+            <KeyRow label="Shared archive folder ID" envName="GOOGLE_DRIVE_FOLDER_ID" present={!!drive?.folderId} />
+          </div>
+          {driveProbe && (
+            <p className="text-[12px] m-0 mono" style={{ color: driveProbe.startsWith("Connected") ? "var(--mint)" : "var(--coral)" }}>{driveProbe}</p>
+          )}
+          <p className="text-[11.5px] text-[var(--ink-faint)] m-0">
+            Setup: Google Cloud Console → <span className="font-medium">APIs &amp; Services</span> → enable <span className="font-medium">Google Drive API</span> →
+            <span className="font-medium"> IAM &amp; Admin → Service Accounts</span> → create one → <span className="font-medium">Keys → Add key → JSON</span>
+            (copy <code className="mono">client_email</code> and <code className="mono">private_key</code>, keep the <code className="mono">\n</code> escapes) →
+            create a folder in Drive, share it with the service-account email as <span className="font-medium">Editor</span>, paste its ID from the URL.
+            Fill all three in <code className="mono">.env</code> and <span className="font-medium">restart the server</span>.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* STORAGE_TAB_HERE */
 
 /* ------------------------------ banks ------------------------------ */
 

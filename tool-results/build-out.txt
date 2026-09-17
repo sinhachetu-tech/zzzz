@@ -1,0 +1,31 @@
+BUILD_OK
+├ ƒ /api/cases/[id]
+├ ƒ /api/cases/[id]/tasks
+├ ƒ /api/client/login
+├ ƒ /api/client/logout
+├ ƒ /api/client/register
+├ ƒ /api/client/state
+├ ƒ /api/documents
+├ ƒ /api/documents/[id]
+├ ƒ /api/documents/[id]/compress
+├ ƒ /api/documents/[id]/file
+├ ƒ /api/documents/[id]/upload
+├ ƒ /api/eibor
+├ ƒ /api/email/inbound
+├ ƒ /api/email/poll
+├ ƒ /api/email/unmatched/[id]
+├ ƒ /api/instructions
+├ ƒ /api/instructions/[id]
+├ ƒ /api/instructions/[id]/replies
+├ ƒ /api/proposal
+├ ƒ /api/proposals
+├ ƒ /api/seed
+├ ƒ /api/state
+├ ƒ /api/tasks/[id]
+├ ○ /client
+├ ○ /manifest.webmanifest
+└ ○ /proposal
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand

@@ -48,7 +48,7 @@ export async function login(email: string, password: string): Promise<{ ok: true
     return { ok: false, error: "Wrong password — try again." };
   }
   if (hash !== u.password) {
-    await db.user.update({ where: { id: u.id }, data: { password: hash } }).catch(() => {});
+    await db.user.update({ where: { id: u.id }, data: { password: hash } }).catch(() => { });
   }
   const sid = crypto.randomUUID();
   const expiresAt = new Date(Date.now() + SESSION_TTL_DAYS * 86400000);
@@ -67,7 +67,7 @@ export async function logout(): Promise<void> {
   const store = await cookies();
   const sid = store.get(SESSION_COOKIE)?.value;
   if (sid) {
-    await db.session.deleteMany({ where: { id: sid } }).catch(() => {});
+    await db.session.deleteMany({ where: { id: sid } }).catch(() => { });
     store.delete(SESSION_COOKIE);
   }
 }
@@ -79,7 +79,7 @@ export async function currentUser(): Promise<SessionUser | null> {
   const session = await db.session.findUnique({ where: { id: sid }, include: { user: true } });
   if (!session) return null;
   if (session.expiresAt.getTime() < Date.now()) {
-    await db.session.delete({ where: { id: sid } }).catch(() => {});
+    await db.session.delete({ where: { id: sid } }).catch(() => { });
     return null;
   }
   if (!session.user.active) return null;
@@ -101,15 +101,20 @@ export interface RoleFlags {
   super: boolean;
   viewRevenue: boolean;
   editEibor: boolean; // may update the daily EIBOR benchmark table (granted per designation)
+  manageDocs: boolean; // may upload/verify/reject/waive/delete/compress vault documents
 }
 
-const SUPER_FLAGS: RoleFlags = { scope: "all", issueTasks: true, admin: true, super: true, viewRevenue: true, editEibor: true };
+const SUPER_FLAGS: RoleFlags = { scope: "all", issueTasks: true, admin: true, super: true, viewRevenue: true, editEibor: true, manageDocs: true };
 
 export async function flagsFor(user: SessionUser): Promise<RoleFlags> {
   if (user.role === "Super Admin") return SUPER_FLAGS;
   const d = await db.designation.findUnique({ where: { name: user.role } });
-  if (!d) return { scope: "own", issueTasks: false, admin: false, super: false, viewRevenue: false, editEibor: false };
-  return { scope: d.scope as RoleFlags["scope"], issueTasks: d.issueTasks, admin: d.admin, super: d.super, viewRevenue: d.viewRevenue, editEibor: (d as unknown as { editEibor?: boolean }).editEibor ?? false };
+  if (!d) return { scope: "own", issueTasks: false, admin: false, super: false, viewRevenue: false, editEibor: false, manageDocs: true };
+  return {
+    scope: d.scope as RoleFlags["scope"], issueTasks: d.issueTasks, admin: d.admin, super: d.super,
+    viewRevenue: d.viewRevenue, editEibor: (d as unknown as { editEibor?: boolean }).editEibor ?? false,
+    manageDocs: (d as unknown as { manageDocs?: boolean }).manageDocs ?? true,
+  };
 }
 
 export async function canManageAll(user: SessionUser): Promise<boolean> {

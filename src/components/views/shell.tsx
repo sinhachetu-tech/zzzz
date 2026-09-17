@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { CasePartner, CaseSource } from "@/lib/types";
 import type { Route } from "@/lib/client-store";
@@ -10,8 +10,10 @@ import { computeEscalations } from "@/lib/domain";
 import { fmtMoney, inDaysISO, todayISO } from "@/lib/format";
 import { Avatar, Chip, Modal, ThemeToggle } from "@/components/hfmc/ui";
 import { Toaster } from "@/components/hfmc/toaster";
+import { CommandBar } from "@/components/views/command-bar";
+import { useCollapsibleSidebar } from "@/hooks/use-collapsible-sidebar";
 import {
-  IBank, IBriefcase, ICalc, IChart, IFlag, IGrid, IInbox, ILogout, IMenu, IPlus, IShield, ITasks, LogoMark,
+  IBank, IBriefcase, ICalc, IChart, IChevronL, IChevronR, IFlag, IGrid, IInbox, ILogout, IMenu, IPlus, IShield, ITasks, LogoMark,
 } from "@/components/icons";
 
 function Clock() {
@@ -177,6 +179,7 @@ function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void })
   const [customShare, setCustomShare] = useState("");
   const [taskDesc, setTaskDesc] = useState("");
   const [taskDue, setTaskDue] = useState(inDaysISO(3));
+  const [taskTime, setTaskTime] = useState("17:00");
   const [busy, setBusy] = useState(false); // blocks double-submit — the create+rehydrate round-trip takes a beat
   // --- MIS operational (optional, fill later on Case 360) ---
   const [transactionType, setTransactionType] = useState("");
@@ -231,7 +234,7 @@ function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void })
         customer, banks: bankList, loanAmount: amt, stage, ownerId,
         source, partner, whatsapp, waGroup: waGroup.trim() || null,
         task: taskDesc.trim()
-          ? { description: taskDesc, dueDate: taskDue, waitingFor: "Internal", whyPending: "Internal review", ownerId }
+          ? { description: taskDesc, dueDate: taskTime ? `${taskDue}T${taskTime}` : taskDue, waitingFor: "Internal", whyPending: "Internal review", ownerId }
           : undefined,
         submissionType,
         channelId: selectedChannel?.id ?? null,
@@ -504,9 +507,10 @@ function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void })
 
         <div>
           <label className="label">First task (optional)</label>
-          <div className="grid grid-cols-[1fr_140px] gap-2">
+          <div className="grid grid-cols-[1fr_140px_110px] gap-2">
             <input className="input" value={taskDesc} onChange={(e) => setTaskDesc(e.target.value)} placeholder="e.g. Collect KYC & income documents" />
             <input className="input mono" type="date" value={taskDue} onChange={(e) => setTaskDue(e.target.value)} />
+            <input className="input mono" type="time" value={taskTime} onChange={(e) => setTaskTime(e.target.value)} title="Due time (optional)" />
           </div>
         </div>
       </div>
@@ -533,10 +537,42 @@ export default function Shell({ children }: { children: ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [fabOpen, setFabOpen] = useState(false);
   const [eiborOpen, setEiborOpen] = useState(false);
+  const [cmdOpen, setCmdOpen] = useState(false);
+
+  // Mission Control — ⌘/Ctrl+K opens the command bar anywhere in the app
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setCmdOpen((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // Left panel width — pinned by the user, smart by default (see the hook)
+  const { collapsed: sidebarCollapsed, toggle: toggleSidebar, animated: sidebarAnimated } = useCollapsibleSidebar();
+
+  // View-enter quietness: the wrapper fades once; on later navigations the
+  // `.settled` class grows back the inner cascades to instantly-placed so a
+  // route change is one 180ms fade, not a full page of lifting cards.
+  const viewRef = useRef<HTMLDivElement>(null);
 
   // Close the mobile drawer + FAB dial when route changes
   // eslint-disable-next-line react-hooks/set-state-in-effect -- drawer must close on every navigation
   useEffect(() => { setDrawerOpen(false); setFabOpen(false); }, [route]);
+
+  // Settle the view wrapper: remove the flag and force a reflow so the
+  // entrance reruns, then re-flag once it lands (240ms > the 180ms fade).
+  useEffect(() => {
+    const el = viewRef.current;
+    if (!el) return;
+    el.classList.remove("settled");
+    void el.offsetWidth;
+    const id = window.setTimeout(() => { el.classList.add("settled"); }, 240);
+    return () => window.clearTimeout(id);
+  }, [route]);
 
   const openInstr = instructions.filter((i) => i.status === "Open").length;
   const pipeline = visibleCases().filter((c) => c.caseStatus === "Active").reduce((s, c) => s + c.loanAmount, 0);
@@ -573,19 +609,29 @@ export default function Shell({ children }: { children: ReactNode }) {
     <div className="flex h-screen overflow-hidden">
       <div className="app-bg" />
 
-      {/* Desktop sidebar — hidden on mobile */}
-      <aside className="side-dark w-[228px] shrink-0 border-r hidden md:flex flex-col" style={{ borderColor: "#18313b", background: "rgba(11,23,29,0.88)", backdropFilter: "blur(6px)" }}>
+      {/* Desktop sidebar — hidden on mobile. Collapsible: the width is inline so
+          the rail can animate between 228px and the 68px icon strip, and
+          overflow-hidden curtains the labels instead of re-wrapping them.
+          Deliberately opaque (no backdrop blur): as a flex sibling nothing
+          scrolls beneath it, so the blur only ever re-blurred the ambient
+          gradient — this paints one layer less per frame in the WebView. */}
+      <aside
+        id="app-sidebar"
+        className={`side-dark shrink-0 border-r hidden md:flex flex-col overflow-hidden ${sidebarAnimated ? "side-shell" : ""} ${sidebarCollapsed ? "nav-rail" : ""}`}
+        style={{ borderColor: "#18313b", background: "rgba(11,23,29,0.96)", width: sidebarCollapsed ? 68 : 228 }}
+      >
         <SidebarContent
           navItems={navItems} route={route} nav={nav}
           escalations={escalations} pipeline={pipeline}
           me={me} logout={logout}
           openInstr={openInstr} canInstruct={canInstruct}
+          collapsed={sidebarCollapsed} onToggle={toggleSidebar}
         />
       </aside>
 
       {/* Mobile drawer */}
       {drawerOpen && (
-        <div className="fixed inset-0 z-[90] md:hidden anim-fade-in" style={{ background: "rgba(4,12,15,0.7)", backdropFilter: "blur(3px)" }} onClick={() => setDrawerOpen(false)}>
+        <div className="fixed inset-0 z-[90] md:hidden anim-fade-in" style={{ background: "rgba(4,12,15,0.76)" }} onClick={() => setDrawerOpen(false)}>
           <aside className="side-dark w-[260px] max-w-[80vw] h-full border-r flex flex-col anim-slide-right" style={{ borderColor: "#18313b", background: "rgba(11,23,29,0.96)" }} onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-4">
               <div className="flex items-center gap-2.5">
@@ -611,9 +657,20 @@ export default function Shell({ children }: { children: ReactNode }) {
       )}
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-[54px] shrink-0 border-b flex items-center gap-3 px-4 md:px-5" style={{ borderColor: "var(--line-soft)", background: "color-mix(in srgb, var(--bg) 78%, transparent)", backdropFilter: "blur(6px)" }}>
+        <header className="h-[54px] shrink-0 border-b flex items-center gap-3 px-4 md:px-5" style={{ borderColor: "var(--line-soft)", background: "color-mix(in srgb, var(--bg) 94%, transparent)" }}>
           <button className="btn btn-ghost btn-sm !px-2 md:!hidden" onClick={() => setDrawerOpen(true)} aria-label="Open menu">
             <IMenu size={18} />
+          </button>
+          {/* Desktop-only: fold the left panel down to an icon rail (or back) */}
+          <button
+            className="btn btn-ghost btn-sm !px-2 !hidden md:!inline-flex"
+            onClick={toggleSidebar}
+            aria-label={sidebarCollapsed ? "Expand left panel" : "Collapse left panel"}
+            aria-expanded={!sidebarCollapsed}
+            aria-controls="app-sidebar"
+            title={sidebarCollapsed ? "Expand left panel" : "Collapse left panel"}
+          >
+            {sidebarCollapsed ? <IChevronR size={18} /> : <IChevronL size={18} />}
           </button>
           <h1 className="font-disp font-semibold text-[16px] m-0 truncate">{title}</h1>
           {route.name === "case" && <span className="text-[12px] text-[var(--ink-faint)] hidden lg:inline">the full story of one file</span>}
@@ -658,14 +715,19 @@ export default function Shell({ children }: { children: ReactNode }) {
         </header>
 
         <main className="flex-1 overflow-y-auto pb-20 md:pb-0">
-          <div key={JSON.stringify(route)} className="max-w-[1240px] mx-auto px-4 md:px-5 py-4 md:py-5 anim-fade-in">
+          {/* view container: one quiet 180ms fade per navigation; after it has
+              settled once, inner .anim-fade-up/.stagger cards render already
+              placed, so route changes feel instant instead of replaying the
+              whole cascade. React keys force the remount/repaint — the class
+              only grows quieter, never blocks. */}
+          <div key={JSON.stringify(route)} className="max-w-[1240px] mx-auto px-4 md:px-5 py-4 md:py-5 view-in" ref={viewRef}>
             {children}
           </div>
         </main>
       </div>
 
       {/* Mobile bottom nav — Cases/Leads/Tasks lead; the rest lives in the drawer */}
-      <nav className="fixed bottom-0 left-0 right-0 z-50 md:hidden flex items-stretch border-t" style={{ borderColor: "var(--line)", background: "color-mix(in srgb, var(--raised) 92%, transparent)", backdropFilter: "blur(10px)" }}>
+      <nav className="fixed bottom-0 left-0 right-0 z-50 md:hidden flex items-stretch border-t" style={{ borderColor: "var(--line)", background: "color-mix(in srgb, var(--raised) 96%, transparent)" }}>
         {(["dashboard", "leads", "cases", "tasks", "calculator"] as const).map((name) => {
           const n = navItems.find((x) => x.route.name === name)!;
           const active = route.name === n.route.name || (route.name === "case" && n.route.name === "cases");
@@ -722,13 +784,55 @@ export default function Shell({ children }: { children: ReactNode }) {
 
       <NewCaseModal open={newCaseOpen} onClose={closeNewCase} />
       {eiborOpen && <EiborModal onClose={() => setEiborOpen(false)} />}
+      <CommandBar open={cmdOpen} onOpenChange={setCmdOpen} />
+      <DealWonBurst />
       <Toaster />
     </div>
   );
 }
 
+/* DealWonBurst — one-shot celebration overlay. Listens for the "hfmc:deal-won"
+   event dispatched when a case is Booked; renders a single ring pulse + a
+   fan of coloured bits that fly out once (~1s) and unmounts. Pure CSS
+   (globals.css .deal-burst-*); the global reduced-motion switch silences it. */
+function DealWonBurst() {
+  const [burst, setBurst] = useState<{ id: number; customer: string } | null>(null);
+  useEffect(() => {
+    let n = 0;
+    let timer = 0;
+    const onWon = (e: Event) => {
+      const customer = (e as CustomEvent<{ customer?: string }>).detail?.customer ?? "";
+      n += 1;
+      setBurst({ id: n, customer });
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => setBurst(null), 1100);
+    };
+    window.addEventListener("hfmc:deal-won", onWon);
+    return () => { window.removeEventListener("hfmc:deal-won", onWon); window.clearTimeout(timer); };
+  }, []);
+  if (!burst) return null;
+  // deterministic fan — no Math.random in render (keeps hydration quiet)
+  const bits = Array.from({ length: 14 }, (_, i) => {
+    const angle = (i / 14) * Math.PI * 2 - Math.PI / 2;
+    const dist = 60 + (i % 4) * 14;
+    return { tx: Math.round(Math.cos(angle) * dist), ty: Math.round(Math.sin(angle) * dist), c: ["var(--amber)", "var(--mint)", "var(--sky)", "var(--coral)"][i % 4], s: 4 + (i % 3) * 2 };
+  });
+  return (
+    <div key={burst.id} className="fixed inset-0 z-[95] pointer-events-none anim-fade-in" role="status" aria-label={burst.customer ? `Deal won — ${burst.customer}` : "Deal won"}>
+      <span className="deal-burst-ring" />
+      {bits.map((b, i) => (
+        <span
+          key={i}
+          className="deal-burst-bit"
+          style={{ left: "50%", top: "42%", width: b.s, height: b.s, background: b.c, ["--tx" as string]: `${b.tx}px`, ["--ty" as string]: `${b.ty}px`, animationDelay: `${(i % 5) * 30}ms` }}
+        />
+      ))}
+    </div>
+  );
+}
+
 function SidebarContent({
-  navItems, route, nav, escalations, pipeline, me, logout, openInstr, canInstruct, hideBranding,
+  navItems, route, nav, escalations, pipeline, me, logout, openInstr, canInstruct, hideBranding, collapsed = false, onToggle,
 }: {
   navItems: { label: string; route: Route; icon: (p: { size?: number; className?: string }) => ReactNode; badge?: number }[];
   route: Route;
@@ -740,32 +844,63 @@ function SidebarContent({
   openInstr: number;
   canInstruct: boolean;
   hideBranding?: boolean;
+  /** icon rail: labels/badges collapse into dots and tooltips (desktop only) */
+  collapsed?: boolean;
+  /** renders the fold/unfold chevron next to the brand (desktop only) */
+  onToggle?: () => void;
 }) {
   return (
     <>
       {!hideBranding && (
-        <div className="flex items-center gap-2.5 px-4 py-4">
+        <div className={`flex items-center py-4 ${collapsed ? "flex-col gap-1.5 px-2" : "gap-2.5 px-4"}`}>
           <LogoMark size={30} />
-          <div>
-            <div className="font-disp font-bold text-[15px] tracking-[0.04em] leading-none">HFMC</div>
-            <div className="text-[9.5px] uppercase tracking-[0.18em] text-[var(--ink-faint)] mt-1">Mortgage · UAE</div>
-          </div>
+          {!collapsed && (
+            <div className="min-w-0 flex-1">
+              <div className="font-disp font-bold text-[15px] tracking-[0.04em] leading-none">HFMC</div>
+              <div className="text-[9.5px] uppercase tracking-[0.18em] text-[var(--ink-faint)] mt-1">Mortgage · UAE</div>
+            </div>
+          )}
+          {onToggle && (
+            <button
+              className="text-[var(--ink-faint)] hover:text-[var(--amber)] transition-colors shrink-0"
+              onClick={onToggle}
+              aria-label={collapsed ? "Expand left panel" : "Collapse left panel"}
+              aria-expanded={!collapsed}
+              aria-controls="app-sidebar"
+              title={collapsed ? "Expand left panel" : "Collapse left panel"}
+            >
+              {collapsed ? <IChevronR size={16} /> : <IChevronL size={16} />}
+            </button>
+          )}
         </div>
       )}
 
-      <nav className="px-3 mt-2 space-y-1 flex-1">
+      <nav className={`mt-2 space-y-1 flex-1 ${collapsed ? "px-2" : "px-3"}`}>
         {navItems.map((n) => {
             const active = route.name === n.route.name || (route.name === "case" && n.route.name === "cases");
+            const instr = n.label === "Task Queue" && openInstr > 0 && canInstruct;
             return (
-              <button key={n.label} className={`nav-item w-full text-left ${active ? "active" : ""}`} onClick={() => nav(n.route)}>
-              <n.icon size={17} />
-              <span>{n.label}</span>
-              {!!n.badge && n.badge > 0 && (
+              <button
+                key={n.label}
+                className={`nav-item w-full text-left ${active ? "active" : ""}`}
+                onClick={() => nav(n.route)}
+                aria-label={n.label}
+                title={collapsed ? n.label : undefined}
+              >
+              <span className="relative inline-flex shrink-0">
+                <n.icon size={17} />
+                {/* collapsed: a chip would be clipped, so the count becomes a dot on the icon */}
+                {collapsed && (!!n.badge || instr) && (
+                  <span className="absolute -top-1 -right-1.5 w-2 h-2 rounded-full" style={{ background: n.badge ? "var(--amber)" : "var(--sky)", boxShadow: "0 0 0 2px rgba(11,23,29,0.9)" }} />
+                )}
+              </span>
+              {!collapsed && <span className="whitespace-nowrap">{n.label}</span>}
+              {!collapsed && !!n.badge && n.badge > 0 && (
                 <span className="ml-auto mono text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: "rgba(242,176,76,0.18)", color: "var(--amber)", border: "1px solid rgba(242,176,76,0.4)" }}>
                   {n.badge}
                 </span>
               )}
-              {n.label === "Task Queue" && openInstr > 0 && canInstruct && (
+              {!collapsed && instr && (
                 <span className="ml-auto mono text-[10px] px-1.5 py-0.5 rounded" style={{ background: "rgba(87,194,234,0.15)", color: "var(--sky)" }}>{openInstr}</span>
               )}
             </button>
@@ -773,29 +908,49 @@ function SidebarContent({
         })}
       </nav>
 
-      <div className="mt-auto p-3">
-        <div className="card p-3 mb-2">
-          <div className="text-[10.5px] uppercase tracking-[0.12em] text-[var(--ink-faint)] font-disp font-semibold mb-1.5">SLA breaches</div>
-          <div className="flex items-center gap-2">
+      <div className={`mt-auto ${collapsed ? "p-2" : "p-3"}`}>
+        {collapsed ? (
+          /* icon rail: the SLA card folds into one tile; the tooltip keeps the detail */
+          <div
+            className="card px-1 py-2 mb-2 flex flex-col items-center gap-1"
+            title={`BREACHES ${escalations} · active pipeline ${fmtMoney(pipeline)}`}
+          >
             {escalations > 0 ? <span className="dot-overdue" /> : <span className="dot-live" />}
-            <span className="font-disp font-bold text-[20px]" style={{ color: escalations > 0 ? "var(--coral)" : "var(--mint)" }}>{escalations}</span>
-            <span className="text-[11px] text-[var(--ink-faint)]">stage{escalations === 1 ? "" : "s"} past SLA</span>
+            <span className="font-disp font-bold text-[15px]" style={{ color: escalations > 0 ? "var(--coral)" : "var(--mint)" }}>{escalations}</span>
           </div>
-          <div className="mt-2 pt-2 text-[11px] text-[var(--ink-faint)]" style={{ borderTop: "1px dashed var(--line)" }}>
-            Active pipeline <span className="mono text-[var(--ink-dim)]">{fmtMoney(pipeline)}</span>
+        ) : (
+          <div className="card p-3 mb-2">
+            <div className="text-[10.5px] uppercase tracking-[0.12em] text-[var(--ink-faint)] font-disp font-semibold mb-1.5">SLA breaches</div>
+            <div className="flex items-center gap-2">
+              {escalations > 0 ? <span className="dot-overdue" /> : <span className="dot-live" />}
+              <span className="font-disp font-bold text-[20px]" style={{ color: escalations > 0 ? "var(--coral)" : "var(--mint)" }}>{escalations}</span>
+              <span className="text-[11px] text-[var(--ink-faint)]">stage{escalations === 1 ? "" : "s"} past SLA</span>
+            </div>
+            <div className="mt-2 pt-2 text-[11px] text-[var(--ink-faint)]" style={{ borderTop: "1px dashed var(--line)" }}>
+              Active pipeline <span className="mono text-[var(--ink-dim)]">{fmtMoney(pipeline)}</span>
+            </div>
           </div>
-        </div>
+        )}
 
-        <div className="flex items-center gap-2.5 px-2 py-2 rounded-lg" style={{ background: "var(--tint)" }}>
-          <Avatar name={me?.name ?? "?"} size={32} />
-          <div className="min-w-0 flex-1">
-            <div className="text-[12.5px] font-medium truncate">{me?.name}</div>
-            <div className="text-[10.5px] text-[var(--ink-faint)] truncate">{me?.role}</div>
+        {collapsed ? (
+          <div className="flex flex-col items-center gap-1 py-2 rounded-lg" style={{ background: "var(--tint)" }}>
+            <span title={`${me?.name ?? ""}${me?.role ? " · " + me.role : ""}`}><Avatar name={me?.name ?? "?"} size={30} /></span>
+            <button className="text-[var(--ink-faint)] hover:text-[var(--coral)] transition-colors" onClick={logout} title="Sign out">
+              <ILogout size={16} />
+            </button>
           </div>
-          <button className="text-[var(--ink-faint)] hover:text-[var(--coral)] transition-colors" onClick={logout} title="Sign out">
-            <ILogout size={16} />
-          </button>
-        </div>
+        ) : (
+          <div className="flex items-center gap-2.5 px-2 py-2 rounded-lg" style={{ background: "var(--tint)" }}>
+            <Avatar name={me?.name ?? "?"} size={32} />
+            <div className="min-w-0 flex-1">
+              <div className="text-[12.5px] font-medium truncate">{me?.name}</div>
+              <div className="text-[10.5px] text-[var(--ink-faint)] truncate">{me?.role}</div>
+            </div>
+            <button className="text-[var(--ink-faint)] hover:text-[var(--coral)] transition-colors" onClick={logout} title="Sign out">
+              <ILogout size={16} />
+            </button>
+          </div>
+        )}
       </div>
     </>
   );
