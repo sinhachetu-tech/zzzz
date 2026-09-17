@@ -27,7 +27,7 @@ import type {
 import type { AffordabilityInput } from "@/lib/calc";
 import type { DocRule, FeeRule } from "@/lib/types";
 import { Avatar, Chip } from "@/components/hfmc/ui";
-import { useCountUp } from "@/components/hfmc/charts";
+import { useCountUp, Dial } from "@/components/hfmc/charts";
 import {
   ICalc, IDownload, IPlus, ITrash, IX, IRobot, ISparkles, IUpload, ICheck,
   IUsers, IBank,
@@ -565,7 +565,7 @@ function Field({ label, value }: { label: string; value: string }) {
 
 /* ------------------------------ MPBF headline card ------------------------------ */
 
-function MpbfHeadline({ r, input }: { r: MortgageResult; input: MortgageInput }) {
+function MpbfHeadline({ r, input, scenario, rateStyle, foTenor, foSpread }: { r: MortgageResult; input: MortgageInput; scenario: { intro: number; introYears: number; followOn: number; stress: number }; rateStyle: "fixed" | "variable"; foTenor: "1M" | "3M" | "6M" | "1Y"; foSpread: number }) {
   const mpbfDisplay = useCountUp(r.finalMpbf, 600);
   const caps = [
     { label: "DBR / Residual DBR MPBF", v: r.dbrMpbf },
@@ -633,10 +633,38 @@ function MpbfHeadline({ r, input }: { r: MortgageResult; input: MortgageInput })
         })}
       </div>
 
+      {/* DBR 1·2·3 — the same EMI math as the scenario section, one dial per stage */}
+      {(() => {
+        const months = r.maxTenorMonths || 300;
+        const emiFor = (rate: number) => rate > 0 ? Math.round((input.requested * (rate / 100 / 12)) / (1 - Math.pow(1 + rate / 100 / 12, -months))) || 0 : 0;
+        const dbr = (e: number) => r.eligibleIncome > 0 ? Math.round(((e + r.existingEmis) / r.eligibleIncome) * 1000) / 10 : 0;
+        const cap = r.maxDbr || 50;
+        const stages: [string, number, string][] = rateStyle === "fixed"
+          ? [["DBR 1 · intro", scenario.intro, `${scenario.introYears || 0}y`],
+             ["DBR 2 · follow-on", scenario.followOn, `${foTenor}+${foSpread}%`],
+             ["DBR 3 · stress", scenario.stress, "qualifies"]]
+          : [["DBR 1 · day-1", scenario.intro, `${foTenor}+${foSpread}%`],
+             ["DBR 2 · ongoing", scenario.followOn, "same basis"],
+             ["DBR 3 · stress", scenario.stress, "qualifies"]];
+        return (
+          <div className="grid grid-cols-3 gap-1 justify-items-center mt-4 pt-3.5" style={{ borderTop: "1px dashed var(--line)" }}>
+            {stages.map(([label, rate, note]) => {
+              const emi = emiFor(rate);
+              const val = dbr(emi);
+              return (
+                <div key={label} className="flex flex-col items-center">
+                  <Dial value={val} cap={cap} display={`${val}%`} label={label} size={124} />
+                  <span className="mono text-[10px] text-[var(--ink-faint)] -mt-0.5">{rate.toFixed(2)}% · {fmtAED(emi)}/mo · {note}</span>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
+
       <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 mt-4 pt-3.5" style={{ borderTop: "1px dashed var(--line)" }}>
         <Stat label="Required down payment" value={fmtAED(r.downPayment)} />
         <Stat label="Actual LTV" value={fmtPct(r.actualLtv)} />
-        <Stat label="DBR after mortgage" value={fmtPct(r.dbrAfter)} tone={r.dbrAfter > 50 ? "var(--coral)" : "var(--mint)"} />
         <Stat label="EMI at actual rate" value={`${fmtAED(r.newEmi)}/mo`} />
       </div>
     </div>
@@ -1546,7 +1574,7 @@ export default function Calculator() {
             </div>
           </div>
 
-          <MpbfHeadline r={r} input={input} />
+          <MpbfHeadline r={r} input={input} scenario={scenario} rateStyle={rateStyle} foTenor={foTenor} foSpread={foSpread} />
 
           <KeyMetrics r={r} />
 

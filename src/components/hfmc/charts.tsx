@@ -133,3 +133,35 @@ export function Spark({ points, color = "#f2b04c", width = 120, height = 34 }: {
     </svg>
   );
 }
+
+/* Half-circle gauge — one quiet arc sweep when a value changes (no library,
+   same stroke-dasharray pattern as Donut, honours prefers-reduced-motion). */
+export function Dial({ value, cap, display, label, size = 220 }: { value: number; cap: number; display: string; label: string; size?: number }) {
+  const on = useReveal(150);
+  const frac = Math.max(0.02, Math.min(1, cap > 0 ? value / cap : 0));
+  const k = size / 220;
+  const r = 52 * k;
+  const C = Math.PI * r;
+  const color = value > cap ? "var(--coral)" : value > cap * 0.8 ? "var(--amber)" : "var(--mint)";
+  const h = 118 * k;
+  const inset = 18 * k;
+  const sw = Math.max(6, 12 * k);
+  return (
+    <div className="flex flex-col items-center" style={{ width: size }}>
+      <div className="relative" style={{ width: size, height: h }}>
+        <svg width={size} height={h} viewBox={`0 0 ${size} ${h}`} aria-hidden="true">
+          <path d={`M ${inset} ${h - 6} A ${r} ${r} 0 0 1 ${size - inset} ${h - 6}`} fill="none" stroke="var(--track)" strokeWidth={sw} strokeLinecap="round" />
+          <path
+            d={`M ${inset} ${h - 6} A ${r} ${r} 0 0 1 ${size - inset} ${h - 6}`} fill="none" stroke={color} strokeWidth={sw} strokeLinecap="round"
+            strokeDasharray={`${on ? frac * C : 0.02 * C} ${C}`}
+            style={{ transition: "stroke-dasharray 0.7s cubic-bezier(0.22,1,0.36,1), stroke 0.3s ease" }}
+          />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-end pb-1 pointer-events-none">
+          <span className="font-disp font-bold leading-none" style={{ color, fontSize: 26 * k }}>{display}</span>
+        </div>
+      </div>
+      <span className="text-[10.5px] uppercase tracking-[0.1em] text-[var(--ink-faint)] font-disp font-semibold text-center">{label}</span>
+    </div>
+  );
+}
