@@ -637,28 +637,31 @@ function MpbfHeadline({ r, input, scenario, rateStyle, foTenor, foSpread }: { r:
       {(() => {
         const months = r.maxTenorMonths || 300;
         const emiFor = (rate: number) => rate > 0 ? Math.round((input.requested * (rate / 100 / 12)) / (1 - Math.pow(1 + rate / 100 / 12, -months))) || 0 : 0;
-        const dbr = (e: number) => r.eligibleIncome > 0 ? Math.round(((e + r.existingEmis) / r.eligibleIncome) * 1000) / 10 : 0;
+        const dbr = (e: number) => r.eligibleIncome > 0 ? Math.round(((e + r.existingEmis) / r.eligibleIncome) * 1000) / 10 : null;
         const cap = r.maxDbr || 50;
         const stages: [string, number, string][] = rateStyle === "fixed"
           ? [["DBR 1 · intro", scenario.intro, `${scenario.introYears || 0}y`],
-             ["DBR 2 · follow-on", scenario.followOn, `${foTenor}+${foSpread}%`],
-             ["DBR 3 · stress", scenario.stress, "qualifies"]]
-          : [["DBR 1 · day-1", scenario.intro, `${foTenor}+${foSpread}%`],
+             ["DBR 2 · follow-on", scenario.followOn, `${foTenor} EIBOR+${foSpread}%`],
+             ["DBR 3 · stress", scenario.stress, "qualifying rate"]]
+          : [["DBR 1 · day-1", scenario.intro, `${foTenor} EIBOR+${foSpread}%`],
              ["DBR 2 · ongoing", scenario.followOn, "same basis"],
-             ["DBR 3 · stress", scenario.stress, "qualifies"]];
+             ["DBR 3 · stress", scenario.stress, "qualifying rate"]];
         return (
+          <>
           <div className="grid grid-cols-3 gap-1 justify-items-center mt-4 pt-3.5" style={{ borderTop: "1px dashed var(--line)" }}>
             {stages.map(([label, rate, note]) => {
               const emi = emiFor(rate);
               const val = dbr(emi);
               return (
                 <div key={label} className="flex flex-col items-center">
-                  <Dial value={val} cap={cap} display={`${val}%`} label={label} size={124} />
+                  <Dial value={val ?? 0} cap={cap} display={val != null ? `${val}%` : "—"} label={label} size={124} />
                   <span className="mono text-[10px] text-[var(--ink-faint)] -mt-0.5">{rate.toFixed(2)}% · {fmtAED(emi)}/mo · {note}</span>
                 </div>
               );
             })}
           </div>
+          <p className="text-[10px] text-[var(--ink-faint)] m-0 mt-1 text-center">DBR = (EMI + existing obligations) ÷ eligible monthly income. "—" means no income entered yet.</p>
+          </>
         );
       })()}
 
@@ -879,14 +882,15 @@ export default function Calculator() {
   const scenario = (() => {
     const sSpread = stressSpread.trim() === "" ? null : Number(stressSpread);
     const sFinal = stressFinal.trim() === "" ? null : Number(stressFinal);
-    const stressOf = (base: number) => (sSpread != null ? base + sSpread : sFinal ?? base);
+    const r2 = (x: number) => Math.round(x * 10000) / 10000;
+    const stressOf = (base: number) => r2(sSpread != null ? base + sSpread : sFinal ?? base);
     if (rateStyle === "variable") {
       const eib = eiborPct(foTenor) ?? 0;
-      const rate = eib + foSpread;
+      const rate = r2(eib + foSpread);
       return { intro: rate, introYears: 0, followOn: rate, stress: stressOf(rate) };
     }
     const eib = eiborPct(foTenor) ?? 0;
-    const followOn = useFoFinal ? foFinal : eib + foSpread;
+    const followOn = r2(useFoFinal ? foFinal : eib + foSpread);
     return { intro: introRate, introYears, followOn, stress: stressOf(followOn) };
   })();
   const [whif, setWhif] = useState<WhifTab>("liab");
@@ -1476,83 +1480,84 @@ export default function Calculator() {
               </div>
             </div>
 
-            {/* DBR 1/2/3 + push to assessment */}
+                        {/* assessment follows the stress rate automatically; rare overrides live in Advanced */}
+            {/* DBR 1·2·3 at this scenario — same figures as the dials opposite */}
             {(() => {
               const months = r.maxTenorMonths || 300;
               const emiFor = (rate: number) => rate > 0 ? Math.round((input.requested * (rate / 100 / 12)) / (1 - Math.pow(1 + rate / 100 / 12, -months))) || 0 : 0;
-              const emi1 = emiFor(scenario.intro), emi2 = emiFor(scenario.followOn), emi3 = emiFor(scenario.stress);
-              const obligations = r.existingEmis;
-              const income = r.eligibleIncome || 0;
-              const dbr = (e: number) => income > 0 ? Math.round(((e + obligations) / income) * 1000) / 10 : 0;
+              const dbr = (e: number) => r.eligibleIncome > 0 ? Math.round(((e + r.existingEmis) / r.eligibleIncome) * 1000) / 10 : null;
+              const stages: [string, number][] = rateStyle === "fixed"
+                ? [["DBR 1 · intro " + scenario.intro.toFixed(2) + "%" + (scenario.introYears ? " · " + scenario.introYears + "y" : ""), scenario.intro],
+                   ["DBR 2 · follow-on " + scenario.followOn.toFixed(2) + "%", scenario.followOn],
+                   ["DBR 3 · stress " + scenario.stress.toFixed(2) + "%", scenario.stress]]
+                : [["DBR 1 · day-1 " + scenario.intro.toFixed(2) + "%", scenario.intro],
+                   ["DBR 2 · ongoing " + scenario.followOn.toFixed(2) + "%", scenario.followOn],
+                   ["DBR 3 · stress " + scenario.stress.toFixed(2) + "%", scenario.stress]];
               return (
                 <div className="grid grid-cols-3 gap-2.5 mt-3.5 pt-3.5" style={{ borderTop: "1px dashed var(--line)" }}>
-                  <div className="rounded-lg px-3 py-2" style={{ background: "var(--bg2)", border: "1px solid var(--line)" }}>
-                    <div className="text-[10px] font-disp font-semibold text-[var(--ink-faint)]">DBR 1 · intro {scenario.intro.toFixed(2)}%{scenario.introYears ? ` · ${scenario.introYears}y` : ""}</div>
-                    <div className="mono text-[15px] font-bold mt-0.5">{dbr(emi1)}%</div>
-                    <div className="text-[10.5px] text-[var(--ink-faint)] mono">EMI {fmtAED(emi1)}</div>
-                  </div>
-                  <div className="rounded-lg px-3 py-2" style={{ background: "var(--bg2)", border: "1px solid var(--line)" }}>
-                    <div className="text-[10px] font-disp font-semibold text-[var(--ink-faint)]">DBR 2 · follow-on {scenario.followOn.toFixed(2)}%</div>
-                    <div className="mono text-[15px] font-bold mt-0.5">{dbr(emi2)}%</div>
-                    <div className="text-[10.5px] text-[var(--ink-faint)] mono">EMI {fmtAED(emi2)}</div>
-                  </div>
-                  <div className="rounded-lg px-3 py-2" style={{ background: "var(--amber-tint)", border: "1px solid var(--amber)" }}>
-                    <div className="text-[10px] font-disp font-semibold" style={{ color: "var(--amber)" }}>DBR 3 · stress {scenario.stress.toFixed(2)}%</div>
-                    <div className="mono text-[15px] font-bold mt-0.5" style={{ color: "var(--amber)" }}>{dbr(emi3)}%</div>
-                    <div className="text-[10.5px] text-[var(--ink-faint)] mono">EMI {fmtAED(emi3)}</div>
-                  </div>
+                  {stages.map(([label, rate], i) => {
+                    const emi = emiFor(rate);
+                    const val = dbr(emi);
+                    const tone = i === 2 ? "var(--amber)" : undefined;
+                    return (
+                      <div key={label} className="rounded-lg px-3 py-2" style={{ background: i === 2 ? "var(--amber-tint)" : "var(--bg2)", border: i === 2 ? "1px solid var(--amber)" : "1px solid var(--line)" }}>
+                        <div className="text-[10px] font-disp font-semibold" style={{ color: tone ?? "var(--ink-faint)" }}>{label}</div>
+                        <div className="mono text-[15px] font-bold mt-0.5" style={{ color: tone }}>{val != null ? val + "%" : "—"}</div>
+                        <div className="text-[10.5px] text-[var(--ink-faint)] mono">EMI {fmtAED(emi)}</div>
+                      </div>
+                    );
+                  })}
                 </div>
               );
             })()}
 
-            {/* assessment follows the stress rate automatically; rare overrides live in Advanced */}
-            <div className="flex flex-wrap items-end gap-x-6 gap-y-3 mt-3.5 pt-3.5" style={{ borderTop: "1px dashed var(--line)" }}>
-              <div>
-                <label className="label">Assessment rate % — drives MPBF</label>
-                <input className="input mono" type="number" step={0.05} min={0} value={input.actualRate}
-                  onChange={(e) => up({ actualRate: Number(e.target.value) || 0 })} />
-              </div>
-              <button type="button" className="btn btn-ghost btn-sm self-end" title="Optional: copy the scenario stress rate into the assessment rate"
-                onClick={() => up({ actualRate: Math.round(scenario.stress * 100) / 100, stressOverride: null })}>
-                Use stress ({scenario.stress.toFixed(2)}%)
-              </button>
-              <Stat label="Assessment in use" value={fmtPct(r.assessmentRate)} tone="var(--amber)" />
-              <Stat label="Tenor used" value={tenorLabel(r.maxTenorMonths)} />
-              <details className="no-print text-[12px]" style={{ minWidth: 260 }}>
-                <summary className="cursor-pointer font-disp font-semibold text-[var(--ink-faint)]">Advanced — rarely needed</summary>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2.5">
-                  <div>
-                    <label className="label">Load factor</label>
-                    <div className="flex gap-1.5 flex-wrap">
-                      {[1.5, 2, 3, 4].map((l) => (
-                        <button key={l} type="button" className="chip transition-all"
-                          style={input.loadFactor === l && input.stressOverride == null ? { background: "var(--amber-tint)", borderColor: "var(--amber)", color: "var(--amber)" } : { background: "var(--bg2)", borderColor: "var(--line)", color: "var(--ink-faint)" }}
-                          onClick={() => up({ loadFactor: l, stressOverride: null })}>
-                          +{l}%
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <label className="label">Manual stress rate — optional</label>
-                    <input className="input mono" type="number" step={0.05} min={0} value={input.stressOverride ?? ""} placeholder={`auto: ${fmtPct(input.actualRate + input.loadFactor)}`}
-                      onChange={(e) => up({ stressOverride: e.target.value === "" ? null : Number(e.target.value) || 0 })} />
-                  </div>
-                  <div>
-                    <label className="label">Income multiplier cap</label>
-                    <select className="select" value={input.multiplierX} onChange={(e) => up({ multiplierX: Number(e.target.value) })}>
-                      <option value={0}>Off</option>
-                      {[5, 6, 7, 8].map((x) => <option key={x} value={x}>{x}× annual</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="label">Tenor override (mo)</label>
-                    <input className="input mono" type="number" min={12} step={12} value={input.tenorOverrideMonths ?? ""} placeholder="auto (age)"
-                      onChange={(e) => up({ tenorOverrideMonths: e.target.value === "" ? null : Number(e.target.value) || 0 })} />
+            <details className="mt-3.5 pt-3.5 text-[12px]" style={{ borderTop: "1px dashed var(--line)" }}>
+              <summary className="cursor-pointer font-disp font-semibold text-[var(--ink-faint)]">
+                Assessment rate (drives the MPBF) — currently {fmtPct(r.assessmentRate)} · tenor {tenorLabel(r.maxTenorMonths)}
+              </summary>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2.5">
+                <div>
+                  <label className="label">Assessment rate %</label>
+                  <input className="input mono" type="number" step={0.05} min={0} value={input.actualRate}
+                    onChange={(e) => up({ actualRate: Number(e.target.value) || 0 })} />
+                </div>
+                <div className="flex items-end pb-1">
+                  <button type="button" className="btn btn-ghost btn-sm" title="Copy the scenario stress rate into the assessment rate"
+                    onClick={() => up({ actualRate: Math.round(scenario.stress * 100) / 100, stressOverride: null })}>
+                    Use stress ({scenario.stress.toFixed(2)}%)
+                  </button>
+                </div>
+                <div>
+                  <label className="label">Load factor</label>
+                  <div className="flex gap-1.5 flex-wrap">
+                    {[1.5, 2, 3, 4].map((l) => (
+                      <button key={l} type="button" className="chip transition-all"
+                        style={input.loadFactor === l && input.stressOverride == null ? { background: "var(--amber-tint)", borderColor: "var(--amber)", color: "var(--amber)" } : { background: "var(--bg2)", borderColor: "var(--line)", color: "var(--ink-faint)" }}
+                        onClick={() => up({ loadFactor: l, stressOverride: null })}>
+                        +{l}%
+                      </button>
+                    ))}
                   </div>
                 </div>
-              </details>
-            </div>
+                <div>
+                  <label className="label">Manual stress rate — optional</label>
+                  <input className="input mono" type="number" step={0.05} min={0} value={input.stressOverride ?? ""} placeholder={`auto: ${fmtPct(input.actualRate + input.loadFactor)}`}
+                    onChange={(e) => up({ stressOverride: e.target.value === "" ? null : Number(e.target.value) || 0 })} />
+                </div>
+                <div>
+                  <label className="label">Income multiplier cap</label>
+                  <select className="select" value={input.multiplierX} onChange={(e) => up({ multiplierX: Number(e.target.value) })}>
+                    <option value={0}>Off</option>
+                    {[5, 6, 7, 8].map((x) => <option key={x} value={x}>{x}× annual</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Tenor override (mo)</label>
+                  <input className="input mono" type="number" min={12} step={12} value={input.tenorOverrideMonths ?? ""} placeholder="auto (age)"
+                    onChange={(e) => up({ tenorOverrideMonths: e.target.value === "" ? null : Number(e.target.value) || 0 })} />
+                </div>
+              </div>
+            </details>
           </Section>
         </div>
 
