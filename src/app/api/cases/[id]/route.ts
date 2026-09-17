@@ -90,6 +90,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (body.holdReason !== undefined) data.holdReason = body.holdReason;
   if (body.holdUntil !== undefined) data.holdUntil = body.holdUntil;
   if (body.lostReason !== undefined) data.lostReason = body.lostReason;
+  if (body.advisorId !== undefined) data.advisorId = body.advisorId ? Number(body.advisorId) : null;
   if (body.preApprovalDate !== undefined) data.preApprovalDate = body.preApprovalDate;
   if (body.preApprovalAmount !== undefined) data.preApprovalAmount = body.preApprovalAmount;
   if (body.preApprovalTenure !== undefined) data.preApprovalTenure = body.preApprovalTenure;

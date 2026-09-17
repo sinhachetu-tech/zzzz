@@ -98,6 +98,8 @@ export interface LoanCase {
   // Client master links — the person behind the engagement
   clientId: number | null;
   secondPartyClientId: number | null;
+  advisorId: number | null;      // client-facing advisor (falls back to owner when unset)
+  profileClientVerifiedAt: string | null; // when the client last confirmed their data sheet
 }
 
 // Client master — one row per human across all their engagements

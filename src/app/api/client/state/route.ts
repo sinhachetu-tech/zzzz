@@ -37,6 +37,7 @@ export async function GET(req: Request) {
     where: { id: selectedId },
     include: {
       owner: true,
+      advisor: true,
       stageTransitions: { orderBy: { at: "desc" }, include: { user: { select: { name: true } } } },
       clientDocuments: { orderBy: { uploadedAt: "desc" } },
       vaultDocuments: { where: { visibleToClient: true }, orderBy: { sortOrder: "asc" } },
@@ -65,6 +66,8 @@ export async function GET(req: Request) {
       id: d.id, fileName: d.fileName, fileType: d.fileType, fileSize: d.fileSize,
       uploadedAt: d.uploadedAt.toISOString(),
     })),
-    advisor: c.owner ? { name: c.owner.name, role: c.owner.role } : null,
+    advisor: (c.advisor ?? c.owner) ? { name: (c.advisor ?? c.owner).name, role: (c.advisor ?? c.owner).role } : null,
+    profile: c.profileJson ? (() => { try { return JSON.parse(c.profileJson); } catch { return null; } })() : null,
+    profileClientVerifiedAt: c.profileClientVerifiedAt ? c.profileClientVerifiedAt.toISOString() : null,
   });
 }

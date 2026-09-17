@@ -110,6 +110,10 @@ export function serCase(c: PrismaCase): LoanCase {
     // Client master links
     clientId: (c as unknown as { clientId?: number | null }).clientId ?? null,
     secondPartyClientId: (c as unknown as { secondPartyClientId?: number | null }).secondPartyClientId ?? null,
+    advisorId: (c as unknown as { advisorId?: number | null }).advisorId ?? null,
+    profileClientVerifiedAt: (c as unknown as { profileClientVerifiedAt?: Date | string | null }).profileClientVerifiedAt
+      ? new Date((c as unknown as { profileClientVerifiedAt: Date | string }).profileClientVerifiedAt).toISOString()
+      : null,
   };
 }
 

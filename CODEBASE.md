@@ -18,6 +18,7 @@ HFMC — a UAE mortgage brokerage case tracker. Three portals:
 
 ## Key concepts (read before touching the data layer)
 
+- **Client portal app-shell**: bottom tab bar (mobile) / top pills (desktop) — Journey, Docs, My Details, More. **My Details** = the client's own data sheet (identity/contact/employment/income/liabilities) that saves via `/api/client/profile` (session-bound), stamps `profileClientVerifiedAt` (staff sees "client verified" in Case 360 People) and refreshes the Client master. Advisor = `advisorId` on the case (assignable in Case 360 People; falls back to owner). Services tab previews Wills/Insurance/Property management.
 - **Client portal = one login, all bank journeys**: a per-bank split creates sibling cases sharing the client's `clientId`; `/api/client/state` returns the whole engagement list and serves `?caseId=` switches only when the requested case shares that client (403 otherwise; legacy no-clientId rows match on customer+phone). The dashboard shows a journey switcher (bank + case + stage chips); stage/documents stay per bank journey.
 - **Document storage is dual-path**: new uploads go to **Cloudflare R2** (`src/lib/r2.ts`, storageKey + compressedKey on CaseDocument; compress endpoint; `scripts/migrate-docs-to-r2.mjs` migrates legacy rows); rows with null storageKey still read from legacy Postgres bytes. `manageDocs` designation permission gates upload/verify/waive/delete. Admin → Storage configures the bucket (`.env`: R2_*).
 

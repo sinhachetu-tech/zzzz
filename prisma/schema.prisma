@@ -21,6 +21,7 @@ model User {
   createdAt DateTime @default(now())
 
   ownedCases      LoanCase[]      @relation("CaseOwner")
+  advisedCases    LoanCase[]      @relation("CaseAdvisor")
   createdTasks    Task[]          @relation("TaskCreator")
   assignedTasks   Task[]          @relation("TaskAssignee")
   activities      Activity[]
@@ -154,8 +155,11 @@ model LoanCase {
   // --- Client master links (repeat business across engagements) ---
   clientId            Int? // primary applicant → Client
   secondPartyClientId Int? // co-borrower / co-applicant → their own Client row
+  advisorId           Int? // the client-facing advisor (may differ from the owner who runs the file)
+  profileClientVerifiedAt DateTime? // when the CLIENT last confirmed their own data sheet
 
   owner      User      @relation("CaseOwner", fields: [ownerId], references: [id])
+  advisor    User?     @relation("CaseAdvisor", fields: [advisorId], references: [id])
   vrm        User?     @relation("CaseVrm", fields: [vrmId], references: [id])
   tasks      Task[]
   activities Activity[]

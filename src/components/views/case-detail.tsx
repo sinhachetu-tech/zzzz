@@ -887,6 +887,38 @@ export default function CaseDetail({ id }: { id: number }) {
                   </div>
                 </div>
               )}
+              {/* client-facing advisor — may differ from the owner who runs the file */}
+              {(() => {
+                const advId = c.advisorId ?? c.ownerId;
+                const adv = userById(advId);
+                const canAssignAdvisor = flags?.super || flags?.admin || c.ownerId === me?.id;
+                return (
+                  <div className="flex items-center gap-2.5">
+                    <Avatar name={adv?.name ?? "?"} size={28} />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[12.5px] font-medium">{adv?.name ?? "—"}</div>
+                      <div className="text-[11px] text-[var(--ink-faint)]">advisor · {adv?.role}</div>
+                    </div>
+                    {canAssignAdvisor && (
+                      <select className="select !w-auto !py-1 text-[11px]" value={String(advId)}
+                        title="Appoint the client-facing advisor"
+                        onChange={async (e) => {
+                          await updateCase(c.id, { advisorId: Number(e.target.value) });
+                          toast("success", "Advisor appointed.");
+                        }}>
+                        {users.filter((u) => u.active && u.role !== "Head of Company" && u.role !== "PA to HoC").map((u) => (
+                          <option key={u.id} value={u.id}>{u.name}</option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                );
+              })()}
+              {c.profileClientVerifiedAt && (
+                <div className="flex items-center gap-2 text-[11px]" style={{ color: "var(--mint)" }}>
+                  <ICheck size={12} /> Client verified their own data sheet on {new Date(c.profileClientVerifiedAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}
+                </div>
+              )}
               {c.partner && (
                 <div className="flex items-center gap-2.5">
                   <Avatar name={c.partner.name} size={28} />
