@@ -800,8 +800,6 @@ export default function Calculator() {
   const [fetchBank, setFetchBank] = useState("");
   const printStyle = <style>{PRINT_CSS}</style>;
   const [fetchProduct, setFetchProduct] = useState("");
-  // null = assessment rate auto-follows the scenario's stress rate
-  const [manualAssessment, setManualAssessment] = useState<number | null>(null);
   // quotes of the last fetched product — tenure switches re-resolve from these
   const [fetched, setFetched] = useState<{ bankName: string; quotes: NonNullable<ReturnType<typeof parsePricing>>["quotes"] } | null>(null);
 
@@ -1456,29 +1454,37 @@ export default function Calculator() {
             })()}
 
             {/* assessment follows the stress rate automatically; rare overrides live in Advanced */}
-            <div className="flex flex-wrap items-center gap-x-6 gap-y-3 mt-3.5 pt-3.5" style={{ borderTop: "1px dashed var(--line)" }}>
-              <Stat label="Assessment rate (auto = stress)" value={fmtPct(r.assessmentRate)} tone="var(--amber)" />
+            <div className="flex flex-wrap items-end gap-x-6 gap-y-3 mt-3.5 pt-3.5" style={{ borderTop: "1px dashed var(--line)" }}>
+              <div>
+                <label className="label">Assessment rate % — drives MPBF</label>
+                <input className="input mono" type="number" step={0.05} min={0} value={input.actualRate}
+                  onChange={(e) => up({ actualRate: Number(e.target.value) || 0 })} />
+              </div>
+              <button type="button" className="btn btn-ghost btn-sm self-end" title="Optional: copy the scenario stress rate into the assessment rate"
+                onClick={() => up({ actualRate: Math.round(scenario.stress * 100) / 100, stressOverride: null })}>
+                Use stress ({scenario.stress.toFixed(2)}%)
+              </button>
+              <Stat label="Assessment in use" value={fmtPct(r.assessmentRate)} tone="var(--amber)" />
               <Stat label="Tenor used" value={tenorLabel(r.maxTenorMonths)} />
               <details className="no-print text-[12px]" style={{ minWidth: 260 }}>
                 <summary className="cursor-pointer font-disp font-semibold text-[var(--ink-faint)]">Advanced — rarely needed</summary>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2.5">
                   <div>
-                    <label className="label">Override assessment %</label>
-                    <input className="input mono" type="number" step={0.05} min={0} value={manualAssessment ?? ""}
-                      placeholder={`auto: ${fmtPct(scenario.stress)}`}
-                      onChange={(e) => setManualAssessment(e.target.value === "" ? null : Number(e.target.value) || 0)} />
-                  </div>
-                  <div>
-                    <label className="label">Fallback load factor <span className="normal-case tracking-normal text-[var(--ink-faint)]">(only when scenario above is empty)</span></label>
+                    <label className="label">Load factor</label>
                     <div className="flex gap-1.5 flex-wrap">
                       {[1.5, 2, 3, 4].map((l) => (
                         <button key={l} type="button" className="chip transition-all"
-                          style={input.loadFactor === l ? { background: "var(--amber-tint)", borderColor: "var(--amber)", color: "var(--amber)" } : { background: "var(--bg2)", borderColor: "var(--line)", color: "var(--ink-faint)" }}
+                          style={input.loadFactor === l && input.stressOverride == null ? { background: "var(--amber-tint)", borderColor: "var(--amber)", color: "var(--amber)" } : { background: "var(--bg2)", borderColor: "var(--line)", color: "var(--ink-faint)" }}
                           onClick={() => up({ loadFactor: l, stressOverride: null })}>
                           +{l}%
                         </button>
                       ))}
                     </div>
+                  </div>
+                  <div>
+                    <label className="label">Manual stress rate — optional</label>
+                    <input className="input mono" type="number" step={0.05} min={0} value={input.stressOverride ?? ""} placeholder={`auto: ${fmtPct(input.actualRate + input.loadFactor)}`}
+                      onChange={(e) => up({ stressOverride: e.target.value === "" ? null : Number(e.target.value) || 0 })} />
                   </div>
                   <div>
                     <label className="label">Income multiplier cap</label>
