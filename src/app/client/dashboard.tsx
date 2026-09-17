@@ -6,7 +6,7 @@ import { fmtMoney, fmtDate, fmtDateTime, relTime, todayISO } from "@/lib/format"
 import { LogoMark, ICheck, IClock, IWhatsapp, IDownload, IUpload, ILogout } from "@/components/icons";
 
 export function ClientDashboard() {
-  const { me, case: c, stages, stageTransitions, documents, advisor, logout, vaultDocuments } = useClientStore();
+  const { me, engagements, case: c, stages, stageTransitions, documents, advisor, logout, switchCase, vaultDocuments } = useClientStore();
 
   const activeStages = useMemo(() => stages.filter((s) => s.active).sort((a, b) => a.sortOrder - b.sortOrder), [stages]);
   const currentIdx = activeStages.findIndex((s) => s.label === c?.stage);
@@ -31,6 +31,36 @@ export function ClientDashboard() {
           </button>
         </div>
       </header>
+
+      {/* parallel bank journeys — one login, every engagement of this client */}
+      {engagements.length > 1 && c && (
+        <div className="max-w-[640px] mx-auto px-4 pt-3">
+          <div className="rounded-xl p-3" style={{ background: "var(--raised)", border: "1px solid var(--line-soft)" }}>
+            <div className="text-[10px] uppercase tracking-[0.12em] font-disp font-semibold text-[var(--ink-faint)] mb-2">
+              Your finance journeys · {engagements.length} banks in parallel
+            </div>
+            <div className="flex gap-1.5 overflow-x-auto pb-1">
+              {engagements.map((e) => {
+                const on = e.id === c.id;
+                return (
+                  <button key={e.id}
+                    onClick={() => switchCase(e.id)}
+                    className="shrink-0 rounded-lg px-3 py-2 text-left transition-all"
+                    style={on
+                      ? { background: "var(--amber-tint)", border: "1px solid var(--amber)" }
+                      : { background: "var(--bg2)", border: "1px solid var(--line)" }}>
+                    <div className="mono text-[11px] font-semibold" style={{ color: on ? "var(--amber)" : "var(--ink-dim)" }}>
+                      {(e.banks && e.banks.length ? e.banks.join(" + ") : "Bank TBC")}
+                    </div>
+                    <div className="text-[10px] text-[var(--ink-faint)]">{e.caseNumber} · {e.stage}</div>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[10px] text-[var(--ink-faint)] m-0 mt-1.5">Tap a bank to see that journey — stage, documents and updates are per bank.</p>
+          </div>
+        </div>
+      )}
 
       <main className="max-w-[640px] mx-auto px-4 py-5 space-y-4 pb-12">
         {/* case header */}
