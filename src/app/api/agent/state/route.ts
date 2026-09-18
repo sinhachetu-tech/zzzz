@@ -1,4 +1,4 @@
-// GET /api/agent/state — returns the agent's referred cases + commission breakdown.
+// GET /api/agent/state — returns the agent's referred cases + commission breakdown + profile.
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { currentAgent } from "@/lib/agent-auth";
@@ -17,6 +17,7 @@ export async function GET() {
 
   const banks = await db.bankItem.findMany();
   const stages = await db.stageItem.findMany({ orderBy: { sortOrder: "asc" }, where: { active: true } });
+  const partner = await db.partnerItem.findFirst({ where: { name: me.name, kind: me.kind } });
 
   const casesDto = cases.map(serCase);
   const casesWithCommission = casesDto.map((c) => {
@@ -36,6 +37,19 @@ export async function GET() {
     me,
     cases: casesWithCommission,
     stages: stages.map((s) => ({ id: s.id, label: s.label, sortOrder: s.sortOrder })),
+    profile: partner && {
+      sharePct: partner.defaultSharePct,
+      email: partner.email ?? "",
+      phone: partner.phone ?? "",
+      about: partner.about ?? "",
+      expertise: partner.expertise ?? "",
+      iban: partner.iban ?? "",
+      ibanVerified: partner.ibanVerified,
+      licenseNo: partner.licenseNo ?? "",
+      licenseVerified: partner.licenseVerified,
+      avatarData: partner.avatarData ?? "",
+    },
+    banks: banks.filter((b) => b.active).map((b) => ({ name: b.name, ratePct: b.ratePct })),
     stats: {
       activeCount: active.length,
       bookedCount: booked.length,

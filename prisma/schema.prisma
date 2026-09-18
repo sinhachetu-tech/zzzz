@@ -393,6 +393,17 @@ model PartnerItem {
   active            Boolean  @default(true)
   contactsJson      String   @default("[]") // partner RMs: [{name,phone,email,role}]
 
+  // agent-portal profile (self-edited in the portal; verification stamps are team-set)
+  email             String?
+  phone             String?
+  about             String?
+  expertise         String? // area of expertise, e.g. "Dubai Marina · off-plan"
+  iban              String? // payout account — verified by the finance team
+  ibanVerified      Boolean  @default(false)
+  licenseNo         String? // RERA broker card / trade licence
+  licenseVerified   Boolean  @default(false)
+  avatarData        String? // small data URL (client-downscaled to ≤256px)
+
   @@unique([kind, name])
 }
 
