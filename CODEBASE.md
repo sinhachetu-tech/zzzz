@@ -21,6 +21,7 @@ HFMC — a UAE mortgage brokerage case tracker. Three portals:
 - **Client portal login**: full-screen Dubai skyline (public/dubai-login.jpg, Unsplash license) with a slow Ken Burns drift; SOLID theme-aware form card + chips (no transparency — readability over glass); photo brightened (brightness 1.16 / saturate 1.22) with a light edge vignette; floating theme toggle (light/dark) on login AND in the portal header.
 - **Client portal app-shell**: bottom tab bar (mobile) / top pills (desktop) — Journey, Docs, My Details, More. **My Details** = the client's own data sheet (identity/contact/employment/income/liabilities) that saves via `/api/client/profile` (session-bound), stamps `profileClientVerifiedAt` (staff sees "client verified" in Case 360 People) and refreshes the Client master. Advisor = `advisorId` on the case (assignable in Case 360 People; falls back to owner). Services tab previews Wills/Insurance/Property management.
 - **Client portal = one login, all bank journeys**: a per-bank split creates sibling cases sharing the client's `clientId`; `/api/client/state` returns the whole engagement list and serves `?caseId=` switches only when the requested case shares that client (403 otherwise; legacy no-clientId rows match on customer+phone). The dashboard shows a journey switcher (bank + case + stage chips); stage/documents stay per bank journey.
+- **Agent portal = 5-tab app-shell** (home / add lead / my leads / tools / profile; store route, no URL routing — same pattern as team portal). **Tools are UAE-universal only** (`src/lib/agent-mortgage.ts`): CBUAE LTV matrix (nationality × property count × big-ticket, minus txn deductions), 50% DBR, 5% card-limit repayment, age-capped tenure — deliberately NOT the staff engine (no products/quotes/policy overrides); sliders, not forms. Partner profile fields live on `PartnerItem` (email/phone/about/expertise/iban+verified/licenseNo+verified/avatarData); editing IBAN/licence resets the verified stamp for the finance team to re-verify. `/api/agent/rates` sanity-bounds quotes to 0.5–15% so mis-parsed engine rows never reach agents. Account delete = soft (`active=false`); referred cases and commission history are retained by the team.
 - **Document storage is dual-path**: new uploads go to **Cloudflare R2** (`src/lib/r2.ts`, storageKey + compressedKey on CaseDocument; compress endpoint; `scripts/migrate-docs-to-r2.mjs` migrates legacy rows); rows with null storageKey still read from legacy Postgres bytes. `manageDocs` designation permission gates upload/verify/waive/delete. Admin → Storage configures the bucket (`.env`: R2_*).
 
 - **Client master vs case profile.** `Client` = the person (KYC: EID unique > passport > phone+name; phone alone never merges). `profileJson` on each case = the applicant's snapshot *as filed* on that engagement. Saving a case profile refreshes the client master (fills gaps, never erases).
@@ -69,6 +70,8 @@ HFMC — a UAE mortgage brokerage case tracker. Three portals:
 │  ├─ client-master.ts         ★ Client identity resolution & master sync
 │  │                           (resolveClient, syncCaseClients, matchClientByPhoneName)
 │  ├─ mortgage.ts              MPBF calculator engine (pure)
+│  ├─ agent-mortgage.ts        Agent-portal tools: UAE-universal (CBUAE) LTV/DBR/
+│  │                           tenure/EMI/cash-to-close math — sliders-friendly
 │  ├─ calc.ts                  Affordability engine (pure)
 │  ├─ bank-pricing.ts          Rate quotes: intro/follow-on/stress EMI math
 │  ├─ bank-fees.ts             ★ Bank fee parsers + calculators (processing, pre-approval,
@@ -88,10 +91,13 @@ HFMC — a UAE mortgage brokerage case tracker. Three portals:
 │  ├─ layout.tsx, manifest.ts  App shell, PWA manifest
 │  ├─ proposal/page.tsx        Print-ready bank comparison page (public link)
 │  ├─ client/                  Client portal (login, dashboard, store)
-│  ├─ agent/                   Agent portal (login, dashboard, store)
+│  ├─ agent/                   Agent portal: login + 5-tab app-shell (home /
+│  │                           addlead / leads / tools / profile) + store route
 │  └─ api/                     One folder per endpoint (route.ts each):
 │     ├─ state/                ★ GET — the single hydration payload for the team portal
 │     ├─ auth/  client/  agent/  Login/logout/register for the three portals
+│     │                         (agent/ also: profile PATCH, password POST,
+│     │                         account DELETE (soft), rates GET)
 │     ├─ cases/                POST create; [id]/ PATCH update (+tasks/ POST)
 │     ├─ client/register/      Portal self-registration → Lead-stage case (+ warm prefill
 │     │                        for returning clients)
@@ -168,6 +174,7 @@ HFMC — a UAE mortgage brokerage case tracker. Three portals:
 | Left panel collapse behaviour | `src/hooks/use-collapsible-sidebar.ts` (rule: user pin > viewport), rail widths + `collapsed` markup in `shell.tsx`, `.nav-rail`/`.side-shell` in `globals.css` |
 | text/contrast, hover, motion, shadows | tokens in `globals.css` `:root`/`[data-theme="dark"]` (ink-faint is AA-tuned; hover tiered + touch-guarded; prefers-reduced-motion kill-switch lives there); route-settle logic in `shell.tsx` (`viewRef`, no state) |
 | Client portal | `src/app/client/*` + `src/app/api/client/*` |
+| Agent portal (tabs, tools, profile) | `src/app/agent/*` + `src/app/api/agent/*` + rules in `src/lib/agent-mortgage.ts` |
 | Email integration | `src/lib/graph.ts` (read), `src/lib/email-match.ts` (match), `src/app/api/email/*` |
 | AI features | `src/app/api/ai/*` (advisor, insights=copilot, doc-read) |
 
