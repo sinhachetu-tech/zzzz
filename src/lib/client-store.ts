@@ -207,7 +207,11 @@ export const useHfmcStore = create<HfmcState>((set, get) => ({
     return { ...data.case, __cases: data.cases };
   },
   updateCase: async (id, patch) => {
-    await fetch(`/api/cases/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
+    const res = await fetch(`/api/cases/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error(e.error || "Save failed — check your connection and try again.");
+    }
     get().hydrate().catch(() => {}); // fire-and-forget — UI must not wait on the full-state reload
   },
   addTask: async (caseId, input) => {

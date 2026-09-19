@@ -19,7 +19,7 @@ import {
 
 /* ------------------------------ types ------------------------------ */
 
-type Tab = "users" | "designations" | "banks" | "bankrules" | "partners" | "channels" | "stages" | "masters" | "sla" | "docrules" | "feerules" | "storage";
+type Tab = "users" | "designations" | "banks" | "bankrules" | "partners" | "channels" | "stages" | "masters" | "sla" | "docrules" | "feerules" | "storage" | "portal";
 type MasterKind = "whyPending" | "waitingFor";
 
 const TEAMS = ["Management", "Dubai", "Abu Dhabi"];
@@ -37,6 +37,7 @@ const TAB_OPTIONS: { value: Tab; label: string }[] = [
   { value: "docrules", label: "Doc Rules" },
   { value: "feerules", label: "Fee rules" },
   { value: "storage", label: "Storage" },
+  { value: "portal", label: "Portal settings" },
 ];
 
 // Two-level admin navigation: group row on top, tabs for the active group below.
@@ -44,7 +45,7 @@ const TAB_OPTIONS: { value: Tab; label: string }[] = [
 const GROUPS: { key: string; label: string; tabs: { value: Tab; label: string }[] }[] = [
   { key: "team", label: "Team & Access", tabs: TAB_OPTIONS.filter((t) => ["users", "designations"].includes(t.value)) },
   { key: "market", label: "Marketplace", tabs: TAB_OPTIONS.filter((t) => ["banks", "bankrules", "partners", "channels"].includes(t.value)) },
-  { key: "workflow", label: "Workflow", tabs: TAB_OPTIONS.filter((t) => ["stages", "masters", "sla"].includes(t.value)) },
+  { key: "workflow", label: "Workflow", tabs: TAB_OPTIONS.filter((t) => ["stages", "masters", "sla", "portal"].includes(t.value)) },
   { key: "docs", label: "Docs & Fees", tabs: TAB_OPTIONS.filter((t) => ["docrules", "feerules", "storage"].includes(t.value)) },
 ];
 
@@ -230,6 +231,7 @@ export default function Admin() {
       {tab === "sla" && <SlaTab />}
       {tab === "docrules" && <DocRulesTab />}
       {tab === "feerules" && <FeeRulesTab />}
+      {tab === "portal" && <PortalTab />}
     </div>
   );
 }
@@ -3506,6 +3508,108 @@ function InsuranceEditor({ insurance, onChange }: { insurance: BankInsurance; on
             />
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------ portal settings ------------------------------ */
+
+// Admin decides what the two client-facing portals show: the advisor a client
+// sees when their case has none assigned, and the HFMC staff representative
+// (name + WhatsApp) on every agent's home card.
+function PortalTab() {
+  const { toast, users } = useHfmcStore();
+  const [advisorId, setAdvisorId] = useState<string>("");
+  const [deskName, setDeskName] = useState("");
+  const [deskPhone, setDeskPhone] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/admin/settings")
+      .then((r) => r.json())
+      .then((d) => {
+        setAdvisorId(d.settings?.clientPortalAdvisorId ? String(d.settings.clientPortalAdvisorId) : "");
+        setDeskName(d.settings?.agentDeskName ?? "");
+        setDeskPhone(d.settings?.agentDeskPhone ?? "");
+        setLoaded(true);
+      })
+      .catch(() => { toast("error", "Could not load portal settings."); setLoaded(true); });
+  }, [toast]);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/admin/settings", {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientPortalAdvisorId: advisorId ? Number(advisorId) : null,
+          agentDeskName: deskName,
+          agentDeskPhone: deskPhone,
+        }),
+      });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(e.error ?? "Save failed");
+      }
+      toast("success", "Portal settings saved — both portals pick them up on next load.");
+    } catch (e) {
+      toast("error", e instanceof Error ? e.message : "Save failed");
+    }
+    setSaving(false);
+  };
+
+  const staff = users.filter((u) => u.active);
+
+  return (
+    <div className="space-y-4 max-w-[640px]">
+      {!loaded ? (
+        <div className="card p-8 flex justify-center"><div className="w-7 h-7 rounded-full border-2 border-[var(--amber)] border-t-transparent animate-spin" /></div>
+      ) : (
+        <>
+          <div className="card p-4 space-y-3">
+            <div>
+              <h3 className="font-disp font-semibold text-[14px] m-0">Client portal</h3>
+              <p className="text-[11.5px] text-[var(--ink-faint)] m-0 mt-0.5">
+                The advisor a client sees on their journey. Cases with an advisor assigned in Case 360 → People keep theirs; this is the fallback for everyone else.
+              </p>
+            </div>
+            <div>
+              <label className="label">Default advisor (our staff)</label>
+              <select className="select" value={advisorId} onChange={(e) => setAdvisorId(e.target.value)}>
+                <option value="">— none (falls back to the case owner) —</option>
+                {staff.map((u) => (
+                  <option key={u.id} value={u.id}>{u.name} · {u.role}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="card p-4 space-y-3">
+            <div>
+              <h3 className="font-disp font-semibold text-[14px] m-0">Agent portal</h3>
+              <p className="text-[11.5px] text-[var(--ink-faint)] m-0 mt-0.5">
+                The HFMC staff representative on every agent&apos;s home card, with the WhatsApp number partners reach.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="label">Representative name</label>
+                <input className="input" placeholder="e.g. Ayesha Rahman — Partnerships" value={deskName} onChange={(e) => setDeskName(e.target.value)} />
+              </div>
+              <div>
+                <label className="label">WhatsApp number (with country code)</label>
+                <input className="input mono" placeholder="e.g. 971563675369" value={deskPhone} onChange={(e) => setDeskPhone(e.target.value)} />
+              </div>
+            </div>
+            <p className="text-[10.5px] text-[var(--ink-faint)] m-0">Leave the number empty to hide the WhatsApp button.</p>
+          </div>
+
+          <button className="btn btn-primary w-full justify-center sm:w-auto" onClick={save} disabled={saving}>
+            <ICheck size={14} /> {saving ? "Saving…" : "Save portal settings"}
+          </button>
+        </>
       )}
     </div>
   );

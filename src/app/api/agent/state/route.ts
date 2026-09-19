@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { currentAgent } from "@/lib/agent-auth";
 import { serCase } from "@/lib/ser";
 import { commissionFor } from "@/lib/format";
+import { getPortalSettings } from "@/lib/portal-settings";
 
 export async function GET() {
   const me = await currentAgent();
@@ -33,10 +34,15 @@ export async function GET() {
   const totalPipelineValue = active.reduce((s, c) => s + c.loanAmount, 0);
   const projectedCommission = active.reduce((s, c) => s + (c.commission.partnerCut || 0), 0);
 
+  // HFMC staff representative shown on the agent's home card — Admin → Portal settings
+  const settings = await getPortalSettings();
+  const desk = { name: settings.agentDeskName, phone: settings.agentDeskPhone };
+
   return NextResponse.json({
     me,
     cases: casesWithCommission,
     stages: stages.map((s) => ({ id: s.id, label: s.label, sortOrder: s.sortOrder })),
+    desk,
     profile: partner && {
       sharePct: partner.defaultSharePct,
       email: partner.email ?? "",

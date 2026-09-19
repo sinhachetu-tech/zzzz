@@ -107,6 +107,8 @@ export function serCase(c: PrismaCase): LoanCase {
     folAmount: c.folAmount ?? null,
     folTenure: c.folTenure ?? null,
     folRoi: c.folRoi ?? null,
+    // structured qualification profile — without this the editor round-trips empty
+    profileJson: c.profileJson ?? null,
     // Client master links
     clientId: (c as unknown as { clientId?: number | null }).clientId ?? null,
     secondPartyClientId: (c as unknown as { secondPartyClientId?: number | null }).secondPartyClientId ?? null,

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { currentClient } from "@/lib/client-auth";
 import { serCase, serCaseDocument } from "@/lib/ser";
+import { getPortalSettings } from "@/lib/portal-settings";
 
 export async function GET(req: Request) {
   const me = await currentClient();
@@ -48,6 +49,14 @@ export async function GET(req: Request) {
   const caseDto = serCase(c);
   const stages = await db.stageItem.findMany({ orderBy: { sortOrder: "asc" } });
 
+  // Advisor shown to the client: the case's assigned advisor, else the
+  // admin-configured default (Admin → Portal settings), else the owner.
+  const settings = await getPortalSettings();
+  const fallbackAdvisor = settings.clientPortalAdvisorId
+    ? await db.user.findUnique({ where: { id: settings.clientPortalAdvisorId } })
+    : null;
+  const advisorUser = c.advisor ?? fallbackAdvisor ?? c.owner;
+
   return NextResponse.json({
     me: { ...me, caseId: selectedId, caseNumber: caseDto.caseNumber },
     engagements: engagements.map((e) => ({
@@ -66,7 +75,7 @@ export async function GET(req: Request) {
       id: d.id, fileName: d.fileName, fileType: d.fileType, fileSize: d.fileSize,
       uploadedAt: d.uploadedAt.toISOString(),
     })),
-    advisor: (c.advisor ?? c.owner) ? { name: (c.advisor ?? c.owner).name, role: (c.advisor ?? c.owner).role } : null,
+    advisor: advisorUser ? { name: advisorUser.name, role: advisorUser.role } : null,
     profile: c.profileJson ? (() => { try { return JSON.parse(c.profileJson); } catch { return null; } })() : null,
     profileClientVerifiedAt: c.profileClientVerifiedAt ? c.profileClientVerifiedAt.toISOString() : null,
   });

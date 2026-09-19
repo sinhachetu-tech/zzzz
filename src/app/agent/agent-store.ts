@@ -25,6 +25,7 @@ interface AgentState {
   stages: { id: number; label: string; sortOrder: number }[];
   profile: AgentProfile | null;
   banks: { name: string; ratePct: number }[];
+  desk: { name: string; phone: string } | null;
   stats: { activeCount: number; bookedCount: number; lostCount: number; totalPipelineValue: number; totalCommissionEarned: number; projectedCommission: number; };
   loaded: boolean;
   setRoute: (r: AgentRoute) => void;
@@ -36,7 +37,7 @@ interface AgentState {
   logout: () => Promise<void>;
 }
 export const useAgentStore = create<AgentState>((set, get) => ({
-  me: null, route: "home", cases: [], stages: [], profile: null, banks: [],
+  me: null, route: "home", cases: [], stages: [], profile: null, banks: [], desk: null,
   stats: { activeCount: 0, bookedCount: 0, lostCount: 0, totalPipelineValue: 0, totalCommissionEarned: 0, projectedCommission: 0 }, loaded: false,
   setRoute: (r) => set({ route: r }),
   hydrate: async () => {

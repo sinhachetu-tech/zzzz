@@ -16,11 +16,36 @@ import {
   ageFromDob,
 } from "@/lib/case-profile";
 import { Chip } from "@/components/hfmc/ui";
-import { ICheck, IUsers } from "@/components/icons";
+import { ICheck, IUsers, ICalc } from "@/components/icons";
 
 interface Props {
   c: LoanCase;
   onSaved?: (p: CaseProfile) => void;
+}
+
+/* Quick proposal generation from the qualification data itself — the Bank Match
+   panel needs the same inputs this editor captures, so the button lives here
+   (below the decision flags). Saves the profile first, runs the eligibility
+   engine, then hands the selection to the print-ready /proposal page. */
+interface QuickMatchResult {
+  bankProductId: number;
+  bankName: string;
+  productName: string;
+  verdict: "eligible" | "conditions" | "not_eligible";
+  eligibleLoan: number | null;
+  introEmi: number | null;
+  introRatePct: number | null;
+  introTermYears: number | null;
+}
+
+const VERDICT_LABEL: Record<string, { tone: "mint" | "amber" | "coral"; label: string }> = {
+  eligible: { tone: "mint", label: "Eligible" },
+  conditions: { tone: "amber", label: "Conditions" },
+  not_eligible: { tone: "coral", label: "Not eligible" },
+};
+
+function fmtAed(n: number | null) {
+  return n == null ? "—" : "AED " + Math.round(n).toLocaleString("en-US");
 }
 
 export function CaseProfileEditor({ c, onSaved }: Props) {
@@ -40,6 +65,12 @@ export function CaseProfileEditor({ c, onSaved }: Props) {
   );
   const [activeTab, setActiveTab] = useState<"primary" | "property" | "joint">("primary");
   const [saving, setSaving] = useState(false);
+  const [quick, setQuick] = useState<{
+    busy: boolean;
+    results: QuickMatchResult[] | null;
+    selected: Record<number, boolean>;
+    opening: boolean;
+  }>({ busy: false, results: null, selected: {}, opening: false });
 
   const p = profile.primary;
   const prop = profile.property;
@@ -71,10 +102,19 @@ export function CaseProfileEditor({ c, onSaved }: Props) {
 
   const save = async () => {
     setSaving(true);
+    const ok = await persistProfile();
+    if (ok) {
+      toast("success", "Applicant & loan profile saved.");
+      onSaved?.(profile);
+    }
+    setSaving(false);
+  };
+
+  // one persistence path shared by "Save profile" and the quick proposal generator
+  const persistProfile = async (): Promise<boolean> => {
     try {
-      const json = JSON.stringify(profile);
       await updateCase(c.id, {
-        profileJson: json,
+        profileJson: JSON.stringify(profile),
         customer: p.fullName.trim() || c.customer,
         whatsapp: p.phone.trim() || c.whatsapp,
         loanAmount: prop.loanAmount || c.loanAmount,
@@ -85,17 +125,84 @@ export function CaseProfileEditor({ c, onSaved }: Props) {
         propertyLocation: prop.propertyLocation || null,
         coApplicantName: s.role !== "none" && s.fullName.trim() ? s.fullName.trim() : null,
       });
-      toast("success", "Applicant & loan profile saved.");
-      onSaved?.(profile);
+      return true;
     } catch (e) {
       toast("error", e instanceof Error ? e.message : "Failed to save profile.");
+      return false;
     }
-    setSaving(false);
   };
 
   const ltvPct = prop.propertyValue > 0 && prop.loanAmount > 0
     ? Math.round((prop.loanAmount / prop.propertyValue) * 1000) / 10
     : null;
+
+  // Quick proposal: persist the profile as-is, run the eligibility engine with
+  // exactly the inputs this form captured, list the ranked shortlist.
+  const runQuickMatch = async () => {
+    if (p.monthlySalary <= 0 && s.role !== "co_borrower") { toast("error", "Fill the monthly salary first (tab 1)."); return; }
+    if (prop.propertyValue <= 0) { toast("error", "Fill the property value first (tab 2)."); return; }
+    setQuick((q) => ({ ...q, busy: true }));
+    const saved = await persistProfile();
+    if (!saved) { setQuick((q) => ({ ...q, busy: false })); return; }
+    try {
+      const res = await fetch("/api/bank-match", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          caseId: c.id,
+          monthlyIncome: p.monthlySalary,
+          existingEmis: p.existingEmis,
+          cardLimitsTotal: p.creditCardLimits,
+          rentalIncome: p.rentalIncome,
+          bonusIncome: p.variableIncome,
+          propertyValue: prop.propertyValue,
+          stl: true,
+          termYears: 3,
+          ratePref: "best",
+          processingMonths: profile.processingMonths ?? 3,
+          primaryAge: p.age,
+          coBorrowerAge: s.age,
+          secondPartyRole: s.role,
+          coBorrowerIncome: s.role === "co_borrower" ? s.monthlySalary : 0,
+          coBorrowerEmis: s.role === "co_borrower" ? s.existingEmis : 0,
+          coBorrowerCardLimits: s.role === "co_borrower" ? s.creditCardLimits : 0,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Match failed");
+      const results: QuickMatchResult[] = data.results;
+      const pre: Record<number, boolean> = {};
+      for (const r of results) if (r.verdict !== "not_eligible") pre[r.bankProductId] = true;
+      setQuick({ busy: false, results, selected: pre, opening: false });
+    } catch (e) {
+      toast("error", e instanceof Error ? e.message : "Match failed");
+      setQuick((q) => ({ ...q, busy: false }));
+    }
+  };
+
+  const openProposal = () => {
+    const productIds = Object.entries(quick.selected).filter(([, v]) => v).map(([k]) => Number(k));
+    if (productIds.length === 0) { toast("error", "Select at least one bank."); return; }
+    setQuick((q) => ({ ...q, opening: true }));
+    localStorage.setItem("hfmc_proposal_request", JSON.stringify({
+      caseId: c.id,
+      monthlyIncome: p.monthlySalary,
+      existingEmis: p.existingEmis,
+      cardLimitsTotal: p.creditCardLimits,
+      rentalIncome: p.rentalIncome,
+      bonusIncome: p.variableIncome,
+      propertyValue: prop.propertyValue,
+      loanAmount: prop.loanAmount || c.loanAmount,
+      stl: true,
+      termYears: 3,
+      ratePref: "best",
+      processingMonths: profile.processingMonths ?? 3,
+      primaryAge: p.age,
+      coBorrowerAge: s.age,
+      productIds,
+    }));
+    window.open("/proposal", "_blank");
+    setQuick((q) => ({ ...q, opening: false }));
+  };
 
   return (
     <div className="card anim-fade-up">
@@ -249,6 +356,63 @@ export function CaseProfileEditor({ c, onSaved }: Props) {
                   <span className="text-[12.5px]"><strong>Sharia-compliant only</strong> — restrict to Islamic products (Islamic / mixed banks)</span>
                 </label>
               </div>
+            </div>
+
+            {/* Quick proposal — the engine needs exactly the inputs captured above */}
+            <div className="rounded-lg p-3.5 space-y-3" style={{ background: "var(--amber-tint)", border: "1px solid color-mix(in srgb, var(--amber) 40%, var(--line))" }}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div className="text-[12.5px] font-disp font-semibold flex items-center gap-1.5">
+                    <ICalc size={13} className="text-[var(--amber)]" /> Generate proposal
+                  </div>
+                  <p className="text-[11px] text-[var(--ink-faint)] m-0 mt-0.5">
+                    Runs every bank against the profile above — salary, EMIs, cards, property, co-borrower, decision flags.
+                  </p>
+                </div>
+                <button className="btn btn-primary btn-sm" onClick={runQuickMatch} disabled={quick.busy}>
+                  {quick.busy ? "Running…" : quick.results ? "Re-run match" : "Run bank match"}
+                </button>
+              </div>
+
+              {quick.results && (
+                <div className="space-y-1.5">
+                  {quick.results.length === 0 && (
+                    <p className="text-[11.5px] text-[var(--ink-faint)] m-0">No approved bank products matched this profile.</p>
+                  )}
+                  {quick.results.map((r) => {
+                    const v = VERDICT_LABEL[r.verdict];
+                    const usable = r.verdict !== "not_eligible";
+                    return (
+                      <div key={r.bankProductId} className="rounded-lg px-2.5 py-2 flex items-center gap-2"
+                        style={{ background: "var(--surface)", border: "1px solid var(--line-soft)" }}>
+                        {usable && (
+                          <input type="checkbox" checked={!!quick.selected[r.bankProductId]}
+                            onChange={(e) => setQuick((q) => ({ ...q, selected: { ...q.selected, [r.bankProductId]: e.target.checked } }))} />
+                        )}
+                        <span className="text-[12px] font-semibold">{r.bankName}</span>
+                        <span className="text-[10.5px] text-[var(--ink-faint)] truncate hidden sm:inline">{r.productName}</span>
+                        <Chip tone={v.tone}>{v.label}</Chip>
+                        <span className="ml-auto mono text-[11.5px]" style={{ color: r.verdict === "eligible" ? "var(--mint)" : "var(--ink-dim)" }}>
+                          {usable ? fmtAed(r.eligibleLoan) : ""}
+                        </span>
+                        {usable && r.introEmi != null && (
+                          <span className="mono text-[10.5px] text-[var(--ink-faint)] hidden sm:inline">
+                            {fmtAed(r.introEmi)}/mo{r.introRatePct != null ? ` @ ${r.introRatePct}%` : ""}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {quick.results.some((r) => r.verdict !== "not_eligible") && (
+                    <button className="btn btn-mint btn-sm w-full justify-center" onClick={openProposal} disabled={quick.opening}>
+                      Open proposal ({Object.values(quick.selected).filter(Boolean).length} banks) →
+                    </button>
+                  )}
+                  <p className="text-[10px] text-[var(--ink-faint)] m-0">
+                    Opens the print-ready proposal — save it to the case as a draft, then move it to &quot;sent&quot; once shared with the client.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         )}

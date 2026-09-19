@@ -19,8 +19,6 @@ import {
    No URL routing — route lives in the store (same as the team portal).
    ============================================================ */
 
-const DESK_WHATSAPP = "971563675369"; // HFMC partnership desk
-
 type TabDef = { id: AgentRoute; label: string; Icon: (p: { size?: number }) => ReactElement };
 const TABS: TabDef[] = [
   { id: "home", label: "Home", Icon: IHome },
@@ -91,7 +89,7 @@ export function AgentDashboard() {
 /* ================= HOME ================= */
 
 function HomeTab({ goto }: { goto: (r: AgentRoute) => void }) {
-  const { me, cases, stats, profile } = useAgentStore();
+  const { me, cases, stats, profile, desk } = useAgentStore();
   const [copied, setCopied] = useState(false);
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
@@ -151,18 +149,20 @@ function HomeTab({ goto }: { goto: (r: AgentRoute) => void }) {
       <div className="card anim-fade-up p-4 flex items-center gap-3.5 rounded-2xl" style={{ borderColor: "color-mix(in srgb, var(--mint) 30%, var(--line))" }}>
         <div className="w-11 h-11 rounded-full flex items-center justify-center shrink-0 font-disp font-bold text-[13px]"
           style={{ background: "linear-gradient(135deg, var(--mint), #2aa77a)", color: "#06251a" }}>
-          HF
+          {(desk?.name || "HF").split(" ").map((w) => w[0]).slice(0, 2).join("")}
         </div>
         <div className="flex-1 min-w-0">
           <div className="text-[10px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)]">Your mortgage desk</div>
-          <div className="text-[14.5px] font-medium leading-tight">HFMC Partnership Team</div>
+          <div className="text-[14.5px] font-medium leading-tight">{desk?.name || "HFMC Partnership Team"}</div>
           <div className="text-[11px] text-[var(--ink-faint)]">Qualifies your lead within the hour · replies fast on WhatsApp</div>
         </div>
-        <a className="btn btn-mint btn-sm shrink-0"
-          href={`https://wa.me/${DESK_WHATSAPP}?text=${encodeURIComponent(`Hi HFMC, I'm ${me?.name ?? "a partner"} — I have a mortgage lead to discuss.`)}`}
-          target="_blank" rel="noreferrer">
-          <IWhatsapp size={14} /> Ask
-        </a>
+        {desk?.phone && (
+          <a className="btn btn-mint btn-sm shrink-0"
+            href={`https://wa.me/${desk.phone.replace(/\D/g, "")}?text=${encodeURIComponent(`Hi HFMC, I'm ${me?.name ?? "a partner"} — I have a mortgage lead to discuss.`)}`}
+            target="_blank" rel="noreferrer">
+            <IWhatsapp size={14} /> Ask
+          </a>
+        )}
       </div>
 
       {/* quick tiles */}

@@ -407,6 +407,14 @@ model PartnerItem {
   @@unique([kind, name])
 }
 
+// Admin-configured portal settings (key-value): clientPortalAdvisorId,
+// agentDeskName, agentDeskPhone — decided in Admin → Portal settings.
+model AppSetting {
+  key       String   @id
+  value     String   @default("")
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
 model SlaRule {
   id        Int      @id @default(autoincrement())
   stage     String
