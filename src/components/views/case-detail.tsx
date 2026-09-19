@@ -663,6 +663,12 @@ export default function CaseDetail({ id }: { id: number }) {
                 <button className="btn btn-primary sm:btn-sm" onClick={() => setShowOutcome(true)}>Set outcome</button>
               </>
             )}
+            {(flags?.admin || flags?.super) && (
+              <button className="btn btn-ghost sm:btn-sm !px-2" title="Delete permanently (admin) — accidental creations only; use Set outcome → Lost otherwise"
+                onClick={() => setDelCaseOpen(true)} style={{ color: "var(--coral)" }}>
+                <ITrash size={14} />
+              </button>
+            )}
           </div>
         </div>
 
