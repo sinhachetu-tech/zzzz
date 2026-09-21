@@ -12,8 +12,9 @@ import { Avatar, Chip, Modal, ThemeToggle } from "@/components/hfmc/ui";
 import { Toaster } from "@/components/hfmc/toaster";
 import { CommandBar } from "@/components/views/command-bar";
 import { useCollapsibleSidebar } from "@/hooks/use-collapsible-sidebar";
+import { useHaptic, withHaptic } from "@/lib/haptics";
 import {
-  IBank, IBriefcase, ICalc, IChart, IChevronL, IChevronR, IFlag, IGrid, IInbox, ILogout, IMenu, IPlus, IShield, ITasks, LogoMark,
+  IBank, IBriefcase, ICalc, IChart, IChevronL, IChevronR, IFlag, IGrid, IInbox, ILogout, IMenu, IPlus, ISearch, IShield, ITasks, LogoMark,
 } from "@/components/icons";
 
 function Clock() {
@@ -173,6 +174,9 @@ function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void })
   const [amount, setAmount] = useState("1500000");
   const [stage, setStage] = useState("Lead"); // Add-lead always starts at the top of the funnel; change only when onboarding a live deal
   const [ownerId, setOwnerId] = useState(me?.id ?? 0);
+  const [advisorId, setAdvisorId] = useState<string>(""); // client-facing advisor (senior) — shown on the client's Ask card
+  const [backup1Id, setBackup1Id] = useState<string>(""); // covers the file when the owner is on leave
+  const [backup2Id, setBackup2Id] = useState<string>(""); // second backup — covers the file when the owner is on leave
   const [source, setSource] = useState<CaseSource>("Direct");
   const [partnerName, setPartnerName] = useState("");
   const [share, setShare] = useState(20);
@@ -232,6 +236,9 @@ function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void })
     try {
       const res = await createCase({
         customer, banks: bankList, loanAmount: amt, stage, ownerId,
+        advisorId: advisorId ? Number(advisorId) : null,
+        backup1Id: backup1Id ? Number(backup1Id) : null,
+        backup2Id: backup2Id ? Number(backup2Id) : null,
         source, partner, whatsapp, waGroup: waGroup.trim() || null,
         task: taskDesc.trim()
           ? { description: taskDesc, dueDate: taskTime ? `${taskDue}T${taskTime}` : taskDue, waitingFor: "Internal", whyPending: "Internal review", ownerId }
@@ -415,6 +422,33 @@ function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void })
             </select>
           </div>
           <div>
+            <label className="label">Client-facing advisor <span className="normal-case tracking-normal" style={{ color: "var(--ink-faint)" }}>· on the client&apos;s Ask card</span></label>
+            <select className="select" value={advisorId} onChange={(e) => setAdvisorId(e.target.value)}>
+              <option value="">— none (portal default) —</option>
+              {users.filter((u) => u.active && u.role !== "Head of Company" && u.role !== "PA to HoC").map((u) => (
+                <option key={u.id} value={u.id}>{u.name} · {u.role}{u.phone ? " · " + u.phone : ""}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="label">Backup 1 <span className="normal-case tracking-normal" style={{ color: "var(--ink-faint)" }}>· covers leave, sees &amp; works the file</span></label>
+            <select className="select" value={backup1Id} onChange={(e) => setBackup1Id(e.target.value)}>
+              <option value="">— none —</option>
+              {users.filter((u) => u.active && u.id !== ownerId).map((u) => (
+                <option key={u.id} value={u.id}>{u.name} · {u.role}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="label">Backup 2 <span className="normal-case tracking-normal" style={{ color: "var(--ink-faint)" }}>· covers leave, sees &amp; works the file</span></label>
+            <select className="select" value={backup2Id} onChange={(e) => setBackup2Id(e.target.value)}>
+              <option value="">— none —</option>
+              {users.filter((u) => u.active && u.id !== ownerId && String(u.id) !== backup1Id).map((u) => (
+                <option key={u.id} value={u.id}>{u.name} · {u.role}</option>
+              ))}
+            </select>
+          </div>
+          <div>
             <label className="label">Where did it come from?</label>
             <select className="select" value={source} onChange={(e) => { setSource(e.target.value as CaseSource); setPartnerName(""); }}>
               {SOURCES.map((s) => <option key={s}>{s}</option>)}
@@ -538,14 +572,38 @@ export default function Shell({ children }: { children: ReactNode }) {
   const [fabOpen, setFabOpen] = useState(false);
   const [eiborOpen, setEiborOpen] = useState(false);
   const [cmdOpen, setCmdOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const haptic = useHaptic();
 
-  // Mission Control — ⌘/Ctrl+K opens the command bar anywhere in the app
+  // Mission Control — ⌘/Ctrl+K opens the command bar anywhere in the app.
+  // Single-key shortcuts (c = new lead, g then d/c/l/t/m = go page, ? = help)
+  // are ignored while typing in inputs.
   useEffect(() => {
+    let pendingG = 0;
+    const isTyping = () => {
+      const el = document.activeElement as HTMLElement | null;
+      return !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable);
+    };
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setCmdOpen((v) => !v);
+        return;
       }
+      if (e.metaKey || e.ctrlKey || e.altKey || isTyping()) return;
+      const k = e.key.toLowerCase();
+      if (pendingG && Date.now() - pendingG < 800) {
+        pendingG = 0;
+        const go: Record<string, Route> = {
+          d: { name: "dashboard" }, c: { name: "cases" }, l: { name: "leads" },
+          t: { name: "tasks" }, m: { name: "calculator" },
+        };
+        if (go[k]) { e.preventDefault(); useHfmcStore.getState().nav(go[k]); }
+        return;
+      }
+      if (k === "g") { pendingG = Date.now(); return; }
+      if (k === "c") { e.preventDefault(); useHfmcStore.getState().openNewCase(); return; }
+      if (k === "?") { e.preventDefault(); setHelpOpen(true); return; }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -626,6 +684,7 @@ export default function Shell({ children }: { children: ReactNode }) {
           me={me} logout={logout}
           openInstr={openInstr} canInstruct={canInstruct}
           collapsed={sidebarCollapsed} onToggle={toggleSidebar}
+          haptic={haptic}
         />
       </aside>
 
@@ -641,7 +700,7 @@ export default function Shell({ children }: { children: ReactNode }) {
                   <div className="text-[9.5px] uppercase tracking-[0.18em] text-[var(--ink-faint)] mt-1">Mortgage · UAE</div>
                 </div>
               </div>
-              <button className="btn btn-ghost btn-sm !px-2" onClick={() => setDrawerOpen(false)} aria-label="Close menu">✕</button>
+              <button className="btn btn-ghost btn-sm !px-2" onClick={() => { haptic('light'); setDrawerOpen(false); }} aria-label="Close menu">✕</button>
             </div>
             <div className="flex-1 overflow-y-auto">
               <SidebarContent
@@ -650,6 +709,7 @@ export default function Shell({ children }: { children: ReactNode }) {
                 me={me} logout={logout}
                 openInstr={openInstr} canInstruct={canInstruct}
                 hideBranding
+                haptic={haptic}
               />
             </div>
           </aside>
@@ -658,13 +718,13 @@ export default function Shell({ children }: { children: ReactNode }) {
 
       <div className="flex-1 flex flex-col min-w-0">
         <header className="h-[54px] shrink-0 border-b flex items-center gap-3 px-4 md:px-5" style={{ borderColor: "var(--line-soft)", background: "color-mix(in srgb, var(--bg) 94%, transparent)" }}>
-          <button className="btn btn-ghost btn-sm !px-2 md:!hidden" onClick={() => setDrawerOpen(true)} aria-label="Open menu">
+          <button className="btn btn-ghost btn-sm !px-2 md:!hidden" onClick={() => { haptic('light'); setDrawerOpen(true); }} aria-label="Open menu">
             <IMenu size={18} />
           </button>
           {/* Desktop-only: fold the left panel down to an icon rail (or back) */}
           <button
             className="btn btn-ghost btn-sm !px-2 !hidden md:!inline-flex"
-            onClick={toggleSidebar}
+            onClick={() => { haptic('light'); toggleSidebar(); }}
             aria-label={sidebarCollapsed ? "Expand left panel" : "Collapse left panel"}
             aria-expanded={!sidebarCollapsed}
             aria-controls="app-sidebar"
@@ -673,6 +733,24 @@ export default function Shell({ children }: { children: ReactNode }) {
             {sidebarCollapsed ? <IChevronR size={18} /> : <IChevronL size={18} />}
           </button>
           <h1 className="font-disp font-semibold text-[16px] m-0 truncate">{title}</h1>
+          {/* Mission Control trigger — visible ⌘K entry so the palette gets found */}
+          <button
+            className="hidden md:flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[12px] transition-colors"
+            style={{ background: "var(--tint)", border: "1px solid var(--line-soft)", color: "var(--ink-faint)", minWidth: 220 }}
+            onClick={() => { haptic('light'); setCmdOpen(true); }}
+            title="Search cases, leads, pages (Ctrl/⌘ K)"
+          >
+            <ISearch size={14} />
+            <span className="flex-1 text-left truncate">Search cases, leads…</span>
+            <kbd className="mono text-[10px] px-1.5 py-0.5 rounded" style={{ background: "var(--raised)", border: "1px solid var(--line)" }}>⌘K</kbd>
+          </button>
+          <button
+            className="md:!hidden btn btn-ghost btn-sm !px-2"
+            onClick={() => { haptic('light'); setCmdOpen(true); }}
+            aria-label="Search"
+          >
+            <ISearch size={18} />
+          </button>
           {route.name === "case" && <span className="text-[12px] text-[var(--ink-faint)] hidden lg:inline">the full story of one file</span>}
           {/* EIBOR ticker — live benchmark, drives every calculation; click to edit if permitted */}
           {eibor.length > 0 && (() => {
@@ -681,7 +759,7 @@ export default function Shell({ children }: { children: ReactNode }) {
             const last = ordered[0];
             return (
               <button
-                onClick={() => canEdit && setEiborOpen(true)}
+                onClick={() => { haptic('light'); canEdit && setEiborOpen(true); }}
                 title={canEdit
                   ? `Last edited ${last?.updatedOn || "—"} by ${last?.updatedBy || "—"} — click to update`
                   : `EIBOR benchmark — last updated ${last?.updatedOn || "—"} by ${last?.updatedBy || "—"}`}
@@ -708,7 +786,7 @@ export default function Shell({ children }: { children: ReactNode }) {
             <Clock />
             <ThemeToggle compact />
             {/* desktop-only: on mobile the floating action button is the single Add-lead entry */}
-            <button className="btn btn-primary !hidden md:!inline-flex" onClick={openNewCase}>
+            <button className="btn btn-primary !hidden md:!inline-flex" onClick={() => { haptic('light'); openNewCase(); }}>
               <IPlus size={16} /> Add lead
             </button>
           </div>
@@ -727,7 +805,7 @@ export default function Shell({ children }: { children: ReactNode }) {
       </div>
 
       {/* Mobile bottom nav — Cases/Leads/Tasks lead; the rest lives in the drawer */}
-      <nav className="fixed bottom-0 left-0 right-0 z-50 md:hidden flex items-stretch border-t" style={{ borderColor: "var(--line)", background: "color-mix(in srgb, var(--raised) 96%, transparent)" }}>
+      <nav className="fixed bottom-0 left-0 right-0 z-50 md:hidden flex items-stretch border-t bottom-nav" data-safe-area-bottom style={{ borderColor: "var(--line)", background: "color-mix(in srgb, var(--raised) 96%, transparent)" }}>
         {(["dashboard", "leads", "cases", "tasks", "calculator"] as const).map((name) => {
           const n = navItems.find((x) => x.route.name === name)!;
           const active = route.name === n.route.name || (route.name === "case" && n.route.name === "cases");
@@ -735,7 +813,7 @@ export default function Shell({ children }: { children: ReactNode }) {
             <button
               key={n.label}
               className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2.5 relative"
-              onClick={() => nav(n.route)}
+              onClick={() => { nav(n.route); haptic('light'); }}
               style={{ color: active ? "var(--amber)" : "var(--ink-faint)" }}
             >
               <span className="relative">
@@ -756,14 +834,14 @@ export default function Shell({ children }: { children: ReactNode }) {
       {/* Mobile floating action button — role-aware: designated staff get a
           speed dial (Add lead / New directive), everyone else taps straight
           through to Add lead. Case-level Add task lives inside Case 360. */}
-      <div className="fixed bottom-[72px] right-4 z-40 md:hidden flex flex-col items-end gap-2">
+      <div className="fixed bottom-[72px] right-4 z-40 md:hidden flex flex-col items-end gap-2 fixed-bottom" data-safe-area-bottom-fixed>
         {fabOpen && canInstruct && (
           <>
-            <button className="flex items-center gap-2 anim-fade-up" onClick={() => { setFabOpen(false); nav({ name: "bulletin" }); }}>
+            <button className="flex items-center gap-2 anim-fade-up" onClick={() => { haptic('light'); setFabOpen(false); nav({ name: "bulletin" }); }}>
               <span className="text-[12px] font-disp font-semibold px-2.5 py-1.5 rounded-lg shadow-lg" style={{ background: "var(--raised)", color: "var(--ink)", border: "1px solid var(--line)" }}>New directive</span>
               <span className="w-10 h-10 rounded-full flex items-center justify-center shadow-lg" style={{ background: "var(--raised)", color: "var(--amber)", border: "1px solid var(--line)" }}><IFlag size={18} /></span>
             </button>
-            <button className="flex items-center gap-2 anim-fade-up" onClick={() => { setFabOpen(false); openNewCase(); }}>
+            <button className="flex items-center gap-2 anim-fade-up" onClick={() => { haptic('light'); setFabOpen(false); openNewCase(); }}>
               <span className="text-[12px] font-disp font-semibold px-2.5 py-1.5 rounded-lg shadow-lg" style={{ background: "var(--raised)", color: "var(--ink)", border: "1px solid var(--line)" }}>Add lead</span>
               <span className="w-10 h-10 rounded-full flex items-center justify-center shadow-lg" style={{ background: "var(--amber)", color: "#fff8ec" }}><IPlus size={18} /></span>
             </button>
@@ -772,7 +850,7 @@ export default function Shell({ children }: { children: ReactNode }) {
         <button
           className="w-14 h-14 rounded-full flex items-center justify-center anim-fade-up"
           aria-label={canInstruct ? "Quick actions" : "Add lead"}
-          onClick={() => (canInstruct ? setFabOpen((v) => !v) : openNewCase())}
+          onClick={() => { haptic('light'); canInstruct ? setFabOpen((v) => !v) : openNewCase(); }}
           style={{
             background: "var(--amber)", color: "#fff8ec",
             boxShadow: "0 8px 24px -6px rgba(180,83,9,0.5), 0 2px 8px rgba(0,0,0,0.15)",
@@ -785,6 +863,24 @@ export default function Shell({ children }: { children: ReactNode }) {
       <NewCaseModal open={newCaseOpen} onClose={closeNewCase} />
       {eiborOpen && <EiborModal onClose={() => setEiborOpen(false)} />}
       <CommandBar open={cmdOpen} onOpenChange={setCmdOpen} />
+      {helpOpen && (
+        <Modal title="Keyboard shortcuts" sub="move without the mouse" onClose={() => setHelpOpen(false)} width={420}>
+          <div className="space-y-2 text-[13px]">
+            {[
+              ["⌘/Ctrl K", "Mission Control — jump to any case or page"],
+              ["C", "New lead"],
+              ["G then D / C / L / T / M", "Go Dashboard / Cases / Leads / Tasks / Calculator"],
+              ["?", "This help"],
+              ["Esc", "Close dialogs"],
+            ].map(([k, v]) => (
+              <div key={k} className="flex items-center gap-3">
+                <kbd className="mono text-[11px] px-2 py-1 rounded shrink-0" style={{ background: "var(--tint)", border: "1px solid var(--line)" }}>{k}</kbd>
+                <span className="text-[var(--ink-dim)]">{v}</span>
+              </div>
+            ))}
+          </div>
+        </Modal>
+      )}
       <DealWonBurst />
       <Toaster />
     </div>
@@ -832,7 +928,7 @@ function DealWonBurst() {
 }
 
 function SidebarContent({
-  navItems, route, nav, escalations, pipeline, me, logout, openInstr, canInstruct, hideBranding, collapsed = false, onToggle,
+  navItems, route, nav, escalations, pipeline, me, logout, openInstr, canInstruct, hideBranding, collapsed = false, onToggle, haptic,
 }: {
   navItems: { label: string; route: Route; icon: (p: { size?: number; className?: string }) => ReactNode; badge?: number }[];
   route: Route;
@@ -848,6 +944,7 @@ function SidebarContent({
   collapsed?: boolean;
   /** renders the fold/unfold chevron next to the brand (desktop only) */
   onToggle?: () => void;
+  haptic: (type?: 'light' | 'medium' | 'heavy' | 'selection' | 'success' | 'warning' | 'error') => void;
 }) {
   return (
     <>
@@ -863,7 +960,7 @@ function SidebarContent({
           {onToggle && (
             <button
               className="text-[var(--ink-faint)] hover:text-[var(--amber)] transition-colors shrink-0"
-              onClick={onToggle}
+              onClick={() => { haptic('light'); onToggle(); }}
               aria-label={collapsed ? "Expand left panel" : "Collapse left panel"}
               aria-expanded={!collapsed}
               aria-controls="app-sidebar"
@@ -883,7 +980,7 @@ function SidebarContent({
               <button
                 key={n.label}
                 className={`nav-item w-full text-left ${active ? "active" : ""}`}
-                onClick={() => nav(n.route)}
+                onClick={() => { nav(n.route); haptic('light'); }}
                 aria-label={n.label}
                 title={collapsed ? n.label : undefined}
               >
@@ -935,7 +1032,7 @@ function SidebarContent({
         {collapsed ? (
           <div className="flex flex-col items-center gap-1 py-2 rounded-lg" style={{ background: "var(--tint)" }}>
             <span title={`${me?.name ?? ""}${me?.role ? " · " + me.role : ""}`}><Avatar name={me?.name ?? "?"} size={30} /></span>
-            <button className="text-[var(--ink-faint)] hover:text-[var(--coral)] transition-colors" onClick={logout} title="Sign out">
+            <button className="text-[var(--ink-faint)] hover:text-[var(--coral)] transition-colors" onClick={() => { haptic('light'); logout(); }} title="Sign out">
               <ILogout size={16} />
             </button>
           </div>
@@ -946,7 +1043,7 @@ function SidebarContent({
               <div className="text-[12.5px] font-medium truncate">{me?.name}</div>
               <div className="text-[10.5px] text-[var(--ink-faint)] truncate">{me?.role}</div>
             </div>
-            <button className="text-[var(--ink-faint)] hover:text-[var(--coral)] transition-colors" onClick={logout} title="Sign out">
+            <button className="text-[var(--ink-faint)] hover:text-[var(--coral)] transition-colors" onClick={() => { haptic('light'); logout(); }} title="Sign out">
               <ILogout size={16} />
             </button>
           </div>

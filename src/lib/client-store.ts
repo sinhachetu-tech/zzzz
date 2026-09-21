@@ -83,6 +83,9 @@ interface HfmcState extends StateSnapshot {
   // mutations — call API then patch local state
   createCase: (input: {
     customer: string; banks: string[]; loanAmount: number; stage: string; ownerId: number;
+    advisorId?: number | null; // client-facing advisor (senior) — pairs name + number on the client's Ask card
+    backup1Id?: number | null; // first backup staffer — covers the file while the owner is on leave
+    backup2Id?: number | null; // second backup staffer — covers the file while the owner is on leave
     source: CaseSource; partner: CasePartner | null; whatsapp: string; waGroup: string | null;
     task?: { description: string; dueDate: string; waitingFor: string; whyPending: string; ownerId: number };
     submissionType?: "direct" | "channel"; channelId?: number | null; channelName?: string | null; channelRatePct?: number;

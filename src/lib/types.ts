@@ -25,6 +25,7 @@ export interface User {
   role: string;
   team: string;
   active: boolean;
+  phone?: string | null; // WhatsApp / direct line — shown on client & agent portal contact cards
   createdAt: string;
 }
 
@@ -99,6 +100,8 @@ export interface LoanCase {
   clientId: number | null;
   secondPartyClientId: number | null;
   advisorId: number | null;      // client-facing advisor (falls back to owner when unset)
+  backup1Id: number | null;      // first backup staffer — covers the file while the owner is on leave
+  backup2Id: number | null;      // second backup staffer — covers the file while the owner is on leave
   profileClientVerifiedAt: string | null; // when the client last confirmed their data sheet
 }
 

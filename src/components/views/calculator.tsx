@@ -4,14 +4,14 @@
    with AI Mortgage Advisor + AI Document Reader.
    The flagship view. */
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useHfmcStore } from "@/lib/client-store";
 import { parsePricing, resolveQuote, rateSchedule } from "@/lib/bank-pricing";
 import {
   FREQUENCIES, LIAB_METHODS, LIAB_TYPES, LTV_CHOICES,
   SALARIED_SOURCES, SE_SOURCES,
-  cloneInput, computeMortgage, defaultInput, defaultLtvPct,
+  cloneInput, computeMortgage, defaultInput, blankInput, defaultLtvPct,
   fmtAED, fmtPct, incomeMonthly, liabilityEmi,
   newIncomeRow, newLiabRow,
   scenarioCardNewLimit, scenarioCardsPct, scenarioIncomePct,
@@ -26,6 +26,8 @@ import type {
 } from "@/lib/mortgage";
 import type { AffordabilityInput } from "@/lib/calc";
 import type { DocRule, FeeRule } from "@/lib/types";
+import { buildPrintModel } from "@/lib/calc-print-model";
+import { todayISO } from "@/lib/format";
 import { Avatar, Chip } from "@/components/hfmc/ui";
 import { useCountUp, Dial } from "@/components/hfmc/charts";
 import {
@@ -193,7 +195,7 @@ function LiabRowEditor({
 /* ------------------------------ scenario table ------------------------------ */
 
 function ScenarioTable({ rows, base }: {
-  rows: { label: string; dbr: number; residual: number; mpbf: number }[];
+  rows: { label: string; dbr: number; residual: number; maxEligible: number; dbr1: number; dbr2: number; dbr3: number }[];
   base: number;
 }) {
   const delta = (v: number): ReactNode => {
@@ -203,13 +205,16 @@ function ScenarioTable({ rows, base }: {
   };
   return (
     <div className="overflow-x-auto">
-      <table className="tbl" style={{ minWidth: 460 }}>
+      <table className="tbl" style={{ minWidth: 800 }}>
         <thead>
           <tr>
             <th>Scenario</th>
-            <th className="text-right">DBR</th>
+            <th className="text-right">Current DBR</th>
             <th className="text-right">Residual</th>
-            <th className="text-right">MPBF</th>
+            <th className="text-right">Req. DBR 1</th>
+            <th className="text-right">Req. DBR 2</th>
+            <th className="text-right">Req. DBR 3</th>
+            <th className="text-right">Max finance</th>
             <th className="text-right">Δ vs base</th>
           </tr>
         </thead>
@@ -219,8 +224,11 @@ function ScenarioTable({ rows, base }: {
               <td className="text-[12.5px]">{r.label}</td>
               <td className="mono text-right text-[12.5px]">{fmtPct(r.dbr)}</td>
               <td className="mono text-right text-[12.5px]">{fmtPct(r.residual)}</td>
-              <td className="mono text-right text-[12.5px] font-semibold">{fmtAED(r.mpbf)}</td>
-              <td className="mono text-right text-[12.5px]">{delta(r.mpbf)}</td>
+              <td className="mono text-right text-[12.5px]">{fmtPct(r.dbr1)}</td>
+              <td className="mono text-right text-[12.5px]">{fmtPct(r.dbr2)}</td>
+              <td className="mono text-right text-[12.5px]">{fmtPct(r.dbr3)}</td>
+              <td className="mono text-right text-[12.5px] font-semibold">{fmtAED(r.maxEligible)}</td>
+              <td className="mono text-right text-[12.5px]">{delta(r.maxEligible)}</td>
             </tr>
           ))}
         </tbody>
@@ -301,7 +309,7 @@ function AdvisorPanel({ input, r }: { input: MortgageInput; r: MortgageResult })
             concrete levers to improve MPBF, and the monthly cost. Then ask follow-up questions like
             <em> “what if I clear the credit card?”</em> or <em>“how does adding a co-borrower help?”</em>.
             <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
-              <div className="rounded-md px-2.5 py-2" style={{ background: "var(--tint)" }}>Final MPBF<br /><strong className="mono text-[var(--amber)]">{fmtAED(r.finalMpbf)}</strong></div>
+              <div className="rounded-md px-2.5 py-2" style={{ background: "var(--tint)" }}>Maximum finance<br /><strong className="mono text-[var(--amber)]">{fmtAED(r.maxEligible)}</strong></div>
               <div className="rounded-md px-2.5 py-2" style={{ background: "var(--tint)" }}>Current DBR<br /><strong className="mono" style={{ color: r.currentDbr > 50 ? "var(--coral)" : "var(--ink)" }}>{fmtPct(r.currentDbr)}</strong></div>
               <div className="rounded-md px-2.5 py-2" style={{ background: "var(--tint)" }}>Residual DBR<br /><strong className="mono" style={{ color: "var(--mint)" }}>{fmtPct(r.residualDbr)}</strong></div>
               <div className="rounded-md px-2.5 py-2" style={{ background: "var(--tint)" }}>Limited by<br /><strong style={{ color: "var(--amber)" }}>{r.limitedBy}</strong></div>
@@ -565,30 +573,55 @@ function Field({ label, value }: { label: string; value: string }) {
 
 /* ------------------------------ MPBF headline card ------------------------------ */
 
-function MpbfHeadline({ r, input, scenario, rateStyle, foTenor, foSpread }: { r: MortgageResult; input: MortgageInput; scenario: { intro: number; introYears: number; followOn: number; stress: number }; rateStyle: "fixed" | "variable"; foTenor: "1M" | "3M" | "6M" | "1Y"; foSpread: number }) {
-  const mpbfDisplay = useCountUp(r.finalMpbf, 600);
+function MpbfHeadline({ r, input }: { r: MortgageResult; input: MortgageInput }) {
+  /* The BIG number on the card is MAX ELIGIBLE = MIN(DBR capacity, LTV capacity).
+     The client's ask is NOT a cap here — it prints separately as a reference line —
+     so capacity can never be understated. */
+  const mpbfDisplay = useCountUp(r.maxEligible, 600);
   const caps = [
     { label: "DBR / Residual DBR MPBF", v: r.dbrMpbf },
     { label: "LTV MPBF", v: r.ltvMpbf },
     ...(r.multiplierCap != null ? [{ label: `Income multiplier (${input.multiplierX}×)`, v: r.multiplierCap }] : []),
-    ...(r.requested > 0 ? [{ label: "Requested finance", v: r.requested }] : []),
   ];
   const capMax = Math.max(...caps.map((c) => c.v), 1);
 
-  const limitedTone = r.limitedBy === "DBR / Income" ? "coral" : r.limitedBy === "LTV" ? "sky" : "amber";
+  const limitedTone = r.maxEligibleLimitedBy === "DBR / Income" ? "coral" : r.maxEligibleLimitedBy === "LTV" ? "sky" : "amber";
 
   return (
     <div
       className="card p-5 anim-fade-up"
       style={{ borderColor: "var(--amber-line)", background: "linear-gradient(180deg, var(--amber-tint), var(--surface))", boxShadow: "var(--shadow)" }}
     >
-      <div className="text-[10.5px] uppercase tracking-[0.14em] font-disp font-semibold" style={{ color: "var(--amber)" }}>Final MPBF</div>
+      <div className="text-[10.5px] uppercase tracking-[0.14em] font-disp font-semibold" style={{ color: "var(--amber)" }}>Maximum permissible finance</div>
       <div className="font-disp font-bold text-[34px] sm:text-[38px] leading-[1.05] tracking-tight mt-1 tabular-nums">{fmtAED(mpbfDisplay)}</div>
       <div className="flex items-center gap-2 mt-1.5 flex-wrap">
         <span className="text-[11.5px] text-[var(--ink-faint)]">limited by</span>
-        <Chip tone={limitedTone}>{r.limitedBy}</Chip>
-        {r.finalMpbf <= 0 && <Chip tone="coral">not eligible</Chip>}
+        <Chip tone={limitedTone}>{r.maxEligibleLimitedBy}</Chip>
+        {r.maxEligible <= 0 && <Chip tone="coral">not eligible</Chip>}
+        {r.roi && (
+          <span className="mono text-[11px] text-[var(--ink-faint)]" title="ROI 3 sets maximum permissible finance">
+            @{fmtPct(r.qualifyingRate)} · ROI{["1", "2", "3"][r.qualifyingBindsRoi - 1]}
+          </span>
+        )}
       </div>
+
+      {r.requested > 0 && (
+        <div className="rounded-lg px-3 py-2 mt-3" style={{ background: r.requestEligible ? "var(--mint-tint)" : "var(--coral-tint)", border: `1px solid ${r.requestEligible ? "var(--mint)" : "var(--coral)"}` }}>
+          <div className="flex justify-between gap-2 text-[11px] font-disp font-semibold">
+            <span>REQUESTED {fmtAED(r.requested)}</span>
+            <span style={{ color: r.requestEligible ? "var(--mint)" : "var(--coral)" }}>{r.requestEligible ? "ELIGIBLE" : "NOT ELIGIBLE"}</span>
+          </div>
+          <div className="mono text-[10.5px] mt-1 text-[var(--ink-dim)]">
+            ROI 3 DBR {fmtPct(r.dbr3)} of {fmtPct(r.maxDbr)}{r.requestEligible ? ` · within the ${fmtAED(r.maxEligible)} maximum` : ` · exceeds maximum by ${fmtAED(r.requestShortfall)}`}
+          </div>
+        </div>
+      )}
+
+      {r.roi && r.roi3BelowHigher && (
+        <p className="text-[11.5px] m-0 mt-1.5" style={{ color: "var(--amber)" }}>
+          ⚑ ROI 3 ({fmtPct(r.roi.r3)}) is below ROI 1 or ROI 2; it still sets maximum permissible finance.
+        </p>
+      )}
 
       {/* DBR gauge */}
       <div className="mt-4">
@@ -633,34 +666,36 @@ function MpbfHeadline({ r, input, scenario, rateStyle, foTenor, foSpread }: { r:
         })}
       </div>
 
-      {/* DBR 1·2·3 — the same EMI math as the scenario section, one dial per stage */}
+      {/* DBR 1·2·3 — read from the ENGINE on the maximum eligible amount. */}
       {(() => {
-        const months = r.maxTenorMonths || 300;
-        const emiFor = (rate: number) => rate > 0 ? Math.round((input.requested * (rate / 100 / 12)) / (1 - Math.pow(1 + rate / 100 / 12, -months))) || 0 : 0;
-        const dbr = (e: number) => r.eligibleIncome > 0 ? Math.round(((e + r.existingEmis) / r.eligibleIncome) * 1000) / 10 : null;
         const cap = r.maxDbr || 50;
-        const stages: [string, number, string][] = rateStyle === "fixed"
-          ? [["DBR 1 · intro", scenario.intro, `${scenario.introYears || 0}y`],
-             ["DBR 2 · follow-on", scenario.followOn, `${foTenor} EIBOR+${foSpread}%`],
-             ["DBR 3 · stress", scenario.stress, "qualifying rate"]]
-          : [["DBR 1 · day-1", scenario.intro, `${foTenor} EIBOR+${foSpread}%`],
-             ["DBR 2 · ongoing", scenario.followOn, "same basis"],
-             ["DBR 3 · stress", scenario.stress, "qualifying rate"]];
+        const stages: { label: string; rate: number; emi: number; val: number | null; note: string }[] = r.roi
+          ? [
+              { label: "DBR 1 · intro", rate: r.roi.r1, emi: r.emi1, val: r.dbr1, note: `${r.roi.introYears || 0}y` },
+              { label: "DBR 2 · follow-on", rate: r.roi.r2, emi: r.emi2, val: r.dbr2, note: "variable after fixed term" },
+              { label: "DBR 3 · stress", rate: r.roi.r3, emi: r.emi3, val: r.dbr3, note: "qualifying — never payable" },
+            ]
+          : [
+              { label: "DBR 1 · intro", rate: r.actualRate, emi: r.emi1, val: r.dbr1, note: "assessment rate" },
+              { label: "DBR 2 · follow-on", rate: r.assessmentRate, emi: r.emi2, val: r.dbr2, note: "same basis" },
+              { label: "DBR 3 · stress", rate: r.assessmentRate, emi: r.emi3, val: r.dbr3, note: "qualifying rate" },
+            ];
         return (
           <>
           <div className="grid grid-cols-3 gap-1 justify-items-center mt-4 pt-3.5" style={{ borderTop: "1px dashed var(--line)" }}>
-            {stages.map(([label, rate, note]) => {
-              const emi = emiFor(rate);
-              const val = dbr(emi);
+            {stages.map((s) => {
+              const emi = Math.round(s.emi);
               return (
-                <div key={label} className="flex flex-col items-center">
-                  <Dial value={val ?? 0} cap={cap} display={val != null ? `${val}%` : "—"} label={label} size={124} />
-                  <span className="mono text-[10px] text-[var(--ink-faint)] -mt-0.5">{rate.toFixed(2)}% · {fmtAED(emi)}/mo · {note}</span>
+                <div key={s.label} className="flex flex-col items-center">
+                  <Dial value={s.val ?? 0} cap={cap} display={s.val != null ? `${s.val}%` : "—"} label={s.label} size={124} />
+                  <span className="mono text-[10px] text-[var(--ink-faint)] -mt-0.5">{s.rate.toFixed(2)}% · {fmtAED(emi)}/mo · {s.note}</span>
                 </div>
               );
             })}
           </div>
-          <p className="text-[10px] text-[var(--ink-faint)] m-0 mt-1 text-center">DBR = (EMI + existing obligations) ÷ eligible monthly income. "—" means no income entered yet.</p>
+          <p className="text-[10px] text-[var(--ink-faint)] m-0 mt-1 text-center">
+            {'DBR = (EMI + existing obligations) / eligible monthly income. "—" means no income entered yet.'}
+          </p>
           </>
         );
       })()}
@@ -782,24 +817,32 @@ const PRINT_CSS = `
 
 export default function Calculator() {
   const { me, toast, nav, feeRules, docRules, clients, cases, bankProducts, eibor } = useHfmcStore();
+  /* The form survives View → Back and a browser refresh: the mirror in localStorage is
+     read once, here in the initialisers, so the figures are never silently reset. */
+  const formSeed = useMemo(() => {
+    try {
+      const raw = localStorage.getItem("hfmc_calc_form");
+      return raw ? (JSON.parse(raw) as Record<string, unknown>) : null;
+    } catch { return null; }
+  }, []);
   const [mode, setMode] = useState<CalcMode>("affordability");
-  const [input, setInput] = useState<MortgageInput>(defaultInput);
+  const [input, setInput] = useState<MortgageInput>(() => ((formSeed?.input as MortgageInput | undefined) ?? defaultInput()));
   // deal shape — auto-filled from the selected client's latest case, always editable
-  const [dealEmirate, setDealEmirate] = useState("Dubai");
-  const [dealTxn, setDealTxn] = useState("Resale");
+  const [dealEmirate, setDealEmirate] = useState(() => ((formSeed?.dealEmirate as string | undefined) ?? "Dubai"));
+  const [dealTxn, setDealTxn] = useState(() => ((formSeed?.dealTxn as string | undefined) ?? "Resale"));
   const [pickerOpen, setPickerOpen] = useState(false);
   // rate scenario — what-if over the three rates, or fetched from a bank product
-  const [rateStyle, setRateStyle] = useState<"fixed" | "variable">("fixed");
-  const [introRate, setIntroRate] = useState(0);
-  const [introYears, setIntroYears] = useState(3);
-  const [foTenor, setFoTenor] = useState<"1M" | "3M" | "6M" | "1Y">("3M");
-  const [foSpread, setFoSpread] = useState(0);
-  const [foFinal, setFoFinal] = useState(0);
-  const [useFoFinal, setUseFoFinal] = useState(false);
+  const [rateStyle, setRateStyle] = useState<"fixed" | "variable">(() => ((formSeed?.rateStyle as "fixed" | "variable" | undefined) ?? "fixed"));
+  const [introRate, setIntroRate] = useState(() => ((formSeed?.introRate as number | undefined) ?? 0));
+  const [introYears, setIntroYears] = useState(() => ((formSeed?.introYears as number | undefined) ?? 3));
+  const [foTenor, setFoTenor] = useState<"1M" | "3M" | "6M" | "1Y">(() => ((formSeed?.foTenor as "1M" | "3M" | "6M" | "1Y" | undefined) ?? "3M"));
+  const [foSpread, setFoSpread] = useState(() => ((formSeed?.foSpread as number | undefined) ?? 0));
+  const [foFinal, setFoFinal] = useState(() => ((formSeed?.foFinal as number | undefined) ?? 0));
+  const [useFoFinal, setUseFoFinal] = useState(() => ((formSeed?.useFoFinal as boolean | undefined) ?? false));
   // stress inference: spread filled -> follow-on + spread; else the direct ROI
   // typed in the second box; both empty -> follow-on itself
-  const [stressSpread, setStressSpread] = useState("");
-  const [stressFinal, setStressFinal] = useState("");
+  const [stressSpread, setStressSpread] = useState(() => ((formSeed?.stressSpread as string | undefined) ?? ""));
+  const [stressFinal, setStressFinal] = useState(() => ((formSeed?.stressFinal as string | undefined) ?? ""));
   const [fetchBank, setFetchBank] = useState("");
   const printStyle = <style>{PRINT_CSS}</style>;
   const [fetchProduct, setFetchProduct] = useState("");
@@ -879,7 +922,7 @@ export default function Calculator() {
 
   // three-scenario rates: explicit inputs, or auto-filled from the chosen bank product.
   // DBR1/2/3 use the calculator's own qualifying income + existing obligations.
-  const scenario = (() => {
+  const scenario = useMemo(() => {
     const sSpread = stressSpread.trim() === "" ? null : Number(stressSpread);
     const sFinal = stressFinal.trim() === "" ? null : Number(stressFinal);
     const r2 = (x: number) => Math.round(x * 10000) / 10000;
@@ -892,7 +935,7 @@ export default function Calculator() {
     const eib = eiborPct(foTenor) ?? 0;
     const followOn = r2(useFoFinal ? foFinal : eib + foSpread);
     return { intro: introRate, introYears, followOn, stress: stressOf(followOn) };
-  })();
+  }, [rateStyle, foTenor, foSpread, useFoFinal, foFinal, stressSpread, stressFinal, introRate, introYears, eibor]);
   const [whif, setWhif] = useState<WhifTab>("liab");
   const [cardId, setCardId] = useState("");
   const [cardLimit, setCardLimit] = useState("");
@@ -901,7 +944,16 @@ export default function Calculator() {
   const [extraIncome, setExtraIncome] = useState("");
 
   const up = (patch: Partial<MortgageInput>) => setInput((p) => ({ ...p, ...patch }));
-  const r = useMemo(() => computeMortgage(input), [input]);
+
+  /* The three ROIs travel WITH the input so the print route and the Excel export
+     can recompute the identical figures from a saved snapshot. `r` is therefore the
+     SINGLE source of rates, EMI and DBR — the screen below must read `r`, never
+     recompute them. */
+  const calcInput = useMemo<MortgageInput>(
+    () => ({ ...input, roi1Pct: scenario.intro, roi1Years: scenario.introYears, roi2Pct: scenario.followOn, roi3Pct: scenario.stress }),
+    [input, scenario],
+  );
+  const r = useMemo(() => computeMortgage(calcInput), [calcInput]);
 
   const setEmployment = (emp: string) => {
     const employment = (emp === "Self-Employed" ? "Self-Employed" : "Salaried") as Employment;
@@ -987,11 +1039,75 @@ export default function Calculator() {
     return rows;
   }, [input, extraIncome]);
 
-  const baseRow = { label: "Current (baseline)", dbr: r.currentDbr, residual: r.residualDbr, mpbf: r.finalMpbf };
-  const liabRows    = [baseRow, ...scenarioTable(input, liabScenarios)];
-  const rateRows    = [{ label: `Current · ${fmtPct(r.assessmentRate)}`, dbr: r.currentDbr, residual: r.residualDbr, mpbf: r.finalMpbf }, ...scenarioTable(input, rateScenarios)];
-  const tenorRows   = [{ label: `Current · ${tenorLabel(r.maxTenorMonths)}`, dbr: r.currentDbr, residual: r.residualDbr, mpbf: r.finalMpbf }, ...scenarioTable(input, tenorScenarios)];
-  const incomeRows  = [baseRow, ...scenarioTable(input, incomeScenarios)];
+  const baseRow = { label: "Current (baseline)", dbr: r.currentDbr, residual: r.residualDbr, maxEligible: r.maxEligible, dbr1: r.dbr1, dbr2: r.dbr2, dbr3: r.dbr3 };
+  const liabRows    = [baseRow, ...scenarioTable(calcInput, liabScenarios)];
+  const rateRows    = [{ label: `Current · ${r.roi ? fmtPct(r.qualifyingRate) : fmtPct(r.assessmentRate)}`, dbr: r.currentDbr, residual: r.residualDbr, maxEligible: r.maxEligible, dbr1: r.dbr1, dbr2: r.dbr2, dbr3: r.dbr3 }, ...scenarioTable(calcInput, rateScenarios)];
+  const tenorRows   = [{ label: `Current · ${tenorLabel(r.maxTenorMonths)}`, dbr: r.currentDbr, residual: r.residualDbr, maxEligible: r.maxEligible, dbr1: r.dbr1, dbr2: r.dbr2, dbr3: r.dbr3 }, ...scenarioTable(calcInput, tenorScenarios)];
+  const incomeRows  = [baseRow, ...scenarioTable(calcInput, incomeScenarios)];
+
+  const [savedId, setSavedId] = useState<number | null>(null);
+
+  /* ---------------- View / Print / Export Excel ----------------
+     The assessment document reads its figures from a snapshot in localStorage, so the
+     print route recomputes the identical numbers. The stamp is persisted with the form
+     bag so View → Back → View keeps the same reference. */
+  const [stamp, setStamp] = useState<string>(() => {
+    try {
+      const s = localStorage.getItem("hfmc_calc_stamp");
+      if (s) return s;
+    } catch { /* private mode */ }
+    const d = new Date();
+    const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
+    return `CALC-${ymd}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+  });
+
+  const eiborRow = eibor.find((e) => e.tenor === foTenor);
+
+  const openPrint = (viewMode: "full" | "summary", printNow = false) => {
+    const snap = {
+      input: calcInput,
+      meta: {
+        dealEmirate, dealTxn, mode: viewMode,
+        preparedBy: me?.name ?? "",
+        eiborAsOn: eiborRow?.updatedOn ?? todayISO(),
+        roi2FromEibor: !useFoFinal,
+        eiborTenor: foTenor,
+        eiborPct: eiborRow?.ratePct ?? null,
+        eiborMarginPct: useFoFinal ? null : foSpread,
+      },
+      stamp,
+    };
+    try { localStorage.setItem("hfmc_calc_print", JSON.stringify(snap)); } catch { /* private mode */ }
+    window.open(printNow ? "/calc-print?print=1" : "/calc-print", "_blank");
+  };
+
+  const exportXlsx = async () => {
+    try {
+      const [{ buildCalcWorkbook }, XLSX] = await Promise.all([
+        import("@/lib/calc-xlsx"),
+        import("xlsx"),
+      ]);
+      const wb = buildCalcWorkbook(calcInput, r, buildPrintModel(calcInput, r), {
+        dealEmirate, dealTxn, preparedBy: me?.name ?? "", stamp,
+      });
+      XLSX.writeFile(wb, `${stamp}.xlsx`);
+      toast("success", "Workbook saved — the Working sheet recalculates live in Excel.");
+    } catch (e) {
+      toast("error", "Could not build the workbook: " + (e instanceof Error ? e.message : "unknown"));
+    }
+  };
+
+  /* The form mirror is written on every change (see above) so View → Back and a browser
+     refresh land on the same figures. The stamp is persisted alongside it so the
+     printed reference stays stable for the same file. */
+  useEffect(() => {
+    try {
+      localStorage.setItem("hfmc_calc_stamp", stamp);
+      localStorage.setItem("hfmc_calc_form", JSON.stringify({
+        input, introRate, introYears, foTenor, foSpread, useFoFinal, foFinal, rateStyle, stressSpread, stressFinal, dealEmirate, dealTxn,
+      }));
+    } catch { /* private mode */ }
+  }, [input, introRate, introYears, foTenor, foSpread, useFoFinal, foFinal, rateStyle, stressSpread, stressFinal, dealEmirate, dealTxn, stamp]);
 
   /* ---------------- actions ---------------- */
   const onSave = async () => {
@@ -1012,6 +1128,8 @@ export default function Calculator() {
         body: JSON.stringify({ input: aff, caseId: null, customerName: input.name || "Unnamed applicant" }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json().catch(() => ({}));
+      setSavedId(typeof data.id === "number" ? data.id : -1);
       toast("success", "Check saved to the audit trail.");
     } catch (e) {
       toast("error", "Could not save check: " + (e instanceof Error ? e.message : "unknown"));
@@ -1085,10 +1203,26 @@ export default function Calculator() {
           />
           {mode === "affordability" && (
             <>
-              <button className="btn btn-ghost btn-sm" onClick={() => { setInput(defaultInput()); toast("info", "Calculator reset."); }}>
+              <button className="btn btn-ghost btn-sm" onClick={() => {
+                const d = new Date();
+                const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
+                const next = `CALC-${ymd}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+                setStamp(next);
+                setInput(blankInput());
+                toast("info", "Calculator reset — new reference " + next + ".");
+              }}>
                 Reset
               </button>
-              <button className="btn btn-ghost btn-sm" title="Print the detailed working — inputs, all three rate stages, DBR 1/2/3, trail" onClick={() => window.print()}>
+              <button className="btn btn-ghost btn-sm" title="Open the formatted assessment in a new tab — nothing is sent anywhere"
+                onClick={() => openPrint("full")}>
+                View
+              </button>
+              <button className="btn btn-ghost btn-sm" title="Save the assessment as Excel — 9 sheets with live formulas and the monthly amortisation"
+                onClick={exportXlsx}>
+                Export Excel
+              </button>
+              <button className="btn btn-primary btn-sm" title="Open the assessment and send it straight to the print dialog (Print / Save as PDF)"
+                onClick={() => openPrint("full", true)}>
                 Print / Save PDF
               </button>
             </>
@@ -1480,55 +1614,41 @@ export default function Calculator() {
               </div>
             </div>
 
-                        {/* assessment follows the stress rate automatically; rare overrides live in Advanced */}
-            {/* DBR 1·2·3 at this scenario — same figures as the dials opposite */}
-            {(() => {
-              const months = r.maxTenorMonths || 300;
-              const emiFor = (rate: number) => rate > 0 ? Math.round((input.requested * (rate / 100 / 12)) / (1 - Math.pow(1 + rate / 100 / 12, -months))) || 0 : 0;
-              const dbr = (e: number) => r.eligibleIncome > 0 ? Math.round(((e + r.existingEmis) / r.eligibleIncome) * 1000) / 10 : null;
-              const stages: [string, number][] = rateStyle === "fixed"
-                ? [["DBR 1 · intro " + scenario.intro.toFixed(2) + "%" + (scenario.introYears ? " · " + scenario.introYears + "y" : ""), scenario.intro],
-                   ["DBR 2 · follow-on " + scenario.followOn.toFixed(2) + "%", scenario.followOn],
-                   ["DBR 3 · stress " + scenario.stress.toFixed(2) + "%", scenario.stress]]
-                : [["DBR 1 · day-1 " + scenario.intro.toFixed(2) + "%", scenario.intro],
-                   ["DBR 2 · ongoing " + scenario.followOn.toFixed(2) + "%", scenario.followOn],
-                   ["DBR 3 · stress " + scenario.stress.toFixed(2) + "%", scenario.stress]];
-              return (
-                <div className="grid grid-cols-3 gap-2.5 mt-3.5 pt-3.5" style={{ borderTop: "1px dashed var(--line)" }}>
-                  {stages.map(([label, rate], i) => {
-                    const emi = emiFor(rate);
-                    const val = dbr(emi);
-                    const tone = i === 2 ? "var(--amber)" : undefined;
-                    return (
-                      <div key={label} className="rounded-lg px-3 py-2" style={{ background: i === 2 ? "var(--amber-tint)" : "var(--bg2)", border: i === 2 ? "1px solid var(--amber)" : "1px solid var(--line)" }}>
-                        <div className="text-[10px] font-disp font-semibold" style={{ color: tone ?? "var(--ink-faint)" }}>{label}</div>
-                        <div className="mono text-[15px] font-bold mt-0.5" style={{ color: tone }}>{val != null ? val + "%" : "—"}</div>
-                        <div className="text-[10.5px] text-[var(--ink-faint)] mono">EMI {fmtAED(emi)}</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })()}
+                        {/* ROI 3 is the qualifying rate for maximum eligibility. */}
+            {/* DBR 1·2·3 at this scenario — read from the ENGINE, same figures as the dials opposite */}
+            {r.roi ? (
+              <div className="grid grid-cols-3 gap-2.5 mt-3.5 pt-3.5" style={{ borderTop: "1px dashed var(--line)" }}>
+                {[
+                  { label: `DBR 1 · intro ${r.roi.r1.toFixed(2)}%${r.roi.introYears ? ` · ${r.roi.introYears}y` : ""}`, emi: r.emi1, val: r.dbr1 },
+                  { label: `DBR 2 · follow-on ${r.roi.r2.toFixed(2)}%`, emi: r.emi2, val: r.dbr2 },
+                  { label: `DBR 3 · stress ${r.roi.r3.toFixed(2)}%`, emi: r.emi3, val: r.dbr3 },
+                ].map(({ label, emi, val }, i) => (
+                  <div key={label} className="rounded-lg px-3 py-2" style={{ background: i === 2 ? "var(--amber-tint)" : "var(--bg2)", border: i === 2 ? "1px solid var(--amber)" : "1px solid var(--line)" }}>
+                    <div className="text-[10px] font-disp font-semibold" style={{ color: i === 2 ? "var(--amber)" : "var(--ink-faint)" }}>{label}</div>
+                    <div className="mono text-[15px] font-bold mt-0.5" style={{ color: i === 2 ? "var(--amber)" : undefined }}>{val}%</div>
+                    <div className="text-[10.5px] text-[var(--ink-faint)] mono">EMI {fmtAED(Math.round(emi))}</div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
 
             <details className="mt-3.5 pt-3.5 text-[12px]" style={{ borderTop: "1px dashed var(--line)" }}>
               <summary className="cursor-pointer font-disp font-semibold text-[var(--ink-faint)]">
-                Assessment rate (drives the MPBF) — currently {fmtPct(r.assessmentRate)} · tenor {tenorLabel(r.maxTenorMonths)}
+                Qualifying rate (drives MAX ELIGIBLE) — {r.roi ? <>ROI 3 → {fmtPct(r.qualifyingRate)}</> : <>currently {fmtPct(r.assessmentRate)}</>} · tenor {tenorLabel(r.maxTenorMonths)}
               </summary>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2.5">
                 <div>
-                  <label className="label">Assessment rate %</label>
+                  <label className="label">Contracted rate % <span className="normal-case tracking-normal" style={{ color: "var(--ink-faint)" }}>— EMI basis</span></label>
                   <input className="input mono" type="number" step={0.05} min={0} value={input.actualRate}
                     onChange={(e) => up({ actualRate: Number(e.target.value) || 0 })} />
                 </div>
-                <div className="flex items-end pb-1">
-                  <button type="button" className="btn btn-ghost btn-sm" title="Copy the scenario stress rate into the assessment rate"
-                    onClick={() => up({ actualRate: Math.round(scenario.stress * 100) / 100, stressOverride: null })}>
-                    Use stress ({scenario.stress.toFixed(2)}%)
-                  </button>
-                </div>
                 <div>
-                  <label className="label">Load factor</label>
+                  <label className="label">Manual stress rate — optional</label>
+                  <input className="input mono" type="number" step={0.05} min={0} value={input.stressOverride ?? ""} placeholder={r.roi ? `ROI 3: ${fmtPct(r.qualifyingRate)}` : `auto: ${fmtPct(input.actualRate + input.loadFactor)}`}
+                    onChange={(e) => up({ stressOverride: e.target.value === "" ? null : Number(e.target.value) || 0 })} />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="label">Load factor — legacy fallback, used only when ROI 1/2/3 are absent</label>
                   <div className="flex gap-1.5 flex-wrap">
                     {[1.5, 2, 3, 4].map((l) => (
                       <button key={l} type="button" className="chip transition-all"
@@ -1561,8 +1681,8 @@ export default function Calculator() {
           </Section>
         </div>
 
-        {/* ================= results column ================= */}
-        <div className="space-y-4">
+        {/* ================= results column — sticky so verdict never scrolls away ================= */}
+        <div className="space-y-4 xl:sticky xl:top-[86px] xl:self-start xl:max-h-[calc(100vh-100px)] xl:overflow-y-auto xl:pr-1 xl:-mr-1 xl:scrollbar-thin">
           {/* proposal-style preview — the full working on one sheet, prints as-is */}
           <div className="card anim-fade-up" style={{ background: "var(--surface)" }}>
             <div className="flex items-center justify-between px-4 pt-3.5 pb-2.5" style={{ borderBottom: "2px solid var(--amber)" }}>
@@ -1590,6 +1710,12 @@ export default function Calculator() {
                   <div className="mono text-[13px] font-semibold">{fmtAED(r.eligibleIncome)}/mo</div>
                 </div>
               </div>
+              {input.requested > 0 && (
+                <div className="rounded-lg px-3 py-2 text-[11px]" style={{ background: r.requestEligible ? "var(--mint-tint)" : "var(--coral-tint)", border: `1px solid ${r.requestEligible ? "var(--mint)" : "var(--coral)"}` }}>
+                  <span className="font-disp font-semibold" style={{ color: r.requestEligible ? "var(--mint)" : "var(--coral)" }}>{r.requestEligible ? "REQUEST ELIGIBLE" : "REQUEST NOT ELIGIBLE"}</span>
+                  <span className="mono"> · ROI 3 DBR {fmtPct(r.dbr3)} / {fmtPct(r.maxDbr)} · maximum permissible finance {fmtAED(r.maxEligible)}</span>
+                </div>
+              )}
 
               <table className="w-full text-[11.5px]">
                 <thead>
@@ -1599,45 +1725,39 @@ export default function Calculator() {
                   </tr>
                 </thead>
                 <tbody>
-                  {(() => {
-                    const months = r.maxTenorMonths || 300;
-                    const emiFor = (rate: number) => rate > 0 ? Math.round((input.requested * (rate / 100 / 12)) / (1 - Math.pow(1 + rate / 100 / 12, -months))) || 0 : 0;
-                    const dbr = (e: number) => r.eligibleIncome > 0 ? Math.round(((e + r.existingEmis) / r.eligibleIncome) * 1000) / 10 : 0;
-                    const rows: [string, number, string][] = rateStyle === "fixed"
-                      ? [["1 · Intro (fixed)", scenario.intro, scenario.introYears ? `${scenario.introYears}y fixed` : "intro"],
-                         ["2 · After intro", scenario.followOn, `${foTenor} EIBOR + ${foSpread}%`],
-                         ["3 · Stress-qualified", scenario.stress, "qualifying rate"]]
-                      : [["1 · Day-1 rate", scenario.intro, `${foTenor} EIBOR + ${foSpread}%`],
-                         ["2 · Ongoing", scenario.followOn, "same basis"],
-                         ["3 · Stress-qualified", scenario.stress, "qualifying rate"]];
-                    return rows.map(([label, rate, note], i) => (
+                  {r.roi ? (
+                    ([
+                      { label: "1 · Intro (fixed)", rate: r.roi.r1, emi: r.emi1, dbr: r.dbr1, note: r.roi.introYears ? `${r.roi.introYears}y fixed` : "intro" },
+                      { label: "2 · After intro", rate: r.roi.r2, emi: r.emi2, dbr: r.dbr2, note: "variable after fixed term" },
+                      { label: "3 · Stress-qualified", rate: r.roi.r3, emi: r.emi3, dbr: r.dbr3, note: "qualifying — never payable" },
+                    ] as const).map(({ label, rate, emi, dbr, note }, i) => (
                       <tr key={label} style={{ borderTop: "1px dashed var(--line)" }}>
                         <td className="py-1.5">{label}<span className="text-[10px] text-[var(--ink-faint)]"> · {note}</span></td>
                         <td className="mono text-center">{rate.toFixed(2)}%</td>
-                        <td className="mono text-center">{fmtAED(emiFor(rate))}</td>
-                        <td className="mono text-center font-semibold" style={{ color: i === 2 ? "var(--amber)" : undefined }}>{dbr(emiFor(rate))}%</td>
+                        <td className="mono text-center">{fmtAED(Math.round(emi))}</td>
+                        <td className="mono text-center font-semibold" style={{ color: i === 2 ? "var(--amber)" : undefined }}>{dbr}%</td>
                       </tr>
-                    ));
-                  })()}
+                    ))
+                  ) : null}
                   <tr style={{ borderTop: "1px dashed var(--line)" }}>
                     <td className="py-1.5 text-[var(--ink-dim)]">Existing obligations</td>
                     <td /><td className="mono text-center">{fmtAED(r.existingEmis)}</td>
-                    <td className="mono text-center">{r.currentDbr}%</td>
+                    <td className="mono text-center">{fmtPct(r.currentDbr)}</td>
                   </tr>
                 </tbody>
               </table>
 
               <div className="flex flex-wrap gap-x-5 gap-y-1 pt-2 mono text-[11.5px]" style={{ borderTop: "1px solid var(--line)" }}>
-                <span>Assessment: <strong style={{ color: "var(--amber)" }}>{fmtPct(r.assessmentRate)}</strong></span>
+                <span>Qualifying: <strong style={{ color: "var(--amber)" }}>{r.roi ? fmtPct(r.qualifyingRate) : fmtPct(r.assessmentRate)}</strong></span>
                 <span>Tenor: <strong>{tenorLabel(r.maxTenorMonths)}</strong></span>
                 <span>DBR ceiling: <strong>{r.maxDbr}%</strong></span>
                 <span>Available EMI: <strong>{fmtAED(r.availableEmi)}</strong></span>
-                <span>MPBF: <strong style={{ color: "var(--mint)" }}>{fmtAED(r.finalMpbf ?? 0)}</strong></span>
+                <span>Maximum finance: <strong style={{ color: "var(--mint)" }}>{fmtAED(r.maxEligible ?? 0)}</strong></span>
               </div>
             </div>
           </div>
 
-          <MpbfHeadline r={r} input={input} scenario={scenario} rateStyle={rateStyle} foTenor={foTenor} foSpread={foSpread} />
+          <MpbfHeadline r={r} input={input} />
 
           <KeyMetrics r={r} />
 
@@ -1648,6 +1768,21 @@ export default function Calculator() {
             <button className="btn btn-mint justify-center" onClick={onSave}>
               <IDownload size={15} /> Save check to audit trail
             </button>
+            {savedId != null && (
+              <button
+                className="btn btn-ghost justify-center"
+                title="Copy a client-friendly summary to share on WhatsApp"
+                onClick={() => {
+                  const msg = `HFMC eligibility — ${input.name || "applicant"}: requested ${fmtAED(r.requested)} is ${r.requestEligible ? "ELIGIBLE" : "NOT ELIGIBLE"} (ROI 3 DBR ${r.dbr3}% of ${r.maxDbr}% cap). Maximum permissible finance is ${fmtAED(r.maxEligible)} (${r.maxEligibleLimitedBy} binds). DBR 1/2/3: ${r.dbr1}%/${r.dbr2}%/${r.dbr3}%. Indicative only — not a bank approval.`;
+                  navigator.clipboard?.writeText(msg).then(
+                    () => toast("success", "Client summary copied — paste it on WhatsApp."),
+                    () => toast("error", "Copy failed — select the working manually.")
+                  );
+                }}
+              >
+                📋 Copy client summary
+              </button>
+            )}
             <button className="btn btn-ghost justify-center" onClick={onNewCase}>
               <IBank size={15} /> New case from this
             </button>
@@ -1700,7 +1835,7 @@ export default function Calculator() {
               {liabScenarios.length === 0 ? (
                 <p className="text-[12.5px] text-[var(--ink-faint)] m-0">Add liabilities above to model reductions and removals.</p>
               ) : (
-                <ScenarioTable rows={liabRows} base={r.finalMpbf} />
+                <ScenarioTable rows={liabRows} base={r.maxEligible} />
               )}
             </div>
           )}
@@ -1711,7 +1846,7 @@ export default function Calculator() {
                 <span className="text-[12px] text-[var(--ink-faint)]">Manual assessment rate:</span>
                 <input className="input mono" style={{ width: 130 }} type="number" min={0} step={0.05} placeholder="e.g. 6.50" value={manualRate} onChange={(e) => setManualRate(e.target.value)} />
               </div>
-              <ScenarioTable rows={rateRows} base={r.finalMpbf} />
+              <ScenarioTable rows={rateRows} base={r.maxEligible} />
             </div>
           )}
 
@@ -1721,7 +1856,7 @@ export default function Calculator() {
                 <span className="text-[12px] text-[var(--ink-faint)]">Manual tenor (months):</span>
                 <input className="input mono" style={{ width: 130 }} type="number" min={12} step={12} placeholder="e.g. 178" value={manualTenor} onChange={(e) => setManualTenor(e.target.value)} />
               </div>
-              <ScenarioTable rows={tenorRows} base={r.finalMpbf} />
+              <ScenarioTable rows={tenorRows} base={r.maxEligible} />
             </div>
           )}
 
@@ -1731,7 +1866,7 @@ export default function Calculator() {
                 <span className="text-[12px] text-[var(--ink-faint)]">Hypothetical extra allowance (AED/mo):</span>
                 <input className="input mono" style={{ width: 150 }} type="number" min={0} step={500} placeholder="e.g. 3000" value={extraIncome} onChange={(e) => setExtraIncome(e.target.value)} />
               </div>
-              <ScenarioTable rows={incomeRows} base={r.finalMpbf} />
+              <ScenarioTable rows={incomeRows} base={r.maxEligible} />
             </div>
           )}
         </div>

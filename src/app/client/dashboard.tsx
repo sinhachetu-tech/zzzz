@@ -24,7 +24,7 @@ const TABS: { id: Tab; label: string; Icon: (p: { size?: number }) => ReactEleme
 ];
 
 export function ClientDashboard() {
-  const { me, engagements, case: c, stages, stageTransitions, documents, advisor, profile, profileClientVerifiedAt, logout, switchCase, hydrate, vaultDocuments } = useClientStore();
+  const { me, engagements, case: c, stages, stageTransitions, documents, advisor, advisorWhatsapp, profile, profileClientVerifiedAt, logout, switchCase, hydrate, vaultDocuments } = useClientStore();
   const [tab, setTab] = useState<Tab>("journey");
 
   const activeStages = useMemo(() => stages.filter((s) => s.active).sort((a, b) => a.sortOrder - b.sortOrder), [stages]);
@@ -72,7 +72,7 @@ export function ClientDashboard() {
         {tab === "journey" && (
           <JourneyTab
             c={c} greeting={greeting} progressPct={progressPct}
-            engagements={engagements} switchCase={switchCase} advisor={advisor}
+            engagements={engagements} switchCase={switchCase} advisor={advisor} advisorWhatsapp={advisorWhatsapp}
             activeStages={activeStages} currentIdx={currentIdx}
             showPreApproval={showPreApproval} showFOL={showFOL}
             stageTransitions={stageTransitions} verified={profileClientVerifiedAt}
@@ -113,12 +113,13 @@ export function ClientDashboard() {
 
 /* ================= JOURNEY tab ================= */
 
-function JourneyTab({ c, greeting, progressPct, engagements, switchCase, advisor, activeStages, currentIdx, showPreApproval, showFOL, stageTransitions, verified }: {
+function JourneyTab({ c, greeting, progressPct, engagements, switchCase, advisor, advisorWhatsapp, activeStages, currentIdx, showPreApproval, showFOL, stageTransitions, verified }: {
   c: NonNullable<ReturnType<typeof useClientStore.getState>["case"]>;
   greeting: string; progressPct: number;
   engagements: { id: number; caseNumber: string; banks: string[]; stage: string; caseStatus: string; loanAmount: number; wonBank: string | null }[];
   switchCase: (id: number) => Promise<void>;
   advisor: { name: string; role: string } | null;
+  advisorWhatsapp: string | null;
   activeStages: { id: number; label: string; sortOrder: number; active: boolean }[];
   currentIdx: number;
   showPreApproval: boolean; showFOL: boolean;
@@ -193,9 +194,9 @@ function JourneyTab({ c, greeting, progressPct, engagements, switchCase, advisor
             <div className="text-[14.5px] font-medium leading-tight">{advisor.name}</div>
             <div className="text-[11px] text-[var(--ink-faint)]">{advisor.role} · replies within hours</div>
           </div>
-          {c.whatsapp && (
+          {(advisorWhatsapp || c.whatsapp) && (
             <a className="btn btn-mint btn-sm shrink-0"
-              href={`https://wa.me/${c.whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(`Hello, I have a question about my case ${c.caseNumber}.`)}`}
+              href={`https://wa.me/${(advisorWhatsapp || c.whatsapp).replace(/\D/g, "")}?text=${encodeURIComponent(`Hello, I have a question about my case ${c.caseNumber}.`)}`}
               target="_blank" rel="noreferrer">
               <IWhatsapp size={14} /> Ask
             </a>

@@ -5,15 +5,22 @@
    row for the full Case 360. Dashboard is analytics; this is where work
    actually gets picked up. */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useHfmcStore } from "@/lib/client-store";
 import type { CaseStatus, LoanCase } from "@/lib/types";
-import { caseStatusOf, fmtMoney, ageDays } from "@/lib/format";
+import { ageDays, caseStatusOf, fmtMoney } from "@/lib/format";
 import { Avatar, Chip, EmptyState, StatusChip } from "@/components/hfmc/ui";
 import { BankChips, CaseStateChip, SourceChip } from "@/components/hfmc/bits";
 import { IBriefcase, IInbox } from "@/components/icons";
 
 const STATE_TABS: ("Active" | "Booked" | "Lost" | "All")[] = ["Active", "Booked", "Lost", "All"];
+
+const SAVED_VIEWS: { label: string; apply: (patch: { stateTab: (typeof STATE_TABS)[number]; stage: string; status: string; owner: string; sort: string }) => { stateTab: (typeof STATE_TABS)[number]; stage: string; status: string; owner: string; sort: string } }[] = [
+  { label: "My overdue", apply: () => ({ stateTab: "Active", stage: "All", status: "Overdue", owner: "mine", sort: "urgency" }) },
+  { label: "High value >1M", apply: () => ({ stateTab: "Active", stage: "All", status: "All", owner: "All", sort: "amount" }) },
+  { label: "No action 3d+", apply: () => ({ stateTab: "Active", stage: "All", status: "No Action", owner: "All", sort: "urgency" }) },
+  { label: "Unassigned", apply: () => ({ stateTab: "Active", stage: "All", status: "All", owner: "unassigned", sort: "newest" }) },
+];
 
 export default function Cases() {
   const { cases, stages, users, me, nav, userById, visibleCases, flags, tasks } = useHfmcStore();
@@ -23,6 +30,28 @@ export default function Cases() {
   const [owner, setOwner] = useState("All");
   const [sort, setSort] = useState("urgency");
   const [stateTab, setStateTab] = useState<(typeof STATE_TABS)[number]>("Active");
+  const [activeView, setActiveView] = useState<string | null>(null);
+
+  // Persist filters — the worklist survives refresh / share-the-habit.
+  /* eslint-disable react-hooks/set-state-in-effect -- the saved filter set is
+     only knowable on the client; one pass seeds it, the write-back effect keeps it */
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("hfmc.casesFilters");
+      if (!raw) return;
+      const f = JSON.parse(raw);
+      if (f.search !== undefined) setSearch(f.search);
+      if (f.stage) setStage(f.stage);
+      if (f.status) setStatus(f.status);
+      if (f.owner) setOwner(f.owner);
+      if (f.sort) setSort(f.sort);
+      if (f.stateTab && (STATE_TABS as string[]).includes(f.stateTab)) setStateTab(f.stateTab);
+    } catch { /* private mode */ }
+  }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    try { localStorage.setItem("hfmc.casesFilters", JSON.stringify({ search, stage, status, owner, sort, stateTab })); } catch { /* private mode */ }
+  }, [search, stage, status, owner, sort, stateTab]);
 
   const visCases = useMemo(() => visibleCases(), [visibleCases, cases]);
   const statusOf = (c: LoanCase): CaseStatus => caseStatusOf(c, tasks);
@@ -41,8 +70,12 @@ export default function Cases() {
       if (stateTab === "Booked" && c.caseStatus !== "Closed") return false;
       if (stateTab === "Lost" && c.caseStatus !== "Lost") return false;
       if (stage !== "All" && c.stage !== stage) return false;
-      if (owner !== "All" && c.ownerId !== parseInt(owner, 10)) return false;
+      if (owner === "mine" && c.ownerId !== me?.id) return false;
+      else if (owner === "unassigned" && c.ownerId !== 1) return false;
+      else if (owner !== "All" && owner !== "mine" && owner !== "unassigned" && c.ownerId !== parseInt(owner, 10)) return false;
       if (status !== "All" && statusOf(c) !== status) return false;
+      // High value view reuses amount sort + 1M floor
+      if (activeView === "High value >1M" && c.loanAmount < 1_000_000) return false;
       if (search) {
         const q = search.toLowerCase();
         if (!c.customer.toLowerCase().includes(q) && !c.caseNumber.toLowerCase().includes(q) && !c.banks.some((b) => b.toLowerCase().includes(q))) return false;
@@ -79,6 +112,30 @@ export default function Cases() {
       </div>
 
       <div className="card anim-fade-up">
+        {/* Saved views — one-tap filters managers actually use */}
+        <div className="flex flex-wrap items-center gap-1.5 px-3 pt-3">
+          {SAVED_VIEWS.map((v) => {
+            const on = activeView === v.label;
+            return (
+              <button key={v.label} className="chip transition-all"
+                style={on ? { background: "var(--amber-tint)", borderColor: "var(--amber)", color: "var(--amber)" } : undefined}
+                onClick={() => {
+                  if (on) { setActiveView(null); return; }
+                  const p = v.apply({ stateTab, stage, status, owner, sort });
+                  setStateTab(p.stateTab); setStage(p.stage); setStatus(p.status); setOwner(p.owner); setSort(p.sort);
+                  setActiveView(v.label);
+                }}>
+                {v.label}
+              </button>
+            );
+          })}
+          {(search || stage !== "All" || status !== "All" || owner !== "All" || activeView) && (
+            <button className="text-[11.5px] ml-1 text-[var(--ink-faint)] hover:text-[var(--coral)] transition-colors"
+              onClick={() => { setSearch(""); setStage("All"); setStatus("All"); setOwner("All"); setSort("urgency"); setStateTab("Active"); setActiveView(null); }}>
+              Clear ×
+            </button>
+          )}
+        </div>
         <div className="flex flex-wrap items-center gap-2 p-3 border-b" style={{ borderColor: "var(--line-soft)" }}>
           <div className="flex rounded-lg overflow-hidden border w-full sm:w-auto" style={{ borderColor: "var(--line)" }}>
             {STATE_TABS.map((t) => (
@@ -100,8 +157,10 @@ export default function Cases() {
               {["On Track", "At Risk", "Overdue", "No Action"].map((s) => <option key={s}>{s}</option>)}
             </select>
           )}
-          <select className="select w-full sm:!w-[140px]" value={owner} onChange={(e) => setOwner(e.target.value)}>
+          <select className="select w-full sm:!w-[140px]" value={owner} onChange={(e) => { setOwner(e.target.value); setActiveView(null); }}>
             <option value="All">All owners</option>
+            <option value="mine">Mine</option>
+            <option value="unassigned">Unassigned</option>
             {users.filter((u) => u.role !== "Head of Company" && u.role !== "PA to HoC").map((u) => <option key={u.id} value={u.id}>{u.name.split(" ")[0]}</option>)}
           </select>
           <select className="select w-full sm:!w-[140px] sm:ml-auto" value={sort} onChange={(e) => setSort(e.target.value)}>
@@ -112,7 +171,7 @@ export default function Cases() {
           </select>
         </div>
 
-        <div className="overflow-x-auto" style={{ maxHeight: "60vh" }}>
+        <div className="overflow-x-auto hidden sm:block" style={{ maxHeight: "60vh" }}>
           {filtered.length === 0 ? (
             <div className="p-6">
               <EmptyState icon={<IInbox size={26} />} title={`Nothing in “${stateTab}”`} body="Adjust the filters, or use the Add lead button in the top bar to get things moving." />
@@ -196,6 +255,30 @@ export default function Cases() {
                 })}
               </tbody>
             </table>
+          )}
+        </div>
+        {/* Mobile card list — no horizontal scroll, thumb-sized tap targets */}
+        <div className="sm:hidden divide-y" style={{ borderColor: "var(--line-soft)" }}>
+          {filtered.slice(0, 60).map((c) => {
+            const st = statusOf(c);
+            return (
+              <button key={c.id} className="w-full text-left px-3.5 py-3 flex items-center gap-3 active:bg-[var(--tint)]" onClick={() => nav({ name: "case", id: c.id })}>
+                <Avatar name={userById(c.ownerId)?.name ?? "?"} size={32} />
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-1.5">
+                    <span className="text-[13px] font-semibold truncate">{c.customer}</span>
+                    {c.onHold && <span className="chip shrink-0" style={{ color: "var(--amber)", background: "rgba(242,176,76,0.12)", borderColor: "rgba(242,176,76,0.4)", padding: "1px 6px", fontSize: "9px" }}>HOLD</span>}
+                  </span>
+                  <span className="block mono text-[10px] text-[var(--ink-faint)] mt-0.5">{c.caseNumber} · {fmtMoney(c.loanAmount)} · {c.stage} · {ageDays(c.createdAt)}d</span>
+                </span>
+                {c.caseStatus === "Active" ? <StatusChip status={st} /> : <CaseStateChip state={c.caseStatus} />}
+              </button>
+            );
+          })}
+          {filtered.length === 0 && (
+            <div className="p-6">
+              <EmptyState icon={<IInbox size={26} />} title={`Nothing in “${stateTab}”`} body="Adjust the filters, or use the Add lead button in the top bar to get things moving." />
+            </div>
           )}
         </div>
         <div className="px-4 py-2.5 border-t text-[11.5px] text-[var(--ink-faint)] flex items-center gap-2" style={{ borderColor: "var(--line-soft)" }}>

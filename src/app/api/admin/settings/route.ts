@@ -18,11 +18,17 @@ export async function PUT(req: NextRequest) {
   if (!flags.admin && !flags.super) return NextResponse.json({ error: "forbidden" }, { status: 403 });
   const body = await req.json() as {
     clientPortalAdvisorId?: number | null;
+    clientFacingUserId?: number | null;
+    clientPortalWhatsapp?: string;
+    agentDeskUserId?: number | null;
     agentDeskName?: string;
     agentDeskPhone?: string;
   };
   const settings = await savePortalSettings({
     clientPortalAdvisorId: body.clientPortalAdvisorId !== undefined ? (body.clientPortalAdvisorId ? Number(body.clientPortalAdvisorId) : null) : undefined,
+    clientFacingUserId: body.clientFacingUserId !== undefined ? (body.clientFacingUserId ? Number(body.clientFacingUserId) : null) : undefined,
+    clientPortalWhatsapp: body.clientPortalWhatsapp,
+    agentDeskUserId: body.agentDeskUserId !== undefined ? (body.agentDeskUserId ? Number(body.agentDeskUserId) : null) : undefined,
     agentDeskName: body.agentDeskName,
     agentDeskPhone: body.agentDeskPhone,
   });

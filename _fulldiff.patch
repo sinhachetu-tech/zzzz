@@ -1,0 +1,58 @@
+diff --git a/prisma/schema.prisma b/prisma/schema.prisma
+index e744826..e7534a6 100644
+--- a/prisma/schema.prisma
++++ b/prisma/schema.prisma
+@@ -18,6 +18,7 @@ model User {
+   role      String // designation label, e.g. "Mortgage Head"
+   team      String
+   active    Boolean  @default(true)
++  phone     String?  // WhatsApp / direct line — shown to clients (advisor card) and agents (desk card)
+   createdAt DateTime @default(now())
+ 
+   ownedCases      LoanCase[]      @relation("CaseOwner")
+diff --git a/src/app/api/admin/route.ts b/src/app/api/admin/route.ts
+index c5f843d..be14105 100644
+--- a/src/app/api/admin/route.ts
++++ b/src/app/api/admin/route.ts
+@@ -97,7 +97,7 @@ export async function POST(req: NextRequest) {
+       return NextResponse.json({ item: serMaster(item) });
+     }
+     if (kind === "user") {
+-      const item = await db.user.create({ data: { name: body.name, email: body.email.toLowerCase(), password: body.password || "demo123", role: body.role, team: body.team || "Dubai", active: body.active ?? true } });
++      const item = await db.user.create({ data: { name: body.name, email: body.email.toLowerCase(), password: body.password || "demo123", role: body.role, team: body.team || "Dubai", active: body.active ?? true, phone: body.phone?.trim() || null } });
+       return NextResponse.json({ item: serUser(item) });
+     }
+     if (kind === "designation") {
+@@ -206,6 +206,7 @@ export async function PATCH(req: NextRequest) {
+     if (kind === "user") {
+       const data: Record<string, unknown> = { name: body.name, email: body.email?.toLowerCase(), role: body.role, team: body.team, active: body.active };
+       if (body.password) data.password = body.password;
++      if (body.phone !== undefined) data.phone = body.phone?.trim() || null;
+       const item = await db.user.update({ where: { id: numId }, data });
+       return NextResponse.json({ item: serUser(item) });
+     }
+diff --git a/src/lib/ser.ts b/src/lib/ser.ts
+index 6f69ce5..e6b2f31 100644
+--- a/src/lib/ser.ts
++++ b/src/lib/ser.ts
+@@ -17,7 +17,7 @@ type PrismaUser = {
+ export function serUser(u: PrismaUser): User {
+   return {
+     id: u.id, name: u.name, email: u.email, password: "", role: u.role, team: u.team,
+-    active: u.active, createdAt: u.createdAt.toISOString(),
++    active: u.active, phone: (u as unknown as { phone?: string | null }).phone ?? null, createdAt: u.createdAt.toISOString(),
+   };
+ }
+ 
+diff --git a/src/lib/types.ts b/src/lib/types.ts
+index 361ccb1..fd987a2 100644
+--- a/src/lib/types.ts
++++ b/src/lib/types.ts
+@@ -25,6 +25,7 @@ export interface User {
+   role: string;
+   team: string;
+   active: boolean;
++  phone?: string | null; // WhatsApp / direct line — shown on client & agent portal contact cards
+   createdAt: string;
+ }
+ 

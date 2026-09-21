@@ -22,6 +22,7 @@ interface ClientState {
   documents: { id: number; fileName: string; fileType: string; fileSize: number; uploadedAt: string }[];
   vaultDocuments: { id: number; title: string; category: string; status: string; clientCanUpload: boolean; rejectionReason: string; notes: string; fileName: string | null; fileSize: number | null; uploadedAt: string | null }[];
   advisor: { name: string; role: string } | null;
+  advisorWhatsapp: string | null;
   profile: unknown;
   profileClientVerifiedAt: string | null;
   loaded: boolean;
@@ -31,7 +32,7 @@ interface ClientState {
 }
 
 export const useClientStore = create<ClientState>((set, get) => ({
-  me: null, engagements: [], case: null, profile: null, profileClientVerifiedAt: null, stages: [], stageTransitions: [], documents: [], vaultDocuments: [], advisor: null, loaded: false,
+  me: null, engagements: [], case: null, profile: null, profileClientVerifiedAt: null, stages: [], stageTransitions: [], documents: [], vaultDocuments: [], advisor: null, advisorWhatsapp: null, loaded: false,
   hydrate: async (caseId) => {
     try {
       const res = await fetch("/api/client/state" + (caseId ? `?caseId=${caseId}` : ""), { cache: "no-store" });

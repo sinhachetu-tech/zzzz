@@ -34,9 +34,15 @@ export async function GET() {
   const totalPipelineValue = active.reduce((s, c) => s + c.loanAmount, 0);
   const projectedCommission = active.reduce((s, c) => s + (c.commission.partnerCut || 0), 0);
 
-  // HFMC staff representative shown on the agent's home card — Admin → Portal settings
+  // HFMC staff representative shown on the agent's home card — Admin → Portal
+  // settings. Name + number always paired from one staff record; falls back to
+  // the legacy free-text desk name/phone when no staff is picked.
   const settings = await getPortalSettings();
-  const desk = { name: settings.agentDeskName, phone: settings.agentDeskPhone };
+  let desk: { name: string; phone: string | null } = { name: settings.agentDeskName, phone: settings.agentDeskPhone || null };
+  if (settings.agentDeskUserId) {
+    const deskUser = await db.user.findUnique({ where: { id: settings.agentDeskUserId } });
+    if (deskUser?.active) desk = { name: deskUser.name, phone: deskUser.phone };
+  }
 
   return NextResponse.json({
     me,

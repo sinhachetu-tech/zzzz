@@ -218,7 +218,27 @@ export function CaseProfileEditor({ c, onSaved }: Props) {
         </button>
       </div>
 
-      {/* Tabs */}
+      {/* Tabs — numbered stepper with progress so qualification feels guided */}
+      <div className="px-4 pt-3">
+        <div className="flex items-center gap-1.5" aria-label="Qualification progress">
+          {(["primary", "property", "joint"] as const).map((t, i) => {
+            const labels = ["Personal", "Property", "Joint"];
+            const order = { primary: 0, property: 1, joint: 2 } as const;
+            const done = order[activeTab] > i;
+            const cur = activeTab === t;
+            return (
+              <button key={t} onClick={() => setActiveTab(t)} className="flex-1 flex items-center gap-1.5 group">
+                <span className="w-5 h-5 rounded-full flex items-center justify-center mono text-[10px] font-semibold shrink-0"
+                  style={cur ? { background: "var(--amber)", color: "#fff" } : done ? { background: "var(--mint)", color: "#fff" } : { background: "var(--track)", color: "var(--ink-faint)" }}>
+                  {done ? <ICheck size={11} /> : i + 1}
+                </span>
+                <span className="text-[11px] font-disp font-semibold hidden sm:inline" style={{ color: cur ? "var(--ink)" : "var(--ink-faint)" }}>{labels[i]}</span>
+                {i < 2 && <span className="flex-1 h-px mx-1" style={{ background: done ? "var(--mint)" : "var(--line)" }} />}
+              </button>
+            );
+          })}
+        </div>
+      </div>
       <div className="flex border-b text-[12px] font-disp font-semibold px-4 pt-2 gap-4" style={{ borderColor: "var(--line-soft)" }}>
         <button
           className={`pb-2 border-b-2 transition-colors ${activeTab === "primary" ? "border-[var(--amber)] text-[var(--ink)]" : "border-transparent text-[var(--ink-faint)]"}`}

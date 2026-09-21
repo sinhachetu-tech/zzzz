@@ -57,6 +57,21 @@ export async function GET(req: Request) {
     : null;
   const advisorUser = c.advisor ?? fallbackAdvisor ?? c.owner;
 
+  // Name + number are always a PAIRED pair from one staff record (never mixed).
+  // Facing staff (Admin → Portal settings, usually a senior) fronts the card
+  // unless the case's own advisor has a WhatsApp number of their own.
+  let facingUser: { name: string; role: string; phone: string | null } | null =
+    advisorUser ? { name: advisorUser.name, role: advisorUser.role, phone: advisorUser.phone } : null;
+  if (settings.clientFacingUserId) {
+    const facing = await db.user.findUnique({ where: { id: settings.clientFacingUserId } });
+    if (facing?.active) facingUser = { name: facing.name, role: facing.role, phone: facing.phone };
+  }
+  // Per-case override: if the case has its own advisor (differs from the fallback
+  // or the facing staff) AND that advisor has a number, they front their own card.
+  if (c.advisorId && c.advisor && c.advisor.phone) {
+    facingUser = { name: c.advisor.name, role: c.advisor.role, phone: c.advisor.phone };
+  }
+
   return NextResponse.json({
     me: { ...me, caseId: selectedId, caseNumber: caseDto.caseNumber },
     engagements: engagements.map((e) => ({
@@ -75,7 +90,8 @@ export async function GET(req: Request) {
       id: d.id, fileName: d.fileName, fileType: d.fileType, fileSize: d.fileSize,
       uploadedAt: d.uploadedAt.toISOString(),
     })),
-    advisor: advisorUser ? { name: advisorUser.name, role: advisorUser.role } : null,
+    advisor: facingUser ? { name: facingUser.name, role: facingUser.role } : null,
+    advisorWhatsapp: facingUser?.phone || settings.clientPortalWhatsapp || null,
     profile: c.profileJson ? (() => { try { return JSON.parse(c.profileJson); } catch { return null; } })() : null,
     profileClientVerifiedAt: c.profileClientVerifiedAt ? c.profileClientVerifiedAt.toISOString() : null,
   });

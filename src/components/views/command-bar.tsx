@@ -23,13 +23,29 @@ const ROUTES: { label: string; route: Route; icon: (p: { size?: number }) => Rea
 ];
 
 export function CommandBar({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
-  const { cases, users, me, flags, nav, openNewCase } = useHfmcStore();
+  const { cases, users, me, flags, nav, openNewCase, route } = useHfmcStore();
   const isAdmin = !!(flags?.admin || flags?.super);
 
   const active = useMemo(
     () => cases.filter((c) => c.caseStatus === "Active").sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 40),
     [cases]
   );
+  // Recently opened cases — persisted so the palette opens with your context.
+  const [recentIds, setRecentIds] = useState<number[]>(() => {
+    try { return JSON.parse(localStorage.getItem("hfmc.recentCases") ?? "[]"); } catch { return []; }
+  });
+  useEffect(() => {
+    if (route.name === "case") {
+      /* eslint-disable-next-line react-hooks/set-state-in-effect -- the recents
+         list is derived from navigation and mirrored to localStorage; one write per visit */
+      setRecentIds((prev) => {
+        const next = [route.id, ...prev.filter((x) => x !== route.id)].slice(0, 5);
+        try { localStorage.setItem("hfmc.recentCases", JSON.stringify(next)); } catch { /* private mode */ }
+        return next;
+      });
+    }
+  }, [route]);
+  const recent = recentIds.map((id) => cases.find((c) => c.id === id)).filter((c) => !!c);
   const canInstruct = !!(flags?.issueTasks || flags?.super);
 
   const run = (r: Route) => { onOpenChange(false); nav(r); };
@@ -40,6 +56,21 @@ export function CommandBar({ open, onOpenChange }: { open: boolean; onOpenChange
       <CommandList>
         <CommandEmpty>No match — try a case number or customer name.</CommandEmpty>
 
+        {recent.length > 0 && (
+          <>
+            <CommandGroup heading="Recent">
+              {recent.map((c) => (
+                <CommandItem key={`r-${c!.id}`} value={`${c!.caseNumber} ${c!.customer} recent`} onSelect={() => run({ name: "case", id: c!.id })}>
+                  <IBriefcase size={15} />
+                  <span className="mono text-[12px] mr-2" style={{ color: "var(--amber)" }}>{c!.caseNumber}</span>
+                  <span className="truncate">{c!.customer}</span>
+                  <span className="ml-auto text-[11px] text-[var(--ink-faint)]">{c!.stage}</span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+            <CommandSeparator />
+          </>
+        )}
         <CommandGroup heading="Cases & leads">
           {active.map((c) => {
             const owner = users.find((u) => u.id === c.ownerId)?.name.split(" ")[0] ?? "";

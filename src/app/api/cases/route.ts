@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const {
     customer, banks, loanAmount, stage, ownerId, source, partner,
-    whatsapp, waGroup, task,
+    whatsapp, waGroup, task, advisorId, backup1Id, backup2Id,
     submissionType, channelId, channelName, channelRatePct,
     statusNote, bankRm, vrmId, transactionType, propertyLocation, coApplicantName,
     employmentProfile, propertyType, residency,
@@ -68,6 +68,9 @@ export async function POST(req: NextRequest) {
     whatsapp: string;
     waGroup: string | null;
     task?: { description: string; dueDate: string; waitingFor: string; whyPending: string; ownerId: number };
+    advisorId?: number | null; // client-facing advisor decided at intake (senior on the client's Ask card)
+    backup1Id?: number | null; // first backup staffer — covers the file while the owner is on leave
+    backup2Id?: number | null; // second backup staffer — covers the file while the owner is on leave
     submissionType?: "direct" | "channel";
     channelId?: number | null;
     channelName?: string | null;
@@ -102,6 +105,9 @@ export async function POST(req: NextRequest) {
       stage: stage || "WhatsApp Group Creation",
       caseStatus: "Active",
       ownerId,
+      advisorId: advisorId ? Number(advisorId) : null,
+      backup1Id: backup1Id ? Number(backup1Id) : null,
+      backup2Id: backup2Id ? Number(backup2Id) : null,
       source,
       partnerKind: partner?.kind ?? null,
       partnerName: partner?.name ?? null,

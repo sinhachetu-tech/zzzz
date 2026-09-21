@@ -312,6 +312,21 @@ input[type="date"]::-webkit-calendar-picker-indicator, input[type="time"]::-webk
 
 /* ---------- table ---------- */
 .tbl { width: 100%; border-collapse: collapse; }
+
+/* ---------- case sticky action bar (Case 360) ---------- */
+.case-stickybar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: color-mix(in srgb, var(--raised) 96%, transparent);
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+}
 .tbl th {
   font-family: var(--font-disp);
   font-size: 10.5px;
@@ -522,4 +537,81 @@ button:focus-visible, a:focus-visible, [role="button"]:focus-visible, [tabindex]
 
 @layer base {
   * { border-color: var(--line); }
+}
+
+/* ============ PWA / Native App Feel ============ */
+/* Only active when installed as PWA (display-mode: standalone) */
+@media (display-mode: standalone) {
+  /* Prevent pull-to-refresh on the entire app — kills "web" feel */
+  html, body {
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Hide URL bar on scroll (iOS Safari) — content flows under */
+  html {
+    overscroll-behavior: none;
+  }
+
+  /* Remove gray tap highlight on all interactive elements */
+  button, [role="button"], a, input, select, textarea,
+  .nav-item, .chip, .btn, .rowlink, .card-hover, .tbl tbody tr {
+    -webkit-tap-highlight-color: transparent;
+    tap-highlight-color: transparent;
+  }
+
+  /* Subtle active feedback instead of tap highlight */
+  button:active, [role="button"]:active, .nav-item:active, .chip:active,
+  .btn:active, .rowlink:active, .card-hover:active {
+    opacity: 0.7;
+    transform: translateY(0.5px);
+    transition: opacity 50ms, transform 50ms;
+  }
+}
+
+/* Safe-area insets for notches/home-indicator (works in browser + PWA) */
+@supports (padding: max(0px)) {
+  /* Bottom nav / fixed bottom elements */
+  .bottom-nav,
+  .fixed-bottom,
+  [data-safe-area-bottom] {
+    padding-bottom: max(env(safe-area-inset-bottom), 1rem);
+  }
+
+  .fixed-bottom,
+  [data-safe-area-bottom-fixed] {
+    bottom: env(safe-area-inset-bottom);
+  }
+
+  /* Left/right safe areas for landscape notches */
+  [data-safe-area-left] { padding-left: max(env(safe-area-inset-left), 1rem); }
+  [data-safe-area-right] { padding-right: max(env(safe-area-inset-right), 1rem); }
+}
+
+/* Skeleton loading (replace spinner with layout-shaped placeholder) */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--line-soft) 25%,
+    var(--line) 50%,
+    var(--line-soft) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+  border-radius: 6px;
+}
+
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+[data-theme="dark"] .skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--line-soft) 25%,
+    var(--line) 50%,
+    var(--line-soft) 75%
+  );
+  background-size: 200% 100%;
 }

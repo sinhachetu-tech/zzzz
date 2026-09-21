@@ -18,10 +18,13 @@ model User {
   role      String // designation label, e.g. "Mortgage Head"
   team      String
   active    Boolean  @default(true)
+  phone     String?  // WhatsApp / direct line — shown to clients (advisor card) and agents (desk card)
   createdAt DateTime @default(now())
 
   ownedCases      LoanCase[]      @relation("CaseOwner")
   advisedCases    LoanCase[]      @relation("CaseAdvisor")
+  backupOneCases  LoanCase[]      @relation("CaseBackupOne")
+  backupTwoCases  LoanCase[]      @relation("CaseBackupTwo")
   createdTasks    Task[]          @relation("TaskCreator")
   assignedTasks   Task[]          @relation("TaskAssignee")
   activities      Activity[]
@@ -156,10 +159,14 @@ model LoanCase {
   clientId            Int? // primary applicant → Client
   secondPartyClientId Int? // co-borrower / co-applicant → their own Client row
   advisorId           Int? // the client-facing advisor (may differ from the owner who runs the file)
+  backup1Id           Int? // first backup staffer — covers the file while the owner is on leave
+  backup2Id           Int? // second backup staffer — covers the file while the owner is on leave
   profileClientVerifiedAt DateTime? // when the CLIENT last confirmed their own data sheet
 
   owner      User      @relation("CaseOwner", fields: [ownerId], references: [id])
   advisor    User?     @relation("CaseAdvisor", fields: [advisorId], references: [id])
+  backup1    User?     @relation("CaseBackupOne", fields: [backup1Id], references: [id])
+  backup2    User?     @relation("CaseBackupTwo", fields: [backup2Id], references: [id])
   vrm        User?     @relation("CaseVrm", fields: [vrmId], references: [id])
   tasks      Task[]
   activities Activity[]

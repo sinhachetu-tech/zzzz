@@ -8,9 +8,9 @@ import { useHfmcStore } from "@/lib/client-store";
 import type { BulletinItem } from "@/lib/types";
 import { activityPerDay, computeKpis } from "@/lib/domain";
 import { TONE_HEX, caseStatusOf, dueDay, fmtDue, fmtMoney, isOverdueDue, parseTaskDue, relTime, todayISO } from "@/lib/format";
-import { Avatar } from "@/components/hfmc/ui";
+import { Avatar, DueChip } from "@/components/hfmc/ui";
 import { BarList, Donut, Spark, useCountUp } from "@/components/hfmc/charts";
-import { IArrowR, IFlag } from "@/components/icons";
+import { IArrowR, ICheck, IFlag } from "@/components/icons";
 
 function useTick(intervalMs: number) {
   const [, setT] = useState(0);
@@ -33,7 +33,7 @@ function Kpi({ label, value, format, tone, sub }: { label: string; value: number
 }
 
 export default function Dashboard() {
-  const { cases, tasks, activities, stages, banks, whyPending, waitingFor, users, me, nav, userById, visibleCases, visibleTasks, escalations, bulletin, visibleCaseIds, visibleTaskIds, flags } = useHfmcStore();
+  const { cases, tasks, activities, stages, banks, whyPending, waitingFor, users, me, nav, userById, visibleCases, visibleTasks, escalations, bulletin, visibleCaseIds, visibleTaskIds, flags, completeTask, toast } = useHfmcStore();
   useTick(30000);
 
   // deps must include the data arrays (cases/visibleCaseIds/tasks/visibleTaskIds)
@@ -99,8 +99,73 @@ export default function Dashboard() {
       ? `team ${me.team}`
       : "your book";
 
+  // 1) ROLE-BASED HOME — My Day strip for frontline (SPO / VRM incl. Team Leaders).
+  const roleName = (me?.role ?? "").toLowerCase();
+  const isFrontline = roleName.includes("spo") || roleName.includes("vrm");
+  const firstName = (me?.name ?? "").split(" ")[0] || "there";
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  const myOpenAll = me ? openTasks.filter((t) => t.ownerId === me.id) : [];
+  const myOverdueAll = myOpenAll.filter((t) => isOverdueDue(t.dueDate));
+  const myDueNowCount = me ? myOpenAll.filter((t) => !isOverdueDue(t.dueDate) && dueDay(t.dueDate) <= todayISO()).length : 0;
+  const myNewLeads = me ? visCases.filter((c) => c.stage === "Lead" && c.caseStatus === "Active" && c.ownerId === me.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 3) : [];
+  const myDayList = [...myDueToday];
+  const myDayEmpty = myOverdueAll.length === 0 && myDayList.length === 0 && myNewLeads.length === 0;
+
+  const doneQuick = async (taskId: number, label: string) => {
+    try {
+      await completeTask(taskId, "");
+      toast("success", `"${label}" marked done.`);
+    } catch { toast("error", "Could not complete task. Try again."); }
+  };
+
   return (
     <div className="space-y-5">
+      {isFrontline && (
+        <div className="card p-4 sm:p-5 anim-fade-up" style={{ borderLeft: "3px solid var(--amber)" }}>
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 className="font-disp font-bold text-[20px] tracking-tight m-0">{greeting}, {firstName} 👋</h2>
+              <p className="text-[12.5px] text-[var(--ink-dim)] mt-1 mb-0">
+                <strong style={{ color: myOverdueAll.length ? "var(--coral)" : "var(--ink)" }}>{myOverdueAll.length} overdue</strong>
+                {" · "}{myDueNowCount} due today{" · "}{myNewLeads.length} new lead{myNewLeads.length === 1 ? "" : "s"} · {myOpenAll.length} open total
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button className="btn btn-ghost btn-sm" onClick={() => nav({ name: "tasks" })}>Task queue <IArrowR size={12} /></button>
+              <button className="btn btn-ghost btn-sm" onClick={() => nav({ name: "leads" })}>Leads <IArrowR size={12} /></button>
+            </div>
+          </div>
+          {myDayEmpty ? (
+            <p className="text-[13px] text-[var(--ink-faint)] m-0 mt-3">Clean slate — nothing overdue, nothing due today. Pick up a lead or check Cases.</p>
+          ) : (
+            <div className="space-y-2 mt-3">
+              {myDayList.map((t) => {
+                const c = cases.find((x) => x.id === t.caseId);
+                const od = isOverdueDue(t.dueDate);
+                return (
+                  <div key={t.id} className="flex items-center gap-2.5 rounded-lg px-2.5 py-2" style={{ background: "var(--tint)", border: "1px solid var(--line-soft)" }}>
+                    <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: od ? "var(--coral)" : "var(--amber)" }} />
+                    <button className="min-w-0 flex-1 text-left" onClick={() => c && nav({ name: "case", id: c.id })} title={`${c?.caseNumber ?? ""} — open case`}>
+                      <span className="block text-[13px] font-medium truncate">{t.description}</span>
+                      <span className="block mono text-[10.5px] text-[var(--ink-faint)]">{c?.caseNumber ?? "—"} · {c?.customer ?? ""} · {fmtDue(t.dueDate)}</span>
+                    </button>
+                    <DueChip dueISO={t.dueDate} />
+                    <button className="btn btn-ghost btn-sm !px-2 shrink-0" onClick={() => c && nav({ name: "case", id: c.id })}>Open</button>
+                    <button className="btn btn-mint btn-sm !px-2 shrink-0" title="Mark done" onClick={() => doneQuick(t.id, t.description)}><ICheck size={13} /></button>
+                  </div>
+                );
+              })}
+              {myNewLeads.length > 0 && myDayList.length === 0 && myNewLeads.map((c) => (
+                <button key={c.id} className="rowlink w-full text-left flex items-center gap-2.5 rounded-lg px-2.5 py-2" style={{ border: "1px dashed var(--amber-line)" }} onClick={() => nav({ name: "case", id: c.id })}>
+                  <span className="text-[13px] flex-1 truncate"><strong>New lead:</strong> {c.customer} <span className="mono text-[10.5px] text-[var(--ink-faint)]">{c.caseNumber} · {relTime(c.createdAt)}</span></span>
+                  <span className="text-[11.5px] font-semibold" style={{ color: "var(--amber)" }}>Qualify →</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-disp font-bold text-[24px] tracking-tight m-0">

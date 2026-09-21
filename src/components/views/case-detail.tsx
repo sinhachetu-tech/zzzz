@@ -7,16 +7,16 @@ import { useHfmcStore } from "@/lib/client-store";
 import type { LoanCase, Reply, Task } from "@/lib/types";
 import { EMPLOYMENT_PROFILES, LOAN_TYPES, PROPERTY_LOCATIONS, PROPERTY_TYPES, RESIDENCIES, TRANSACTION_TYPES } from "@/lib/types";
 import {
-  ageDays, caseStatusOf, daysBetween, fmtDate, fmtDateTime, fmtMoney, inDaysISO, isOverdueDue, parseTaskDue, primaryBank, relTime, todayISO,
+  ageDays, caseStatusOf, daysBetween, fmtDate, fmtDateTime, fmtDue, fmtMoney, inDaysISO, isOverdueDue, parseTaskDue, primaryBank, relTime, todayISO,
 } from "@/lib/format";
 import { Avatar, Chip, DueChip, Modal, SectionLabel, StatusChip } from "@/components/hfmc/ui";
-import { BankChips, CaseStateChip, CommissionPanel, ConfirmModal, SourceChip, WaButtons } from "@/components/hfmc/bits";
+import { BankChips, CaseStateChip, CommissionPanel, ConfirmModal, SourceChip, WaButtons, waClientLink } from "@/components/hfmc/bits";
 import { DocVault } from "@/components/views/doc-vault";
 import { DailyMisTab } from "@/components/views/daily-mis";
 import { BankMatchPanel } from "@/components/views/bank-match";
 import { ProposalHistory } from "@/components/views/proposal-history";
 import {
-  IArrowR, IBank, ICalc, ICheck, IChevronL, IClock, IFlag, IHistory, IPlus, IRobot, ISparkles, ITrash, IZap,
+  IArrowR, IBank, ICalc, ICheck, IChevronL, IClock, IFlag, IHistory, IPlus, IRobot, ISparkles, ITrash, IWhatsapp, IZap,
 } from "@/components/icons";
 
 function ReplyThread({ replies, onSend }: { replies: Reply[]; onSend: (text: string) => void }) {
@@ -613,6 +613,9 @@ export default function CaseDetail({ id }: { id: number }) {
   const openTasks = caseTasks.filter((t) => t.status === "Open");
   const doneTasks = caseTasks.filter((t) => t.status === "Done");
   const owner = userById(c.ownerId);
+  // 2) STICKY ACTION HEADER — Next Best Action = oldest open task by exact due instant.
+  const nextBest = [...openTasks].sort((a, b) => (parseTaskDue(a.dueDate)?.getTime() ?? 0) - (parseTaskDue(b.dueDate)?.getTime() ?? 0))[0] ?? null;
+  const waNudge = nextBest && c.whatsapp ? waClientLink(c.whatsapp, c.caseNumber, c.customer, me?.name ?? "") : null;
   const currentStageIdx = stageList.findIndex((s) => s.label === c.stage);
   const canEdit = flags?.super || flags?.admin || c.ownerId === me?.id;
   const activeStages = stageList.filter((s) => s.active);
@@ -624,6 +627,37 @@ export default function CaseDetail({ id }: { id: number }) {
 
   return (
     <div className="space-y-4">
+      {/* 2) STICKY ACTION HEADER — context + primary CTA stay visible while scrolling the 360 */}
+      <div className="case-stickybar">
+        <button className="btn btn-ghost btn-sm !px-2 shrink-0" onClick={() => nav({ name: "dashboard" })} title="Back to pipeline">
+          <IChevronL size={14} />
+        </button>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="mono text-[11.5px] shrink-0" style={{ color: "var(--amber)" }}>{c.caseNumber}</span>
+            <span className="text-[13.5px] font-disp font-semibold truncate">{c.customer}</span>
+            {c.caseStatus === "Active" ? <StatusChip status={status} /> : <CaseStateChip state={c.caseStatus} />}
+            <span className="mono text-[12px] text-[var(--ink-dim)] hidden sm:inline">{fmtMoney(c.loanAmount)}</span>
+          </div>
+          {nextBest ? (
+            <p className="text-[11.5px] m-0 mt-0.5 truncate" style={{ color: "var(--ink-dim)" }}>
+              <span style={{ color: "var(--amber)" }}>⚡ {fmtDue(nextBest.dueDate)}:</span> {nextBest.description}
+            </p>
+          ) : (
+            <p className="text-[11.5px] m-0 mt-0.5" style={{ color: "var(--mint)" }}>✓ No open tasks — file is clean.</p>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {waNudge && (
+            <a className="btn btn-mint btn-sm !px-2.5" href={waNudge} target="_blank" rel="noreferrer" title={`Nudge ${c.customer} about: ${nextBest?.description ?? ""}`}>
+              <IWhatsapp size={14} /><span className="hidden lg:inline">Nudge</span>
+            </a>
+          )}
+          <button className="btn btn-ghost btn-sm !px-2.5" onClick={() => setShowAddTask(true)} title="Add a task"><IPlus size={14} /><span className="hidden lg:inline">Task</span></button>
+          <button className="btn btn-ghost btn-sm !px-2.5" onClick={() => setShowStage(true)} title="Move stage"><IArrowR size={14} /><span className="hidden lg:inline">Stage</span></button>
+          <button className="btn btn-ghost btn-sm !px-2.5" onClick={() => setCaseTab("banks")} title="Run bank match"><IBank size={14} /><span className="hidden lg:inline">Match</span></button>
+        </div>
+      </div>
       <button className="btn btn-ghost btn-sm" onClick={() => nav({ name: "dashboard" })}>
         <IChevronL size={14} /> Pipeline
       </button>
@@ -920,6 +954,38 @@ export default function CaseDetail({ id }: { id: number }) {
                   </div>
                 );
               })()}
+              {/* backups — who is entitled to cover this file while the owner is away */}
+              {([1, 2] as const).map((n) => {
+                const bid = n === 1 ? c.backup1Id : c.backup2Id;
+                const bUser = bid ? userById(bid) : undefined;
+                const canAssign = flags?.super || flags?.admin || c.ownerId === me?.id;
+                return (
+                  <div key={n} className="flex items-center gap-2.5" style={{ opacity: bid ? 1 : 0.6 }}>
+                    <span className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-[10px] font-disp font-bold"
+                      style={{ background: bid ? "var(--amber-tint)" : "var(--tint)", color: bid ? "var(--amber)" : "var(--ink-faint)" }}>
+                      B{n}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[12.5px] font-medium">{bUser?.name ?? "—"}</div>
+                      <div className="text-[11px] text-[var(--ink-faint)]">{bid ? `backup ${n} · covering · ${bUser?.role ?? ""}` : `no backup ${n} yet`}</div>
+                    </div>
+                    {canAssign && (
+                      <select className="select !w-auto !py-1 text-[11px]" value={bid ? String(bid) : ""}
+                        title={n === 1 ? "Appoint first backup" : "Appoint second backup"}
+                        onChange={async (e) => {
+                          const val = e.target.value ? Number(e.target.value) : null;
+                          await updateCase(c.id, n === 1 ? { backup1Id: val } : { backup2Id: val });
+                          toast("success", val ? `Backup ${n} appointed — they can now open and work this file.` : `Backup ${n} removed.`);
+                        }}>
+                        <option value="">— none —</option>
+                        {users.filter((u) => u.active && u.id !== c.ownerId && (n === 1 ? u.id !== c.backup2Id : u.id !== c.backup1Id)).map((u) => (
+                          <option key={u.id} value={u.id}>{u.name}</option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                );
+              })}
               {c.profileClientVerifiedAt && (
                 <div className="flex items-center gap-2 text-[11px]" style={{ color: "var(--mint)" }}>
                   <ICheck size={12} /> Client verified their own data sheet on {new Date(c.profileClientVerifiedAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}

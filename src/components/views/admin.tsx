@@ -107,11 +107,12 @@ async function adminDelete(kind: string, id: number): Promise<ApiResult> {
 
 /* ------------------------------ shared bits ------------------------------ */
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div>
       <label className="label">{label}</label>
       {children}
+      {hint && <p className="text-[10.5px] text-[var(--ink-faint)] m-0 mt-1">{hint}</p>}
     </div>
   );
 }
@@ -246,10 +247,11 @@ interface UserDraft {
   role: string;
   team: string;
   active: boolean;
+  phone: string;
 }
 
 function blankUser(): UserDraft {
-  return { id: 0, name: "", email: "", password: "demo123", role: "SPO", team: "Dubai", active: true };
+  return { id: 0, name: "", email: "", password: "demo123", role: "SPO", team: "Dubai", active: true, phone: "" };
 }
 
 function UsersTab() {
@@ -287,6 +289,7 @@ function UsersTab() {
       role: editing.role,
       team: editing.team,
       active: editing.active,
+      phone: editing.phone.trim(),
     };
     if (editing.password.trim()) body.password = editing.password.trim();
     const res = creating
@@ -366,7 +369,7 @@ function UsersTab() {
                     <div className="inline-flex gap-1.5">
                       <button
                         className="btn btn-ghost btn-sm"
-                        onClick={() => { setEditing({ ...u, password: "" }); setCreating(false); }}
+                        onClick={() => { setEditing({ ...u, password: "", phone: u.phone ?? "" }); setCreating(false); }}
                       >
                         <IPencil size={13} /> Edit
                       </button>
@@ -425,6 +428,9 @@ function UsersTab() {
               <datalist id="hfmc-teams">
                 {TEAMS.map((t) => <option key={t} value={t} />)}
               </datalist>
+            </Field>
+            <Field label="WhatsApp / phone" hint="with country code — pairs with the name on client & agent portal cards">
+              <input className="input mono" placeholder="e.g. 971563675369" value={editing.phone} onChange={(e) => setEditing({ ...editing, phone: e.target.value })} />
             </Field>
             <div className="sm:col-span-2 flex items-center gap-2 mt-1">
               <input
@@ -3521,6 +3527,9 @@ function InsuranceEditor({ insurance, onChange }: { insurance: BankInsurance; on
 function PortalTab() {
   const { toast, users } = useHfmcStore();
   const [advisorId, setAdvisorId] = useState<string>("");
+  const [clientFacingUserId, setClientFacingUserId] = useState<string>("");
+  const [portalWhatsapp, setPortalWhatsapp] = useState("");
+  const [agentDeskUserId, setAgentDeskUserId] = useState<string>("");
   const [deskName, setDeskName] = useState("");
   const [deskPhone, setDeskPhone] = useState("");
   const [loaded, setLoaded] = useState(false);
@@ -3531,6 +3540,9 @@ function PortalTab() {
       .then((r) => r.json())
       .then((d) => {
         setAdvisorId(d.settings?.clientPortalAdvisorId ? String(d.settings.clientPortalAdvisorId) : "");
+        setClientFacingUserId(d.settings?.clientFacingUserId ? String(d.settings.clientFacingUserId) : "");
+        setPortalWhatsapp(d.settings?.clientPortalWhatsapp ?? "");
+        setAgentDeskUserId(d.settings?.agentDeskUserId ? String(d.settings.agentDeskUserId) : "");
         setDeskName(d.settings?.agentDeskName ?? "");
         setDeskPhone(d.settings?.agentDeskPhone ?? "");
         setLoaded(true);
@@ -3545,6 +3557,9 @@ function PortalTab() {
         method: "PUT", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           clientPortalAdvisorId: advisorId ? Number(advisorId) : null,
+          clientFacingUserId: clientFacingUserId ? Number(clientFacingUserId) : null,
+          clientPortalWhatsapp: portalWhatsapp,
+          agentDeskUserId: agentDeskUserId ? Number(agentDeskUserId) : null,
           agentDeskName: deskName,
           agentDeskPhone: deskPhone,
         }),
@@ -3584,6 +3599,22 @@ function PortalTab() {
                 ))}
               </select>
             </div>
+            <div>
+              <label className="label">Client-facing contact (our senior staff) <span className="normal-case tracking-normal" style={{ color: "var(--ink-faint)" }}>— name + WhatsApp pair shown on every client&apos;s advisor card</span></label>
+              <select className="select" value={clientFacingUserId} onChange={(e) => setClientFacingUserId(e.target.value)}>
+                <option value="">— none (uses each case&apos;s advisor / number below) —</option>
+                {staff.map((u) => (
+                  <option key={u.id} value={u.id}>{u.name} · {u.role}{u.phone ? " · " + u.phone : " · no WhatsApp on file"}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="label">Fallback WhatsApp number <span className="normal-case tracking-normal" style={{ color: "var(--ink-faint)" }}>— used only when no facing staff is picked and the case advisor has no number</span></label>
+              <input className="input mono" placeholder="e.g. 971563675369 (with country code)" value={portalWhatsapp} onChange={(e) => setPortalWhatsapp(e.target.value)} />
+            </div>
+            <p className="text-[10.5px] text-[var(--ink-faint)] m-0">
+              Juniors run files day-to-day, but clients see the senior&apos;s name + number here. A case&apos;s own advisor fronts their card only once their WhatsApp is saved in Teammates. Add staff numbers in Admin → Teammates.
+            </p>
           </div>
 
           <div className="card p-4 space-y-3">
@@ -3593,13 +3624,22 @@ function PortalTab() {
                 The HFMC staff representative on every agent&apos;s home card, with the WhatsApp number partners reach.
               </p>
             </div>
+            <div>
+              <label className="label">Agent-facing contact (our senior staff) <span className="normal-case tracking-normal" style={{ color: "var(--ink-faint)" }}>— name + WhatsApp pair on every agent&apos;s mortgage desk card</span></label>
+              <select className="select" value={agentDeskUserId} onChange={(e) => setAgentDeskUserId(e.target.value)}>
+                <option value="">— none (uses the free-text name + number below) —</option>
+                {staff.map((u) => (
+                  <option key={u.id} value={u.id}>{u.name} · {u.role}{u.phone ? " · " + u.phone : " · no WhatsApp on file"}</option>
+                ))}
+              </select>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="label">Representative name</label>
+                <label className="label">Fallback representative name</label>
                 <input className="input" placeholder="e.g. Ayesha Rahman — Partnerships" value={deskName} onChange={(e) => setDeskName(e.target.value)} />
               </div>
               <div>
-                <label className="label">WhatsApp number (with country code)</label>
+                <label className="label">Fallback WhatsApp number (with country code)</label>
                 <input className="input mono" placeholder="e.g. 971563675369" value={deskPhone} onChange={(e) => setDeskPhone(e.target.value)} />
               </div>
             </div>

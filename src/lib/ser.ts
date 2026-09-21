@@ -17,7 +17,7 @@ type PrismaUser = {
 export function serUser(u: PrismaUser): User {
   return {
     id: u.id, name: u.name, email: u.email, password: "", role: u.role, team: u.team,
-    active: u.active, createdAt: u.createdAt.toISOString(),
+    active: u.active, phone: (u as unknown as { phone?: string | null }).phone ?? null, createdAt: u.createdAt.toISOString(),
   };
 }
 
@@ -60,6 +60,13 @@ type PrismaCase = {
   folTenure?: number | null;
   folRoi?: number | null;
   profileJson?: string | null;
+  // Client master links
+  clientId?: number | null;
+  secondPartyClientId?: number | null;
+  advisorId?: number | null;
+  backup1Id?: number | null;
+  backup2Id?: number | null;
+  profileClientVerifiedAt?: Date | string | null;
 };
 
 export function serCase(c: PrismaCase): LoanCase {
@@ -113,6 +120,8 @@ export function serCase(c: PrismaCase): LoanCase {
     clientId: (c as unknown as { clientId?: number | null }).clientId ?? null,
     secondPartyClientId: (c as unknown as { secondPartyClientId?: number | null }).secondPartyClientId ?? null,
     advisorId: (c as unknown as { advisorId?: number | null }).advisorId ?? null,
+    backup1Id: (c as unknown as { backup1Id?: number | null }).backup1Id ?? null,
+    backup2Id: (c as unknown as { backup2Id?: number | null }).backup2Id ?? null,
     profileClientVerifiedAt: (c as unknown as { profileClientVerifiedAt?: Date | string | null }).profileClientVerifiedAt
       ? new Date((c as unknown as { profileClientVerifiedAt: Date | string }).profileClientVerifiedAt).toISOString()
       : null,

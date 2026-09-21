@@ -19,9 +19,12 @@ export function visibleCases(cases: LoanCase[], users: User[], user: User, flags
   if (flags.super || flags.scope === "all") return cases;
   if (flags.scope === "team") {
     const teamIds = new Set(users.filter((u) => u.team === user.team).map((u) => u.id));
-    return cases.filter((c) => teamIds.has(c.ownerId));
+    return cases.filter((c) => teamIds.has(c.ownerId) || c.backup1Id === user.id || c.backup2Id === user.id);
   }
-  return cases.filter((c) => c.ownerId === user.id);
+  // "own" scope — the owner plus any backup staffers covering the file
+  // (a backup assignment IS the authorization to open and work the case
+  // while the owner is away; actions stay logged under the doer's userId).
+  return cases.filter((c) => c.ownerId === user.id || c.backup1Id === user.id || c.backup2Id === user.id);
 }
 
 // Access guard for document routes: staff need the manageDocs designation

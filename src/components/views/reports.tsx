@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useHfmcStore } from "@/lib/client-store";
 import type { BankItem, CaseSource, LoanCase, User } from "@/lib/types";
@@ -8,13 +8,13 @@ import { SOURCES } from "@/lib/types";
 import { computeEscalations, activityPerDay } from "@/lib/domain";
 import {
   TONE_HEX, ageDays, commissionFor, downloadCSV, fmtDate, fmtDue, fmtMoney, fmtMoneyFull, fmtRate,
-  primaryBank, todayISO,
+  primaryBank, todayISO, caseStatusOf,
 } from "@/lib/format";
 import { Avatar, Chip, EmptyState, SectionLabel } from "@/components/hfmc/ui";
 import { ProposalPipeline } from "@/components/views/proposals";
 import { BarList, Donut, Spark, useCountUp } from "@/components/hfmc/charts";
 import {
-  IBank, IBriefcase, IChart, IClock, IDownload, IInbox, ITarget, ITrophy, IUsers,
+  IBank, IBriefcase, IChart, IClock, IDownload, IFlag, IInbox, ITarget, ITrophy, IUsers,
 } from "@/components/icons";
 
 /* ---------- helpers ---------- */
@@ -88,6 +88,8 @@ function CountUp({ target, format }: { target: number; format?: (n: number) => s
   const v = useCountUp(target);
   return <>{format ? format(v) : v}</>;
 }
+
+/* ---------- HEAD COMMAND sub-view (defined below Reports, hoisted fn) ---------- */
 
 /* ---------- daily MIS report (team leader's register) ---------- */
 
@@ -310,9 +312,10 @@ function DailyMisReport({ visCases, userById, toast }: {
 export default function Reports() {
   const {
     cases, tasks, activities, banks, partners, users, stages, slaRules, flags, caseUpdates,
-    nav, userById, visibleCases, visibleTasks, toast,
+    nav, userById, visibleCases, visibleTasks, toast, updateCase,
   } = useHfmcStore();
   const canRevenue = !!flags?.viewRevenue;
+  const isHead = !!flags && (flags.super || flags.admin || flags.scope === "all");
 
   const visCases = useMemo(() => visibleCases(), [visibleCases]);
   const visTasks = useMemo(() => visibleTasks(), [visibleTasks]);
@@ -431,9 +434,114 @@ export default function Reports() {
     [escalations, visCases],
   );
 
+  /* ---- 7b · backup coverage — who fronts each file while the owner is away ---- */
+  const backupRows = useMemo(
+    () =>
+      [...visCases]
+        .sort((a, b) => {
+          const cov = (c: LoanCase) => (c.backup1Id ? 0 : 1) + (c.backup2Id ? 0 : 1); // 0 = fully covered
+          return cov(a) - cov(b) || a.caseNumber.localeCompare(b.caseNumber);
+        }),
+    [visCases],
+  );
+  const uncoveredCount = useMemo(() => backupRows.filter((c) => !c.backup1Id && !c.backup2Id).length, [backupRows]);
+
   /* ---- 8 · activity trend (14 days) ---- */
   const trend = useMemo(() => activityPerDay(activities, 14), [activities]);
   const trendTotal = useMemo(() => trend.reduce((s, n) => s + n, 0), [trend]);
+
+  /* ---- 10 · BUSINESS VOLUME: monthwise buckets for the selected year ---- */
+  const yearOpts = useMemo(() => {
+    const ys = new Set(visCases.map((c) => (c.createdAt || "").slice(0, 4)).filter((y) => /^\d{4}$/.test(y)));
+    if (ys.size === 0) ys.add(todayISO().slice(0, 4));
+    return [...ys].sort().reverse();
+  }, [visCases]);
+  const [volYear, setVolYear] = useState<string | null>(null);
+  const [volMetric, setVolMetric] = useState<"booked" | "pipeline" | "commission">("booked");
+  const [volUnit, setVolUnit] = useState<"value" | "count">("value");
+  const [volMonth, setVolMonth] = useState<string | null>(null);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("hfmc.volumeView");
+      if (raw) {
+        const v = JSON.parse(raw);
+        /* eslint-disable react-hooks/set-state-in-effect -- the saved chart view
+           is only readable on the client; the write-back effect below keeps it in sync */
+        if (v.metric) setVolMetric(v.metric);
+        if (v.unit) setVolUnit(v.unit);
+        /* eslint-enable react-hooks/set-state-in-effect */
+      }
+    } catch { /* private mode */ }
+  }, []);
+  useEffect(() => {
+    try { localStorage.setItem("hfmc.volumeView", JSON.stringify({ metric: volMetric, unit: volUnit })); } catch { /* private mode */ }
+  }, [volMetric, volUnit]);
+  const effYear = volYear ?? yearOpts[0] ?? todayISO().slice(0, 4);
+  const volBuckets = useMemo(() => {
+    const months = Array.from({ length: 12 }, (_, i) => `${effYear}-${String(i + 1).padStart(2, "0")}`);
+    return months.map((m) => {
+      const pipe = visCases.filter((c) => (c.createdAt || "").slice(0, 7) === m);
+      const book = booked.filter((c) => ((c.closedDate || c.updatedAt || "").slice(0, 7)) === m);
+      const comm = book.reduce((s, c) => s + commissionFor(c, banks).net, 0);
+      return {
+        m,
+        label: new Date(m + "-01T00:00:00").toLocaleDateString("en-GB", { month: "short" }),
+        pipeCount: pipe.length, pipeValue: pipe.reduce((s, c) => s + c.loanAmount, 0),
+        bookCount: book.length, bookValue: book.reduce((s, c) => s + c.loanAmount, 0),
+        comm, pipe, book,
+      };
+    });
+  }, [visCases, booked, banks, effYear]);
+  const volVal = (b: (typeof volBuckets)[number]) =>
+    volMetric === "commission" ? (volUnit === "value" ? b.comm : b.bookCount)
+    : volMetric === "pipeline" ? (volUnit === "value" ? b.pipeValue : b.pipeCount)
+    : (volUnit === "value" ? b.bookValue : b.bookCount);
+  const volMax = Math.max(...volBuckets.map(volVal), 1);
+  const volYearTotal = volBuckets.reduce((s, b) => s + volVal(b), 0);
+  const bestMonth = volBuckets.reduce((a, b) => (volVal(b) > volVal(a) ? b : a), volBuckets[0]);
+  const prevYearTotal = useMemo(() => {
+    const py = String(Number(effYear) - 1);
+    return visCases
+      .filter((c) => (volMetric === "pipeline" ? (c.createdAt || "").slice(0, 4) : ((c.closedDate || c.updatedAt || "").slice(0, 4))) === py && (volMetric === "pipeline" ? true : c.caseStatus === "Closed"))
+      .reduce((s, c) => s + (volUnit === "value" ? (volMetric === "commission" ? commissionFor(c, banks).net : c.loanAmount) : 1), 0);
+  }, [visCases, banks, effYear, volMetric, volUnit]);
+  const volYoY = prevYearTotal > 0 ? Math.round(((volYearTotal - prevYearTotal) / prevYearTotal) * 100) : 0;
+
+  /* ---- 11 · NEW REPORTS: lost analysis + lead funnel + team pulse + forecast ---- */
+  const lostByReason = useMemo(() => {
+    const map = new Map<string, { n: number; v: number }>();
+    for (const c of lost) {
+      const k = (c.lostReason || "No reason given").slice(0, 48);
+      const e = map.get(k) ?? { n: 0, v: 0 };
+      e.n += 1; e.v += c.loanAmount;
+      map.set(k, e);
+    }
+    return [...map.entries()].map(([label, e]) => ({ label, ...e })).sort((a, b) => b.v - a.v).slice(0, 6);
+  }, [lost]);
+  const lostValue = useMemo(() => lost.reduce((s, c) => s + c.loanAmount, 0), [lost]);
+  const leadFunnel = useMemo(() => {
+    const leads = visCases.filter((c) => c.stage === "Lead" && c.caseStatus === "Active");
+    return {
+      total: leads.length,
+      fresh: leads.filter((c) => ageDays(c.createdAt) < 1).length,
+      aging: leads.filter((c) => ageDays(c.createdAt) >= 1 && ageDays(c.createdAt) < 3).length,
+      stale: leads.filter((c) => ageDays(c.createdAt) >= 3).length,
+    };
+  }, [visCases]);
+  const teamPulse = useMemo(() => {
+    const teams = [...new Set(users.map((u) => u.team).filter(Boolean))];
+    return teams.map((t) => {
+      const ids = new Set(users.filter((u) => u.team === t).map((u) => u.id));
+      const tc = visCases.filter((c) => ids.has(c.ownerId));
+      const ta = tc.filter((c) => c.caseStatus === "Active");
+      const od = ta.filter((c) => caseStatusOf(c, tasks) === "Overdue").length;
+      const won = tc.filter((c) => c.caseStatus === "Closed");
+      return { team: t, active: ta.length, overdue: od, bookedN: won.length, bookedV: won.reduce((s, c) => s + c.loanAmount, 0) };
+    }).sort((a, b) => b.bookedV - a.bookedV);
+  }, [users, visCases, tasks]);
+  const forecast = funnel.hitRate > 0 && canRevenue
+    ? Math.round(active.reduce((s, c) => s + commissionFor(c, banks).net, 0) * (funnel.hitRate / 100))
+    : 0;
 
   /* ---- CSV exports ---- */
   const exportCases = () => {
@@ -515,6 +623,8 @@ export default function Reports() {
         )}
       </div>
 
+      {isHead && <HeadCommand />}
+
       <DailyMisReport visCases={visCases} userById={userById} toast={toast} />
 
       {canRevenue && <ProjectedRevenue visCases={visCases} userById={userById} banks={banks} />}
@@ -524,6 +634,155 @@ export default function Reports() {
 
       {/* report grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <GroupLabel>Backup coverage · leave continuity</GroupLabel>
+
+        {/* 0b · backup coverage table */}
+        <ReportCard
+          title="Backup report · who covers which lead/case"
+          sub={`${backupRows.length} files · ${uncoveredCount} without any backup · backups can open & work the file while the owner is on leave`}
+          icon={<IUsers size={15} />}
+          span
+          extra={
+            <button
+              className="btn btn-ghost btn-sm !px-2"
+              onClick={() => {
+                const header = ["Case #", "Customer", "Stage", "Status", "Owner", "Backup 1", "Backup 2", "Coverage"];
+                const rows = backupRows.map((c) => {
+                  const owner = userById(c.ownerId)?.name ?? "—";
+                  const b1 = c.backup1Id ? userById(c.backup1Id)?.name ?? `#${c.backup1Id}` : "";
+                  const b2 = c.backup2Id ? userById(c.backup2Id)?.name ?? `#${c.backup2Id}` : "";
+                  const coverage = b1 && b2 ? "Fully covered" : b1 || b2 ? "Partly covered" : "No backup";
+                  return [c.caseNumber, c.customer, c.stage, c.caseStatus, owner, b1, b2, coverage];
+                });
+                downloadCSV("hfmc-backup-coverage.csv", header, rows);
+                toast("success", "Backup coverage exported.");
+              }}
+            >
+              <IDownload size={13} /> Export
+            </button>
+          }
+        >
+          {backupRows.length === 0 ? (
+            <EmptyState icon={<IUsers size={20} />} title="No files in view" body="Backup coverage appears here once cases are visible to you." />
+          ) : (
+            <div className="overflow-x-auto -mx-1 px-1" style={{ maxHeight: 340, overflowY: "auto" }}>
+              <table className="tbl min-w-[720px]">
+                <thead>
+                  <tr>
+                    <th>Case #</th>
+                    <th>Customer</th>
+                    <th>Owner</th>
+                    <th>Backup 1</th>
+                    <th>Backup 2</th>
+                    <th>Coverage</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {backupRows.map((c) => {
+                    const b1 = c.backup1Id ? userById(c.backup1Id) : undefined;
+                    const b2 = c.backup2Id ? userById(c.backup2Id) : undefined;
+                    const covered = !!b1 && !!b2;
+                    const partly = !!b1 || !!b2;
+                    return (
+                      <tr key={c.id} style={{ opacity: c.caseStatus === "Active" ? 1 : 0.6 }}>
+                        <td>
+                          <button className="mono text-[11.5px] font-medium" style={{ color: "var(--amber)" }} onClick={() => nav({ name: "case", id: c.id })}>
+                            {c.caseNumber}
+                          </button>
+                        </td>
+                        <td className="text-[12.5px]">{c.customer}</td>
+                        <td>
+                          <span className="flex items-center gap-1.5">
+                            <Avatar name={userById(c.ownerId)?.name ?? "?"} size={20} />
+                            <span className="text-[12px]">{userById(c.ownerId)?.name ?? "—"}</span>
+                          </span>
+                        </td>
+                        <td className="text-[12px]">{b1 ? b1.name : <span className="text-[var(--ink-faint)]">—</span>}</td>
+                        <td className="text-[12px]">{b2 ? b2.name : <span className="text-[var(--ink-faint)]">—</span>}</td>
+                        <td>
+                          <Chip tone={covered ? "mint" : partly ? "amber" : "coral"}>{covered ? "fully covered" : partly ? "partly covered" : "no backup"}</Chip>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <p className="text-[10.5px] text-[var(--ink-faint)] m-0 mt-2">
+            Backups are picked on the lead (New case) or in Case 360 → People. A backup assignment is standing authorization: they can open and work the file any time, and every change is logged under their name.
+          </p>
+        </ReportCard>
+
+        <GroupLabel>Business volume · monthwise / yearwise</GroupLabel>
+
+        {/* 0 · interactive volume chart */}
+        <ReportCard
+          title={`Business volume · ${effYear}`}
+          sub={`Monthwise ${volMetric} ${volUnit === "value" ? "value" : "count"} · YoY ${volYoY >= 0 ? "+" : ""}${volYoY}% · best ${bestMonth.label}`}
+          icon={<IChart size={15} />}
+          span
+          extra={
+            <button
+              className="btn btn-ghost btn-sm !px-2"
+              onClick={() => {
+                const header = ["Month", "Booked count", "Booked value (AED)", "Pipeline count", "Pipeline value (AED)", "Net commission (AED)"];
+                const rows = volBuckets.map((b) => [b.m, b.bookCount, Math.round(b.bookValue), b.pipeCount, Math.round(b.pipeValue), Math.round(b.comm)]);
+                downloadCSV(`hfmc-board-pack-${effYear}.csv`, header, rows);
+                toast("success", "Board pack exported.");
+              }}
+            >
+              <IDownload size={13} /> Board pack
+            </button>
+          }
+        >
+          <div className="flex flex-wrap items-center gap-1.5 mb-3">
+            <select className="select !w-auto !py-1 text-[11.5px]" value={effYear} onChange={(e) => { setVolYear(e.target.value); setVolMonth(null); }}>
+              {yearOpts.map((y) => <option key={y} value={y}>{y}</option>)}
+            </select>
+            {(["booked", "pipeline", "commission"] as const).map((mm) => (
+              <button key={mm} className="chip transition-all" onClick={() => setVolMetric(mm)}
+                style={volMetric === mm ? { background: "var(--amber-tint)", borderColor: "var(--amber)", color: "var(--amber)" } : undefined}>
+                {mm === "booked" ? "Booked" : mm === "pipeline" ? "Pipeline" : "Commission"}
+              </button>
+            ))}
+            <button className="chip transition-all" onClick={() => setVolUnit(volUnit === "value" ? "count" : "value")}>
+              {volUnit === "value" ? "AED" : "Count"}
+            </button>
+            <span className="mono text-[11px] text-[var(--ink-faint)] ml-auto">
+              {effYear} total: {volUnit === "value" ? fmtMoney(volYearTotal) : volYearTotal}
+            </span>
+          </div>
+          <div className="flex items-end gap-1 h-[150px]">
+            {volBuckets.map((b) => {
+              const v = volVal(b);
+              const h = Math.max(4, (v / volMax) * 118);
+              const on = volMonth === b.m;
+              return (
+                <button key={b.m} className="flex-1 flex flex-col items-center gap-1 min-w-0" title={`${b.label}: ${volUnit === "value" ? fmtMoney(v) : v} — ${b.bookCount} booked · ${b.pipeCount} new`}
+                  onClick={() => setVolMonth(on ? null : b.m)}>
+                  <span className="w-full rounded-t-md transition-all" style={{ height: h, background: on ? "var(--amber)" : v > 0 ? "var(--amber)" : "var(--track)", opacity: on ? 1 : v > 0 ? 0.85 : 1 }} />
+                  <span className="text-[9px] mono" style={{ color: on ? "var(--amber)" : "var(--ink-faint)" }}>{b.label}</span>
+                </button>
+              );
+            })}
+          </div>
+          {(() => {
+            const d = volBuckets.find((b) => b.m === volMonth);
+            if (!d) return <p className="text-[10.5px] text-[var(--ink-faint)] m-0 mt-2">Booked month ≈ closedDate ?? last update — click a bar to drill to cases.</p>;
+            return (
+              <div className="mt-3 pt-3 space-y-1" style={{ borderTop: "1px dashed var(--line)" }}>
+                <div className="text-[11px] font-disp font-semibold text-[var(--ink-faint)]">{d.label} {effYear} — {d.bookCount} booked · {fmtMoney(d.bookValue)} · {fmtMoney(d.comm)} commission</div>
+                {[...d.book, ...d.pipe.filter((c) => !d.book.some((x) => x.id === c.id))].slice(0, 5).map((c) => (
+                  <button key={c.id} className="w-full text-left text-[12px] hover:underline truncate" style={{ color: "var(--ink-dim)" }} onClick={() => nav({ name: "case", id: c.id })}>
+                    {c.caseNumber} · {c.customer} · {fmtMoney(c.loanAmount)} · {c.caseStatus}
+                  </button>
+                ))}
+              </div>
+            );
+          })()}
+        </ReportCard>
+
         <GroupLabel>Pipeline</GroupLabel>
 
         {/* 1 · pipeline by stage */}
@@ -794,6 +1053,134 @@ export default function Reports() {
             </div>
           )}
         </ReportCard>
+
+        <GroupLabel>New insights</GroupLabel>
+
+        {/* 9 · lost analysis */}
+        <ReportCard
+          title="Lost analysis"
+          sub={`${lost.length} lost · ${fmtMoney(lostValue)} walked away — where and why`}
+          icon={<ITarget size={15} />}
+        >
+          {lostByReason.length === 0 ? (
+            <p className="text-[12.5px] text-[var(--ink-faint)] m-0">Nothing lost — clean sheet.</p>
+          ) : (
+            <BarList items={lostByReason.map((r) => ({ label: r.label, value: r.n, color: TONE_HEX.coral, sub: `· ${fmtMoney(r.v)}` }))} />
+          )}
+        </ReportCard>
+
+        {/* 10 · lead funnel aging */}
+        <ReportCard
+          title="Lead funnel"
+          sub={`${leadFunnel.total} open leads — fresh vs aging vs stale`}
+          icon={<IInbox size={15} />}
+          extra={
+            leadFunnel.stale > 0 ? (
+              <button className="btn btn-ghost btn-sm !px-2" onClick={() => nav({ name: "leads" })}>Fix {leadFunnel.stale} stale →</button>
+            ) : undefined
+          }
+        >
+          <FunnelBar label="Fresh <24h" value={leadFunnel.fresh} total={Math.max(leadFunnel.total, 1)} color={TONE_HEX.mint} />
+          <FunnelBar label="Aging 1–3d" value={leadFunnel.aging} total={Math.max(leadFunnel.total, 1)} color={TONE_HEX.amber} />
+          <FunnelBar label="Stale 3d+" value={leadFunnel.stale} total={Math.max(leadFunnel.total, 1)} color={TONE_HEX.coral} />
+        </ReportCard>
+
+        {/* 11 · team pulse */}
+        <ReportCard title="Team pulse" sub="Live load, overdue and booked value per team" icon={<IUsers size={15} />} span>
+          {teamPulse.length === 0 ? (
+            <p className="text-[12.5px] text-[var(--ink-faint)] m-0">No teams on file.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="tbl min-w-[520px]">
+                <thead><tr><th>Team</th><th className="text-right">Live</th><th className="text-right">Overdue</th><th className="text-right">Booked</th><th className="text-right">Booked volume</th></tr></thead>
+                <tbody>
+                  {teamPulse.map((t) => (
+                    <tr key={t.team} style={{ cursor: "default" }}>
+                      <td className="font-medium">{t.team}</td>
+                      <td className="mono text-right">{t.active}</td>
+                      <td className="mono text-right" style={{ color: t.overdue ? "var(--coral)" : undefined }}>{t.overdue}</td>
+                      <td className="mono text-right">{t.bookedN}</td>
+                      <td className="mono text-right">{fmtMoney(t.bookedV)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </ReportCard>
+
+        {/* 12 · revenue forecast */}
+        {canRevenue && (
+          <ReportCard
+            title="Revenue forecast"
+            sub={`Active pipeline × ${funnel.hitRate}% historic hit rate`}
+            icon={<IBank size={15} />}
+          >
+            <div className="font-disp font-bold text-[26px]" style={{ color: "var(--mint)" }}>
+              <CountUp target={forecast} format={fmtMoney} />
+            </div>
+            <p className="text-[11.5px] text-[var(--ink-faint)] m-0 mt-1">Expected net if the floor keeps converting like it has. Pipeline gross {fmtMoney(commission.pipelineGross)}.</p>
+          </ReportCard>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- sub-components ---------- */
+
+function HeadCommand() {
+  const { tasks, users, slaRules, nav, visibleCases, toast, updateCase } = useHfmcStore();
+  const visCases = useMemo(() => visibleCases(), [visibleCases]);
+  const active = visCases.filter((c) => c.caseStatus === "Active");
+  const booked = visCases.filter((c) => c.caseStatus === "Closed");
+  const esc = useMemo(() => computeEscalations(visCases, slaRules), [visCases, slaRules]);
+  const slaTop = esc.map((e) => ({ e, c: visCases.find((x) => x.id === e.caseId)! })).filter((r) => r.c).sort((a, b) => b.e.breachDays - a.e.breachDays).slice(0, 3);
+  const noAction = active.filter((c) => caseStatusOf(c, tasks) === "No Action" && ageDays(c.createdAt) >= 7).slice(0, 2);
+  const stale = visCases.filter((c) => c.stage === "Lead" && c.caseStatus === "Active" && ageDays(c.createdAt) >= 3).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).slice(0, 2);
+  return (
+    <div className="card p-4 anim-fade-up" style={{ borderLeft: "3px solid var(--coral)" }}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <span style={{ color: "var(--coral)" }}><IFlag size={15} /></span>
+          <h3 className="font-disp font-semibold text-[14px] m-0">Head command — {esc.length + noAction.length + stale.length} need your eyes</h3>
+        </div>
+        <button className="btn btn-ghost btn-sm" title="Copy WhatsApp morning brief"
+          onClick={() => {
+            const top = slaTop.map((r) => `${r.c.caseNumber} ${r.e.breachDays}d over`).join("; ") || "none";
+            const msg = `HFMC brief ${todayISO()}: pipeline ${fmtMoney(active.reduce((s, c) => s + c.loanAmount, 0))} (${active.length} live), booked ${fmtMoney(booked.reduce((s, c) => s + c.loanAmount, 0))}, SLA ${esc.length} (${top}).`;
+            navigator.clipboard?.writeText(msg).then(() => toast("success", "Brief copied."), () => toast("error", "Copy failed."));
+          }}>
+          Morning brief
+        </button>
+      </div>
+      <div className="grid grid-cols-3 gap-2.5 mt-3">
+        <MiniStat label="SLA breached" value={String(esc.length)} tone="coral" />
+        <MiniStat label="No action 7d+" value={String(noAction.length)} tone="amber" />
+        <MiniStat label="Stale leads" value={String(stale.length)} tone="amber" />
+      </div>
+      <div className="space-y-1.5 mt-3">
+        {slaTop.map(({ e, c }) => (
+          <div key={c.id} className="flex items-center gap-2.5 rounded-lg px-2.5 py-2" style={{ background: "var(--tint)", border: "1px solid var(--line-soft)" }}>
+            <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: "var(--coral)" }} />
+            <button className="min-w-0 flex-1 text-left" onClick={() => nav({ name: "case", id: c.id })}>
+              <span className="block text-[12.5px] font-medium truncate">{c.caseNumber} · {c.customer} — {e.breachDays}d over SLA</span>
+            </button>
+            <button className="btn btn-ghost btn-sm !px-2 shrink-0" onClick={() => nav({ name: "case", id: c.id })}>Open</button>
+          </div>
+        ))}
+        {stale.map((c) => (
+          <div key={c.id} className="flex items-center gap-2.5 rounded-lg px-2.5 py-2" style={{ background: "var(--tint)", border: "1px solid var(--line-soft)" }}>
+            <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: "var(--amber)" }} />
+            <button className="min-w-0 flex-1 text-left" onClick={() => nav({ name: "leads" })}>
+              <span className="block text-[12.5px] font-medium truncate">Stale lead: {c.customer} — {ageDays(c.createdAt)}d</span>
+            </button>
+            <select className="select !w-auto !py-1 text-[11px] shrink-0" value={String(c.ownerId)} title="Reassign"
+              onChange={async (e2) => { await updateCase(c.id, { ownerId: Number(e2.target.value) }); toast("success", "Reassigned."); }}>
+              {users.filter((u) => u.active).map((u) => <option key={u.id} value={u.id}>{u.name.split(" ")[0]}</option>)}
+            </select>
+          </div>
+        ))}
       </div>
     </div>
   );

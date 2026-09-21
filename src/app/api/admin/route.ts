@@ -97,7 +97,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ item: serMaster(item) });
     }
     if (kind === "user") {
-      const item = await db.user.create({ data: { name: body.name, email: body.email.toLowerCase(), password: body.password || "demo123", role: body.role, team: body.team || "Dubai", active: body.active ?? true } });
+      const item = await db.user.create({ data: { name: body.name, email: body.email.toLowerCase(), password: body.password || "demo123", role: body.role, team: body.team || "Dubai", active: body.active ?? true, phone: body.phone?.trim() || null } });
       return NextResponse.json({ item: serUser(item) });
     }
     if (kind === "designation") {
@@ -206,6 +206,7 @@ export async function PATCH(req: NextRequest) {
     if (kind === "user") {
       const data: Record<string, unknown> = { name: body.name, email: body.email?.toLowerCase(), role: body.role, team: body.team, active: body.active };
       if (body.password) data.password = body.password;
+      if (body.phone !== undefined) data.phone = body.phone?.trim() || null;
       const item = await db.user.update({ where: { id: numId }, data });
       return NextResponse.json({ item: serUser(item) });
     }
