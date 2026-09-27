@@ -77,3 +77,12 @@ export const ISparkles = make(<><path d="M12 3l1.8 4.7L18.5 9.5 13.8 11.3 12 16l
 export const IUpload = make(<><path d="M12 16V4" /><path d="m7.5 8.5 4.5-4.5 4.5 4.5" /><path d="M4 16v2.5A1.5 1.5 0 0 0 5.5 20h13A1.5 1.5 0 0 0 20 18.5V16" /></>);
 export const IMenu = make(<><path d="M4 6h16" /><path d="M4 12h16" /><path d="M4 18h16" /></>);
 export const IHome = make(<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1Z" />);
+export const ILayers = make(<><polygon points="12 2 2 7 12 12 22 7 12 2" /><polyline points="2 17 12 22 22 17" /><polyline points="2 12 12 17 22 12" /></>);
+export const IFileText = make(<><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2Z" /><path d="M14 2v6h6" /><path d="M8 14h8" /><path d="M8 18h5" /><path d="M8 10h8" /></>);
+export const IImage = make(<><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" /></>);
+export const IMail = make(<><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2Z" /><path d="m22 6-10 7L4 6" /></>);
+export const IGripVertical = make(<><circle cx="12" cy="5" r="1" fill="currentColor" /><circle cx="12" cy="12" r="1" fill="currentColor" /><circle cx="12" cy="19" r="1" fill="currentColor" /></>);
+export const IChevronUp = make(<path d="m18 15-6-6-6 6" />);
+export const IChevronDown = make(<path d="m6 9 6 6 6-6" />);
+export const IFile = make(<><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2Z" /><path d="M14 2v6h6" /></>);
+export const ITrash2 = make(<><path d="M3 6h18" /><path d="M19 6v14c0 1.1-.9 2-2 2H7c-1.1 0-2-.9-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></>);

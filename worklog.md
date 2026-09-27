@@ -1,3 +1,92 @@
+# 2026-09-22 — Multi-axis pricing engine + property classification + promotion layer
+
+Owner asked for the "3-tier inheritance + choose-any-axis pricing" model to be made real,
+not just planned. Three workstreams landed together.
+
+**A. Multi-axis quote resolution (Phase 1) — `bank-pricing.ts`, `bank-rules-taxonomy.ts`, `quote-parser.ts`**
+- `RateQuote` gained OPTIONAL set fields (`txns`, `salaryTransfer`, `segments`, `residency`,
+  `employment`, `financeType`, `loanKind`, `emirates`, `nationalityRule`, `ftvMin`, `sourceLabel`).
+  Semantics: null/[] = matches all; otherwise the case value must be IN the set. Legacy scalar
+  fields (`stl`, `txn`, `segment`, `ftvMax`, `termYears`) still work, so every existing
+  pricingJson row keeps resolving untouched.
+- `quoteSpecificity()` ranks matches most-specific-first (explicit sets outrank legacy singles),
+  then latest `effectiveFrom`, then lowest rate — so "GECO 3.95%" beats the generic "4.10%".
+- Employment and residency are now separate axes (`MatchInput.employmentProfile` no longer
+  doubles as "Non-Resident"); nationality ALLOW/DENY lists and emirate gating added.
+- New helper `expandFixedYearLabel()` — UAE sheets publish far more than 1/3/5y (ADIB: 2&3y,
+  4y, 5y, 7y, 8-10y, 11-15y, 16-20y). Ranges expand into discrete quotes.
+- **Parser bug fixed (real, live):** the line splitter used `/(?=STL|NSTL)/`, which chopped
+  token forms mid-word — `LAP_3years_STL - 4.69%` and `Fixed_3Years_STL - 3.99%` parsed to
+  NOTHING, silently dropping every ENBD token line. The split now requires whitespace before
+  STL/NSTL. Added a general term-first branch (ranges, `LAP_`, `OffPlan_`, `Land_Fin_`) and
+  underscore-safe STL detection (`_NSTL_Self Emp` previously read as STL because `\b` fails
+  after `_`). `canonicalTxn` now matches whole words only, so "Fixed_3Years_STL" can never
+  alias to **Land** via the "stl" fragment.
+- `runBankMatch` was being handed none of these axes — `/api/bank-match` now passes
+  nationality, emirate, financeType (from canonical property type), loanKind (from
+  islamicOnly) and segment through, and its case preload reads the canonical dims off the row.
+
+**B. Property classification (the FINAL PROPERTY CLASSIFICATION PLAN) — schema + UI + API**
+- `LoanCase` gained 7 additive, UNKNOWN-defaulted columns: `propertyTypeCanonical`,
+  `commercialSubtype`, `propertyStage`, `constructionStatus`, `partyRelationship`,
+  `existingFinance`, `transactionPurpose`. `db push` run against production: "in sync".
+- Rules enforced in code AND at the API: commercial subtype is NULL unless the property IS
+  commercial (never invented); Off-plan never implies Under-construction; Handover never
+  implies construction Completed; ambiguous legacy data backfills to UNKNOWN.
+- Profile editor Property tab replaced its Ready/Off-Plan pair with the five plain-language
+  questions (type → conditional commercial subtype → status → dealing-with → existing
+  mortgage). One status answer writes TWO backend fields conservatively — "Off-plan" sets the
+  stage and leaves construction UNKNOWN, "Under construction" does the reverse, "Ready" sets
+  both, "Not sure" sets neither. Legacy `propertyType` stays in sync so the Doc Vault works.
+- `scripts/backfill-property-canonical.mjs` — `--dry-run` first, profileJson wins over legacy
+  derivation, idempotent. Ran on production: 31 rows classified, no subtype guesses; the
+  re-run reported "31 already classified, 0 updated".
+
+**C. Promotions / Tier-4 override layer — schema + engine + admin UI**
+- New `Promotion` model: product + optional term scope + rate-discount bps + processing-fee
+  override + valuation waiver + date window + active flag. **Base pricing is never touched** —
+  the overlay applies on top and expires by date with no revert step.
+- Engine: one query for today's live promos; `promoFor(productId, term)` then the discount is
+  applied to the INTRO rate only (follow-on and stress stay on base terms), the processing-fee
+  override and valuation waiver annotate the fee block, and the promo is surfaced on every
+  MatchResult. Badges render in the Bank Match panel and on the proposal (header + a
+  dedicated Promotion comparison row).
+- Admin → Marketplace → **Promotions** tab (Live / Scheduled / Expired / Paused chips,
+  create/edit modal, delete confirm) + `/api/admin?kind=promotions` CRUD.
+
+**D. Fees & admin tooling**
+- `bank-fees.ts`: slabbed processing-fee schedules (`slabs[]`, first ceiling ≥ loan wins) and
+  `componentSplit` for buyout+equity (per-portion %). Both additive — flat % rows behave
+  exactly as before; `processingFeePct/Aed` gained an optional loanAmount so slabs resolve.
+- Admin quote rows: full 1-20y tenor list, FTV > floor input, and a collapsible **"applies to"
+  multi-axis editor** (transactions, STL/NSTL, residency, employment, financeType, loanKind,
+  segments, emirates, nationality rules) — the same sets semantics the engine resolves with.
+  AI quote drafts now carry the set fields through instead of dropping them.
+
+**Verification (all run, not assumed)**
+- `npx tsc --noEmit` → **0 errors**.
+- `npx tsx tests/phase1-multiaxis.ts` → **52 passed, 0 failed** (alias hygiene, year-range
+  expansion, FTV bands, specificity, nationality ALLOW/DENY, legacy compat, token lines,
+  header-context precedence, canonical backfill, promo math, slab + component fees).
+- `prisma db push` on production Supabase → "in sync"; backfill dry-run then live; idempotency
+  re-run confirmed.
+- Live smoke: `/` → 200, `/api/state` and `/api/admin?kind=promotions` → 401 (guarded).
+- End-to-end promo proof against the real engine (temp script, deleted after): baseline
+  Sharjah Islamic Bank intro 3.90% / PF 1% → with promo **3.65%** (−25bps) / PF **0%** /
+  valuation "Waived" → expired promo (validTo 2020) reverted to **3.90%** / null.
+- Dev server was stopped for `prisma generate` (it locks the query-engine DLL — see
+  maintenance rule 3) and restarted; `dev-run.log` shows "✓ Ready".
+
+Stage Summary:
+- A quote can now say "these 4 transactions, STL only, expats, Dubai, FTV>60%" instead of
+  forcing one hardcoded axis per line, and the resolver picks the most specific match.
+- The VRM/SPO answers five plain questions; the database stores six canonical dimensions that
+  never conflate stage with construction status; nothing unknown is ever guessed.
+- Marketing can launch a festival bonanza from Admin → Promotions and it turns itself off on
+  the end date, leaving base pricing exactly as filed.
+
+---
+
 # HFMC — Worklog
 
 Porting `chetans-hfmc/smallhfmc` (Vite SPA, localStorage, Supabase) into the Next.js 16 + Prisma + shadcn/ui stack, plus AI-powered improvements.
@@ -521,4 +610,27 @@ Work Log (Calculator — three-ROI engine, formatted assessment document, Excel 
 
 Stage Summary:
 - The engine, the screen, the printed assessment and the Excel workbook now all quote the same three ROIs, the same three EMIs and the same three DBRs, computed in exactly one place; and the eligibility figure a banker sees is capacity, not whatever the client happened to ask for.
+
+---
+
+Task ID: chat + admin-settings hardening
+Agent: cline
+Task: Fix staff→client chat delivery, thread switching, read receipts, attachment UX, save-to-vault; fix Admin → Settings → Notifications/Devices not saving; remove the `.kilo/worktrees` stale copy
+
+Work Log:
+- Chat delivery (staff→client never arrived). Two stacked causes: (1) a client logs in with ONE case but `/api/client/state` lets them switch sibling bank journeys sharing `clientId` — chat only accepted the login case, so staff replies on a sibling journey 403'd for the client; (2) on a shared test laptop both the staff and stale client cookies exist, and the old `if (client)` branch ran first and short-circuited staff. New `src/lib/chat-auth.ts` (`clientCanAccessCase`, `siblingCaseIds`); staff session now always wins in GET/POST/upload/heartbeat, and staff→client web push fans out to every sibling caseId. Agent→staff push added (was missing).
+- Failed sends were silently swallowed client-side (`else { setText(content) }` with no message) — a 403 "your designation may not reply in chat" looked exactly like "not reaching". The POST/upload error string is now thrown, shown inline in a red bar, and the typed text is restored.
+- Thread mix-up: staff clicking an AGENT row in the mini-inbox always landed on CLIENT because `ChatDrawer` kept only `caseId` and dropped `threadType`. Drawer now tracks `activeThread`, passes `initialThread`, and remounts via `key={caseId_thread}`. Inbox rows carry a `client` / `partner` badge with distinct avatar colours.
+- Read receipts: WhatsApp-style small-letter `sent` → `seen` (blue) for staff, `received` → `seen` for client/agent, driven by the real `readByStaff`/`readByExternal` flags. Added an 8s polling fallback (SSE dies silently behind some proxies) that both picks up missed messages and refreshes tick state; heartbeat now handles the agent session too.
+- Attachments: upload rewritten on XHR (fetch cannot report upload progress) showing the real filename plus a live % bar, then a proper error if it fails; the old `View` link pointed at a route that never existed (`/api/documents/download?key=`) and now opens the vault file (`/api/documents/:id/file`).
+- Save-to-vault: `ChatMessageDto` gained `documentId` (joined by storage key in GET, SSE and POST) and staff get a one-click **Save to Vault** button on incoming attachments, backed by the new `src/app/api/chat/[caseId]/attachments/[docId]/save` route (recategorises and stamps activity without leaving chat).
+- Admin → Settings → Notifications "not saved when ticked". Root cause: the GET route was refactored to wrap its payload as `{ settings }` (to mask API keys) but the tab still did `setCfg(rawResponse)`, so every toggle read `undefined` and rendered OFF no matter what the DB held, and Save posted the wrapper shape back so the route's `patch.notifXxx` lookups were all `undefined` — nothing persisted, silently. The same envelope bug hit the Devices tab (`{ devices }` wrapper stored as the array → "No registered devices" forever). Both tabs now unwrap, surface real server errors, and re-sync from the response. The 23 legacy `notif_*` rows in `AppSetting` (all `true`) are leftovers from before the wrapper landed; the read/write key mapping in `notification-settings.ts` was already correct.
+- Toggles only ever changed local state, so a tick looked like a save. Added a dirty flag (`saved` snapshot vs current cfg) → "unsaved changes" chip, the Save button is disabled and reads "Saved" when clean, and is the only thing that writes.
+- 31 `react-hooks/static-components` errors in admin.tsx: `NotificationsTab` defined `Toggle`/`Field` inside the render body, shadowing the module-level ones of the same name. Extracted to module level as `NotifToggle`/`NotifInput`. DevicesTab's `set-state-in-effect` fixed by making `devices === null` the loading state and reloading through a `reloadKey` counter from the event handler.
+- Deleted `.kilo/` — a stale worktree copy of the whole repo that doubled every lint finding and confused `CODEBASE.md` searches.
+- Verified end-to-end against the running dev server with a minted admin session: `GET { settings }` 200, `PUT` flipping `notif_clientEmail true→false` and `notif_staffOnLeadAssigned true→false`, raw `AppSetting` rows confirming the write, re-`GET` confirming the reload, then restored to the original values; `GET /api/admin/devices` 200 with the `{ devices }` envelope and 15 registered devices; staff page `/`, `/api/state`, `/api/admin` all 200. `tsc --noEmit` 0 errors; repo `eslint` down from 40E/10W to 5E/5W, all 5 pre-existing and unrelated (scripts/backfill-clients.js, PwaInstallBanner, carousel, case-profile-editor, use-mobile).
+
+Stage Summary:
+- Staff replies reach the client on any bank journey and on the correct thread, both sides see sent/received/seen, attachments show progress then a real filename, and any chat attachment can be filed into the Document Vault in one click. Admin notification and device settings now load what is actually stored and persist what you toggle.
+
 

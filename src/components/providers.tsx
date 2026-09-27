@@ -3,6 +3,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 import { Toaster } from "@/components/ui/sonner";
+import { MotionProvider } from "@/components/hfmc/motion";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [client] = useState(
@@ -19,7 +20,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
   );
   return (
     <QueryClientProvider client={client}>
-      {children}
+      {/* LazyMotion + reduced-motion safety net, app-wide */}
+      <MotionProvider>{children}</MotionProvider>
       <Toaster richColors position="bottom-right" />
     </QueryClientProvider>
   );

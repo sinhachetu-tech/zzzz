@@ -5,18 +5,25 @@ import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useHfmcStore } from "@/lib/client-store";
 import type { LoanCase, Reply, Task } from "@/lib/types";
-import { EMPLOYMENT_PROFILES, LOAN_TYPES, PROPERTY_LOCATIONS, PROPERTY_TYPES, RESIDENCIES, TRANSACTION_TYPES } from "@/lib/types";
 import {
-  ageDays, caseStatusOf, daysBetween, fmtDate, fmtDateTime, fmtDue, fmtMoney, inDaysISO, isOverdueDue, parseTaskDue, primaryBank, relTime, todayISO,
+  caseStatusOf, fmtDate, fmtDateTime, fmtDue, fmtMoney, inDaysISO, isOverdueDue, parseTaskDue, relTime,
 } from "@/lib/format";
-import { Avatar, Chip, DueChip, Modal, SectionLabel, StatusChip } from "@/components/hfmc/ui";
-import { BankChips, CaseStateChip, CommissionPanel, ConfirmModal, SourceChip, WaButtons, waClientLink } from "@/components/hfmc/bits";
+import { Avatar, Chip, DueChip, Modal, StatusChip } from "@/components/hfmc/ui";
+import { CaseStateChip, CommissionPanel, ConfirmModal, SourceChip, WaButtons, waClientLink } from "@/components/hfmc/bits";
 import { DocVault } from "@/components/views/doc-vault";
+import { StageJourney } from "@/components/case/StageJourney";
+import { StageDrawer } from "@/components/case/StageDrawer";
+import { CaseHero } from "@/components/case/CaseHero";
+import { ProfileStrip } from "@/components/case/ProfileStrip";
+import { DocActionRow } from "@/components/case/DocActionRow";
+import type { StageKey } from "@/lib/workflow/types";
+import type { CaseTab } from "@/components/case/stage-parts";
 import { DailyMisTab } from "@/components/views/daily-mis";
 import { BankMatchPanel } from "@/components/views/bank-match";
 import { ProposalHistory } from "@/components/views/proposal-history";
+import { ChatPanel } from "@/components/chat/ChatPanel";
 import {
-  IArrowR, IBank, ICalc, ICheck, IChevronL, IClock, IFlag, IHistory, IPlus, IRobot, ISparkles, ITrash, IWhatsapp, IZap,
+  IArrowR, IBank, ICheck, IChevronL, IEye, IFlag, IHistory, IPlus, IRobot, ISparkles, ITrash, IWhatsapp,
 } from "@/components/icons";
 
 function ReplyThread({ replies, onSend }: { replies: Reply[]; onSend: (text: string) => void }) {
@@ -31,7 +38,7 @@ function ReplyThread({ replies, onSend }: { replies: Reply[]; onSend: (text: str
           <div className="min-w-0 flex-1 rounded-lg px-3 py-2" style={{ background: "var(--tint)", border: "1px solid var(--line-soft)" }}>
             <div className="flex items-baseline gap-2">
               <span className="text-[12px] font-semibold">{userById(r.userId)?.name ?? "—"}</span>
-              <span className="mono text-[10px] text-[var(--ink-faint)]">{relTime(r.at)}</span>
+              <span className="mono text-[10.5px] text-[var(--ink-faint)]">{relTime(r.at)}</span>
             </div>
             <p className="text-[12.5px] text-[var(--ink-dim)] m-0 mt-0.5 leading-snug">{r.text}</p>
           </div>
@@ -251,8 +258,8 @@ function CaseCopilot({ caseId }: { caseId: number }) {
       </div>
 
       {open && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 anim-fade-in" style={{ background: "rgba(4,12,15,0.74)", backdropFilter: "blur(4px)" }} onMouseDown={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
-          <div className="card anim-scale-in w-full max-w-[680px] max-h-[88vh] flex flex-col" style={{ background: "var(--raised)" }}>
+        <div className="modal-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
+          <div className="modal-pop w-full max-w-[680px]">
             <div className="flex items-start justify-between px-5 pt-4 pb-3 border-b border-[var(--line-soft)]">
               <div className="flex items-center gap-2">
                 <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: "rgba(87,194,234,0.14)", color: "var(--sky)" }}><IRobot size={16} /></div>
@@ -350,7 +357,8 @@ function SaveText({
 }
 
 function MisPanel({ c }: { c: LoanCase }) {
-  const { users, updateCase, toast } = useHfmcStore();
+  const { updateCase, toast } = useHfmcStore();
+  const [expanded, setExpanded] = useState(false);
   const save = (field: string, value: unknown) =>
     updateCase(c.id, { [field]: value }).then(() => toast("success", "Saved."));
 
@@ -358,88 +366,37 @@ function MisPanel({ c }: { c: LoanCase }) {
     <div className="card p-4 anim-fade-up" style={{ borderLeft: "3px solid var(--amber)" }}>
       <div className="flex items-center gap-2 mb-3">
         <IFlag size={14} className="text-[var(--amber)]" />
-        <h3 className="font-disp font-semibold text-[13.5px] m-0">Case profile &amp; bank tracking</h3>
+        <h3 className="font-disp font-semibold text-[13.5px] m-0">Bank Tracking</h3>
         {c.onHold && <span className="ml-auto chip" style={{ color: "var(--amber)", background: "rgba(242,176,76,0.12)", borderColor: "rgba(242,176,76,0.4)" }}>ON HOLD</span>}
       </div>
 
-      {/* daily note + hold moved to the Daily MIS tab */}
+      {/* bank-tracking fields — the only fields that don't belong in the Profile tab */}
+      <button
+        className="flex items-center gap-1.5 text-[11px] text-[var(--ink-faint)] mb-2 cursor-pointer hover:text-[var(--ink-dim)] transition-colors"
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <span style={{ display: "inline-flex", transform: expanded ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.15s" }}>
+          <IArrowR size={11} />
+        </span>
+        {expanded ? "Hide fields" : "Show fields — edit only when something changed"}
+      </button>
 
-      <details open={!c.onHold} className="mt-1">
-        <summary className="text-[11px] text-[var(--ink-faint)] cursor-pointer select-none mb-1">Attributes — edit only when something changed</summary>
-      <div className="grid grid-cols-2 gap-3 mt-3">
-        <Field label="Employment profile" hint="drives the vault">
-          <select className="select" value={c.employmentProfile} onChange={(e) => save("employmentProfile", e.target.value)}>
-            {EMPLOYMENT_PROFILES.map((v) => <option key={v} value={v}>{v}</option>)}
-          </select>
-        </Field>
-        <Field label="Residency">
-          <select className="select" value={c.residency} onChange={(e) => save("residency", e.target.value)}>
-            {RESIDENCIES.map((v) => <option key={v} value={v}>{v}</option>)}
-          </select>
-        </Field>
-        <Field label="Property type" hint="drives the vault">
-          <select className="select" value={c.propertyType} onChange={(e) => save("propertyType", e.target.value)}>
-            {PROPERTY_TYPES.map((v) => <option key={v} value={v}>{v}</option>)}
-          </select>
-        </Field>
-        <Field label="Transaction type">
-          <select
-            className="select"
-            value={c.transactionType || ""}
-            onChange={(e) => save("transactionType", e.target.value)}
-          >
-            <option value="">— select —</option>
-            {TRANSACTION_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
-        </Field>
-        <Field label="Bank RM">
-          <SaveText value={c.bankRm ?? ""} placeholder="RM name at bank" onSave={(v) => save("bankRm", v || null)} />
-        </Field>
-        <Field label="VRM (internal)">
-          <select
-            className="select"
-            value={c.vrmId ?? ""}
-            onChange={(e) => save("vrmId", e.target.value ? parseInt(e.target.value, 10) : null)}
-          >
-            <option value="">— unassigned —</option>
-            {users.filter((u) => u.active).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-          </select>
-        </Field>
-        <Field label="Property location">
-          <select
-            className="select"
-            value={c.propertyLocation ?? ""}
-            onChange={(e) => save("propertyLocation", e.target.value || null)}
-          >
-            <option value="">— select —</option>
-            {PROPERTY_LOCATIONS.map((p) => <option key={p} value={p}>{p}</option>)}
-          </select>
-        </Field>
-        <Field label="Co-applicant">
-          <SaveText value={c.coApplicantName ?? ""} placeholder="Optional" onSave={(v) => save("coApplicantName", v || null)} />
-        </Field>
-        <Field label="Loan type">
-          <select
-            className="select"
-            value={c.loanType ?? ""}
-            onChange={(e) => save("loanType", e.target.value || null)}
-          >
-            <option value="">— select —</option>
-            {LOAN_TYPES.map((l) => <option key={l} value={l}>{l}</option>)}
-          </select>
-        </Field>
-        <Field label="File submitted date">
-          <SaveText value={c.fileSubmittedDate ?? ""} type="date" mono onSave={(v) => save("fileSubmittedDate", v || null)} />
-        </Field>
-        <Field label="Bank tenor (months)">
-          <SaveText value={c.bankTenor != null ? String(c.bankTenor) : ""} type="number" mono placeholder="e.g. 300" onSave={(v) => save("bankTenor", v ? Number(v) : null)} />
-        </Field>
-        <Field label="Bank rate (%)">
-          <SaveText value={c.bankRate != null ? String(c.bankRate) : ""} type="number" mono placeholder="e.g. 4.49" onSave={(v) => save("bankRate", v ? Number(v) : null)} />
-        </Field>
-      </div>
-
-      </details>
+      {expanded && (
+        <div className="grid grid-cols-2 gap-3 mt-1 anim-fade-up">
+          <Field label="Bank RM">
+            <SaveText value={c.bankRm ?? ""} placeholder="RM name at bank" onSave={(v) => save("bankRm", v || null)} />
+          </Field>
+          <Field label="File submitted date">
+            <SaveText value={c.fileSubmittedDate ?? ""} type="date" mono onSave={(v) => save("fileSubmittedDate", v || null)} />
+          </Field>
+          <Field label="Bank tenor (months)">
+            <SaveText value={c.bankTenor != null ? String(c.bankTenor) : ""} type="number" mono placeholder="e.g. 300" onSave={(v) => save("bankTenor", v ? Number(v) : null)} />
+          </Field>
+          <Field label="Bank rate (%)">
+            <SaveText value={c.bankRate != null ? String(c.bankRate) : ""} type="number" mono placeholder="e.g. 4.49" onSave={(v) => save("bankRate", v ? Number(v) : null)} />
+          </Field>
+        </div>
+      )}
 
       {/* on hold toggle */}
       <div className="mt-3 pt-3" style={{ borderTop: "1px dashed var(--line)" }}>
@@ -450,13 +407,16 @@ function MisPanel({ c }: { c: LoanCase }) {
           </div>
           <button
             type="button"
+            role="switch"
+            aria-checked={c.onHold}
             onClick={() => save("onHold", !c.onHold)}
-            className="btn btn-sm"
-            style={c.onHold
-              ? { background: "rgba(242,176,76,0.14)", color: "var(--amber)", borderColor: "var(--amber)" }
-              : { background: "var(--bg2)", color: "var(--ink-dim)", borderColor: "var(--line)" }}
+            className="relative inline-flex items-center h-6 w-11 rounded-full transition-colors shrink-0 focus:outline-none"
+            style={{ background: c.onHold ? "var(--amber)" : "var(--line)" }}
           >
-            {c.onHold ? "On hold" : "Active"}
+            <span
+              className="inline-block w-4 h-4 rounded-full bg-white shadow transition-transform"
+              style={{ transform: c.onHold ? "translateX(22px)" : "translateX(2px)" }}
+            />
           </button>
         </div>
         {c.onHold && (
@@ -583,17 +543,36 @@ function FolPanel({ c }: { c: LoanCase }) {
 export default function CaseDetail({ id }: { id: number }) {
   const { cases, tasks, activities, stages, banks, users, instructions, me, nav, userById, caseById, updateCase, deleteCase, completeTask, deleteTask, toast, flags, canInstruct } = useHfmcStore();
   const c = caseById(id);
-  const [caseTab, setCaseTab] = useState<"profile" | "daily" | "tasks" | "documents" | "banks" | "activity">(() => {
+  const [caseTab, setCaseTab] = useState<CaseTab>(() => {
     // stage-aware default: a fresh lead opens on its profile (that IS the lead's
     // work); every other stage opens on the daily workspace
     return c?.stage === "Lead" ? "profile" : "daily";
   });
+  const [profileSubTab, setProfileSubTab] = useState<"primary" | "property" | "joint">("primary");
+  const [showInspector, setShowInspector] = useState(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("hfmc.caseInspectorOpen");
+      if (saved !== null) return saved === "true";
+    }
+    return true;
+  });
+  const toggleInspector = () => {
+    setShowInspector((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("hfmc.caseInspectorOpen", String(next));
+      } catch { }
+      return next;
+    });
+  };
   const [showAddTask, setShowAddTask] = useState(false);
   const [showStage, setShowStage] = useState(false);
   const [showOutcome, setShowOutcome] = useState(false);
   const [doneTarget, setDoneTarget] = useState<Task | null>(null);
   const [delTarget, setDelTarget] = useState<Task | null>(null);
   const [delCaseOpen, setDelCaseOpen] = useState(false);
+  const [journeyKey, setJourneyKey] = useState<StageKey | null>(null);
+  const [taskFilter, setTaskFilter] = useState<"All" | "Client" | "Bank" | "Internal" | "Urgent">("All");
 
   const caseTasks = useMemo(() => tasks.filter((t) => t.caseId === id), [tasks, id]);
   const caseActivities = useMemo(() => activities.filter((a) => a.caseId === id).sort((a, b) => b.at.localeCompare(a.at)), [activities, id]);
@@ -621,22 +600,23 @@ export default function CaseDetail({ id }: { id: number }) {
   const activeStages = stageList.filter((s) => s.active);
   const activeIdx = activeStages.findIndex((s) => s.label === c.stage);
   const preApprovalIdx = activeStages.findIndex((s) => s.label === "Pre-Approval");
-  const folIdx = activeStages.findIndex((s) => s.label === "Final Approval");
+  const folIdx = activeStages.findIndex((s) => s.label === "FOL + Loan Booking");
   const showPreApproval = preApprovalIdx >= 0 && activeIdx >= preApprovalIdx;
   const showFol = folIdx >= 0 && activeIdx >= folIdx;
 
   return (
     <div className="space-y-4">
       {/* 2) STICKY ACTION HEADER — context + primary CTA stay visible while scrolling the 360 */}
-      <div className="case-stickybar">
+      <div className="case-stickybar flex flex-wrap items-center gap-2 p-2 bg-[var(--bg2)]">
         <button className="btn btn-ghost btn-sm !px-2 shrink-0" onClick={() => nav({ name: "dashboard" })} title="Back to pipeline">
           <IChevronL size={14} />
         </button>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="mono text-[11.5px] shrink-0" style={{ color: "var(--amber)" }}>{c.caseNumber}</span>
+          <div className="flex items-center gap-2 min-w-0 flex-wrap">
+            <span className="mono text-[11.5px] shrink-0 truncate" style={{ color: "var(--amber)" }}>{c.caseNumber}</span>
             <span className="text-[13.5px] font-disp font-semibold truncate">{c.customer}</span>
             {c.caseStatus === "Active" ? <StatusChip status={status} /> : <CaseStateChip state={c.caseStatus} />}
+            <span className="chip hidden md:inline" style={{ fontSize: 10, background: "rgba(242,176,76,0.1)", color: "var(--amber)", borderColor: "rgba(242,176,76,0.3)" }}>{c.stage}</span>
             <span className="mono text-[12px] text-[var(--ink-dim)] hidden sm:inline">{fmtMoney(c.loanAmount)}</span>
           </div>
           {nextBest ? (
@@ -647,103 +627,86 @@ export default function CaseDetail({ id }: { id: number }) {
             <p className="text-[11.5px] m-0 mt-0.5" style={{ color: "var(--mint)" }}>✓ No open tasks — file is clean.</p>
           )}
         </div>
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
           {waNudge && (
             <a className="btn btn-mint btn-sm !px-2.5" href={waNudge} target="_blank" rel="noreferrer" title={`Nudge ${c.customer} about: ${nextBest?.description ?? ""}`}>
               <IWhatsapp size={14} /><span className="hidden lg:inline">Nudge</span>
             </a>
           )}
-          <button className="btn btn-ghost btn-sm !px-2.5" onClick={() => setShowAddTask(true)} title="Add a task"><IPlus size={14} /><span className="hidden lg:inline">Task</span></button>
-          <button className="btn btn-ghost btn-sm !px-2.5" onClick={() => setShowStage(true)} title="Move stage"><IArrowR size={14} /><span className="hidden lg:inline">Stage</span></button>
-          <button className="btn btn-ghost btn-sm !px-2.5" onClick={() => setCaseTab("banks")} title="Run bank match"><IBank size={14} /><span className="hidden lg:inline">Match</span></button>
+          <button className="btn btn-ghost btn-sm !px-2.5 mt-1 sm:mt-0" onClick={() => setShowAddTask(true)} title="Add a task"><IPlus size={14} /><span className="hidden lg:inline">Task</span></button>
+          <button className="btn btn-ghost btn-sm !px-2.5 mt-1 sm:mt-0" onClick={() => setShowStage(true)} title="Move stage"><IArrowR size={14} /><span className="hidden lg:inline">Stage</span></button>
+          <button className="btn btn-ghost btn-sm !px-2.5 mt-1 sm:mt-0" onClick={() => setCaseTab("banks")} title="Run bank match"><IBank size={14} /><span className="hidden lg:inline">Match</span></button>
+          <button
+            className="btn btn-ghost btn-sm !px-2.5 mt-1 sm:mt-0"
+            onClick={toggleInspector}
+            title={showInspector ? "Hide case details inspector" : "Show case details inspector"}
+            style={showInspector ? { color: "var(--amber)", background: "rgba(242,176,76,0.12)" } : undefined}
+          >
+            <IEye size={14} /><span className="hidden lg:inline">{showInspector ? "Hide Details" : "Details"}</span>
+          </button>
         </div>
       </div>
-      <button className="btn btn-ghost btn-sm" onClick={() => nav({ name: "dashboard" })}>
-        <IChevronL size={14} /> Pipeline
-      </button>
 
-      {/* header */}
-      <div className="card p-5 anim-fade-up">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <span className="mono text-[13px]" style={{ color: "var(--amber)" }}>{c.caseNumber}</span>
-              <CaseStateChip state={c.caseStatus} />
-              {c.caseStatus === "Active" && <StatusChip status={status} />}
-              {c.onHold && (
-                <span
-                  className="chip"
-                  title={c.holdReason ? `On hold — ${c.holdReason}${c.holdUntil ? ` (until ${c.holdUntil})` : ""}` : "On hold"}
-                  style={{ color: "var(--amber)", background: "rgba(242,176,76,0.12)", borderColor: "rgba(242,176,76,0.4)" }}
-                >
-                  ON HOLD
-                </span>
-              )}
-              <SourceChip source={c.source} />
-              {c.transactionType && <Chip tone="sky">{c.transactionType}</Chip>}
-              {c.propertyLocation && <Chip tone="slate">{c.propertyLocation}</Chip>}
-              {c.partner && <Chip tone="amber">{c.partner.kind} · {c.partner.name}{flags?.viewRevenue ? ` @ ${c.partner.sharePct}%` : ""}</Chip>}
-            </div>
-            <h1 className="font-disp font-bold text-[26px] tracking-tight m-0 mt-2">{c.customer}</h1>
-            <p className="text-[12.5px] text-[var(--ink-faint)] m-0 mt-1">
-              opened {fmtDate(c.createdAt)} · {ageDays(c.createdAt)}d old · stage <strong className="text-[var(--ink-dim)]">{c.stage}</strong>
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+      {/* hero — case no + customer + chips + action buttons merged in */}
+      <CaseHero
+        c={c}
+        status={status}
+        actions={
+          <>
             <WaButtons c={c} agentName={me?.name ?? ""} />
             {c.caseStatus === "Active" && (
-              <>
-                <button className="btn btn-ghost sm:btn-sm" onClick={() => setShowStage(true)}><IArrowR size={14} /> Move stage</button>
-                <button className="btn btn-primary sm:btn-sm" onClick={() => setShowOutcome(true)}>Set outcome</button>
-              </>
+              <button className="btn btn-primary btn-sm" onClick={() => setShowOutcome(true)}>Set outcome</button>
             )}
             {(flags?.admin || flags?.super) && (
-              <button className="btn btn-ghost sm:btn-sm !px-2" title="Delete permanently (admin) — accidental creations only; use Set outcome → Lost otherwise"
-                onClick={() => setDelCaseOpen(true)} style={{ color: "var(--coral)" }}>
+              <button
+                className="btn btn-ghost btn-sm !px-2"
+                title="Delete permanently (admin) — accidental creations only; use Set outcome → Lost otherwise"
+                onClick={() => setDelCaseOpen(true)}
+                style={{ color: "var(--coral)" }}
+              >
                 <ITrash size={14} />
               </button>
             )}
-          </div>
-        </div>
+          </>
+        }
+      />
 
-        {/* stage pipeline */}
-        <div className="mt-5 flex items-center gap-1 overflow-x-auto pb-1">
-          {stageList.filter((s) => s.active).map((s, i) => {
-            const idx = stageList.filter((x) => x.active).findIndex((x) => x.label === c.stage);
-            const done = i < idx;
-            const current = i === idx;
-            return (
-              <div key={s.id} className="flex items-center gap-1 shrink-0">
-                <button onClick={() => canEdit && setShowStage(true)} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg transition-all"
-                  style={current ? { background: "rgba(242,176,76,0.12)", border: "1px solid var(--amber)" } : { border: "1px solid transparent" }}>
-                  {current && c.caseStatus === "Active" ? <span className="dot-stage-live shrink-0" aria-hidden="true" /> : null}
-                  <span className="w-5 h-5 rounded-full flex items-center justify-center mono text-[10px] font-semibold"
-                    style={{ background: done ? "var(--mint)" : current ? "var(--amber)" : "var(--track)", color: done || current ? "#fff" : "var(--ink-faint)" }}>
-                    {done ? <ICheck size={11} /> : i + 1}
-                  </span>
-                  <span className="text-[11.5px] font-disp font-medium whitespace-nowrap" style={{ color: current ? "var(--ink)" : done ? "var(--ink-dim)" : "var(--ink-faint)" }}>{s.label}</span>
-                </button>
-                {i < stageList.filter((x) => x.active).length - 1 && <span className="w-3 h-px" style={{ background: "var(--line)" }} />}
-              </div>
-            );
-          })}
+      {/* overview card — profile strip (hidden if profile tab active) + stage journey */}
+      <div className="card p-5 anim-fade-up">
+        {/* brief profile — click a card to jump into Profile tab */}
+        {caseTab !== "profile" && (
+          <ProfileStrip
+            c={c}
+            onEdit={(tab, subTab) => {
+              setCaseTab(tab);
+              if (subTab) setProfileSubTab(subTab);
+            }}
+          />
+        )}
+
+        {/* journey — 5 stage cards (click for Now / To-do / Procedure / Actions) */}
+        <div className={caseTab !== "profile" ? "mt-4" : ""}>
+          <StageJourney c={c} onOpen={setJourneyKey} />
         </div>
+        {journeyKey && (
+          <StageDrawer c={c} stageKey={journeyKey} onClose={() => setJourneyKey(null)} onTab={setCaseTab} />
+        )}
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-[1.4fr_1fr] gap-4 items-start">
-        {/* left: stage-aware tabs */}
+      {/* workspace navigation bar — prominent switcher anchoring the workspace below */}
+      <DocActionRow
+        c={c}
+        active={caseTab}
+        onTab={setCaseTab}
+        showInspector={showInspector}
+        onToggleInspector={toggleInspector}
+      />
+
+      <div className={`grid grid-cols-1 ${showInspector ? "xl:grid-cols-[1fr_340px]" : ""} gap-4 items-start`}>
+        {/* left: stage-aware tabs — DocActionRow above is the primary tab navigation */}
         <div className="space-y-4">
-          <div className="card p-2 flex gap-1.5 overflow-x-auto">
-            {([["profile", "Lead & Applicant Profile"], ["daily", "Daily MIS"], ["tasks", "Tasks"], ["documents", "Documents"], ["banks", "Banks & proposal"], ["activity", "Activity"]] as const).map(([k, label]) => (
-              <button key={k} onClick={() => setCaseTab(k)}
-                className="chip transition-all whitespace-nowrap"
-                style={caseTab === k ? { background: "rgba(242,176,76,0.14)", borderColor: "var(--amber)", color: "var(--amber)" } : { background: "var(--bg2)", borderColor: "var(--line)", color: "var(--ink-faint)" }}>
-                {label}
-              </button>
-            ))}
-          </div>
           {/* profile */}
-          {(caseTab === "profile") && <CaseProfileEditor c={c} />}
+          {(caseTab === "profile") && <CaseProfileEditor c={c} initialTab={profileSubTab} />}
 
           {/* daily MIS */}
           {(caseTab === "daily") && <DailyMisTab c={c} />}
@@ -751,16 +714,27 @@ export default function CaseDetail({ id }: { id: number }) {
           {/* tasks */}
           {(caseTab === "tasks") && (<><div className="card anim-fade-up anim-reveal">
             <div className="flex items-center justify-between p-4 border-b" style={{ borderColor: "var(--line-soft)" }}>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="font-disp font-semibold text-[14px] m-0">Tasks</h3>
                 <Chip tone={openTasks.length ? "amber" : "mint"}>{openTasks.length} open</Chip>
                 <span className="text-[11.5px] text-[var(--ink-faint)]">· {doneTasks.length} done</span>
+                {/* waitingFor quick-filter chips */}
+                <div className="flex items-center gap-1 ml-2">
+                  {(["All", "Client", "Bank", "Internal", "Urgent"] as const).map((f) => (
+                    <button
+                      key={f}
+                      className="chip"
+                      onClick={() => setTaskFilter((prev) => prev === f ? "All" : f)}
+                      style={taskFilter === f && f !== "All" ? { background: "rgba(242,176,76,0.15)", color: "var(--amber)", borderColor: "rgba(242,176,76,0.4)" } : taskFilter === "All" && f === "All" ? { background: "rgba(var(--mint-rgb),0.1)", color: "var(--mint)", borderColor: "rgba(var(--mint-rgb),0.3)" } : undefined}
+                    >{f}</button>
+                  ))}
+                </div>
               </div>
               <button className="btn btn-ghost btn-sm" onClick={() => setShowAddTask(true)}><IPlus size={13} /> Add task</button>
             </div>
             <div className="divide-y" style={{ borderColor: "var(--line-soft)" }}>
               {caseTasks.length === 0 && <p className="p-5 text-[13px] text-[var(--ink-faint)] m-0">No tasks yet — add the first action.</p>}
-              {[...caseTasks].sort((a, b) => (a.status === b.status ? (parseTaskDue(a.dueDate)?.getTime() ?? 0) - (parseTaskDue(b.dueDate)?.getTime() ?? 0) : a.status === "Open" ? -1 : 1)).map((t) => {
+              {[...caseTasks].filter((t) => taskFilter === "All" || t.waitingFor === taskFilter || (taskFilter === "Urgent" && isOverdueDue(t.dueDate))).sort((a, b) => (a.status === b.status ? (parseTaskDue(a.dueDate)?.getTime() ?? 0) - (parseTaskDue(b.dueDate)?.getTime() ?? 0) : a.status === "Open" ? -1 : 1)).map((t) => {
                 const tOwner = userById(t.ownerId);
                 const isOpen = t.status === "Open";
                 const od = isOpen && isOverdueDue(t.dueDate);
@@ -797,220 +771,289 @@ export default function CaseDetail({ id }: { id: number }) {
             </div>
           </div>
 
-          {/* instructions */}
-          {caseInstr.length > 0 && (
-            <div className="card anim-fade-up">
-              <div className="p-4 border-b flex items-center gap-2" style={{ borderColor: "var(--line-soft)" }}>
-                <IFlag size={14} className="text-[var(--amber)]" />
-                <h3 className="font-disp font-semibold text-[14px] m-0">Instructions</h3>
-                <span className="text-[11.5px] text-[var(--ink-faint)] ml-auto">{caseInstr.filter((i) => i.status === "Open").length} open</span>
-              </div>
-              <div className="divide-y" style={{ borderColor: "var(--line-soft)" }}>
-                {caseInstr.map((instr) => {
-                  const assignee = userById(instr.assignedTo);
-                  return (
-                    <div key={instr.id} className="p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <p className="text-[13px] font-medium m-0">{instr.instruction}</p>
-                        {instr.status === "Done" ? <Chip tone="mint">done</Chip> : <Chip tone="amber">open</Chip>}
+            {/* instructions */}
+            {caseInstr.length > 0 && (
+              <div className="card anim-fade-up">
+                <div className="p-4 border-b flex items-center gap-2" style={{ borderColor: "var(--line-soft)" }}>
+                  <IFlag size={14} className="text-[var(--amber)]" />
+                  <h3 className="font-disp font-semibold text-[14px] m-0">Instructions</h3>
+                  <span className="text-[11.5px] text-[var(--ink-faint)] ml-auto">{caseInstr.filter((i) => i.status === "Open").length} open</span>
+                </div>
+                <div className="divide-y" style={{ borderColor: "var(--line-soft)" }}>
+                  {caseInstr.map((instr) => {
+                    const assignee = userById(instr.assignedTo);
+                    return (
+                      <div key={instr.id} className="p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <p className="text-[13px] font-medium m-0">{instr.instruction}</p>
+                          {instr.status === "Done" ? <Chip tone="mint">done</Chip> : <Chip tone="amber">open</Chip>}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 mt-1.5 text-[11.5px] text-[var(--ink-faint)]">
+                          <span>issued by {userById(instr.issuedBy)?.name.split(" ")[0]}</span>
+                          <span>· assigned to <span className="text-[var(--ink-dim)]">{assignee?.name}</span></span>
+                          <span>· due {fmtDate(instr.dueDate)}</span>
+                        </div>
+                        {instr.status === "Open" && (flags?.super || flags?.admin || instr.assignedTo === me?.id) && (
+                          <button className="btn btn-ghost btn-sm mt-2" onClick={async () => { await useHfmcStore.getState().completeInstruction(instr.id); toast("success", "Instruction marked done."); }}>
+                            <ICheck size={13} /> Mark done
+                          </button>
+                        )}
                       </div>
-                      <div className="flex flex-wrap items-center gap-2 mt-1.5 text-[11.5px] text-[var(--ink-faint)]">
-                        <span>issued by {userById(instr.issuedBy)?.name.split(" ")[0]}</span>
-                        <span>· assigned to <span className="text-[var(--ink-dim)]">{assignee?.name}</span></span>
-                        <span>· due {fmtDate(instr.dueDate)}</span>
-                      </div>
-                      {instr.status === "Open" && (flags?.super || flags?.admin || instr.assignedTo === me?.id) && (
-                        <button className="btn btn-ghost btn-sm mt-2" onClick={async () => { await completeInstruction(instr.id); toast("success", "Instruction marked done."); }}>
-                          <ICheck size={13} /> Mark done
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
           </>)}
 
           {/* documents */}
           {(caseTab === "documents") && <DocVault c={c} />}
 
-          {/* banks */}
-          {(caseTab === "banks") && <BankMatchPanel c={c} />}
+          {/* chat */}
+          {(caseTab === "chat") && (
+            <div className="card h-[600px] overflow-hidden anim-fade-up">
+              <ChatPanel
+                caseId={c.id}
+                caseNumber={c.caseNumber}
+                customerName={c.customer}
+                userRole="STAFF"
+                allowThreadSwitch={true}
+              />
+            </div>
+          )}
 
-          {/* proposal history */}
-          <ProposalHistory c={c} />
+          {/* banks + proposals: match panel followed by proposal history */}
+          {(caseTab === "banks") && <>
+            <BankMatchPanel c={c} />
+            <ProposalHistory c={c} />
+          </>}
 
           {/* activity: stage history + activity log */}
           {(caseTab === "activity") && (
-          <>
-          {/* stage transition log */}
-          <StageHistoryPanel caseId={c.id} />
+            <>
+              {/* stage transition log */}
+              <StageHistoryPanel caseId={c.id} />
 
-          {/* activity */}
-          <div className="card anim-fade-up">
-            <div className="p-4 border-b flex items-center gap-2" style={{ borderColor: "var(--line-soft)" }}>
-              <IHistory size={14} className="text-[var(--ink-faint)]" />
-              <h3 className="font-disp font-semibold text-[14px] m-0">Activity log</h3>
+              {/* activity */}
+              <div className="card anim-fade-up">
+                <div className="p-4 border-b flex items-center gap-2" style={{ borderColor: "var(--line-soft)" }}>
+                  <IHistory size={14} className="text-[var(--ink-faint)]" />
+                  <h3 className="font-disp font-semibold text-[14px] m-0">Activity log</h3>
+                </div>
+                <div className="p-4 space-y-3">
+                  {caseActivities.length === 0 && <p className="text-[12.5px] text-[var(--ink-faint)] m-0">No activity recorded yet.</p>}
+                  {caseActivities.map((a) => (
+                    <div key={a.id} className="flex items-start gap-3">
+                      <Avatar name={userById(a.userId)?.name ?? "?"} size={26} />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[12.5px] m-0 leading-snug">
+                          <strong className="font-medium">{userById(a.userId)?.name ?? "—"}</strong>{" "}
+                          <span className="text-[var(--ink-dim)]">{a.action.toLowerCase()}</span>
+                        </p>
+                        <p className="mono text-[10.5px] text-[var(--ink-faint)] m-0 mt-0.5">{relTime(a.at)}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>)}
+        </div>
+
+        {/* right: collapsible details inspector */}
+        {showInspector && (
+          <div className="space-y-4 xl:w-[340px] shrink-0 anim-fade-in">
+            <div className="flex items-center justify-between px-1">
+              <span className="mono text-[10.5px] uppercase tracking-wider font-bold text-[var(--ink-faint)]">
+                Case Details
+              </span>
+              <button
+                type="button"
+                onClick={toggleInspector}
+                className="btn btn-ghost btn-sm !py-0.5 !px-1.5 text-[11px] text-[var(--ink-faint)] hover:text-[var(--ink)]"
+                title="Collapse details panel"
+              >
+                Hide ×
+              </button>
             </div>
-            <div className="p-4 space-y-3">
-              {caseActivities.length === 0 && <p className="text-[12.5px] text-[var(--ink-faint)] m-0">No activity recorded yet.</p>}
-              {caseActivities.map((a) => (
-                <div key={a.id} className="flex items-start gap-3">
-                  <Avatar name={userById(a.userId)?.name ?? "?"} size={26} />
+            {/* People — owner, VRM (with inline edit), advisor, backups, partner */}
+            <div className="card p-4">
+              <h3 className="font-disp font-semibold text-[13.5px] m-0 mb-3">People</h3>
+              <div className="space-y-2.5">
+                {/* Owner */}
+                <div className="flex items-center gap-2.5">
+                  <Avatar name={owner?.name ?? "?"} size={28} />
+                  <div>
+                    <div className="text-[12.5px] font-medium">{owner?.name ?? "—"}</div>
+                    <div className="text-[11px] text-[var(--ink-faint)]">{c.ownerId === me?.id ? "you" : "case owner"} · {owner?.role}</div>
+                  </div>
+                </div>
+                {/* VRM — display + inline edit in one place */}
+                <div className="flex items-center gap-2.5">
+                  <span style={{ opacity: c.vrmId ? 1 : 0.4 }}>
+                    <Avatar name={c.vrmId ? (userById(c.vrmId)?.name ?? "?") : "?"} size={28} />
+                  </span>
                   <div className="min-w-0 flex-1">
-                    <p className="text-[12.5px] m-0 leading-snug">
-                      <strong className="font-medium">{userById(a.userId)?.name ?? "—"}</strong>{" "}
-                      <span className="text-[var(--ink-dim)]">{a.action.toLowerCase()}</span>
-                    </p>
-                    <p className="mono text-[10.5px] text-[var(--ink-faint)] m-0 mt-0.5">{relTime(a.at)}</p>
+                    <div className="text-[12.5px] font-medium">{c.vrmId ? (userById(c.vrmId)?.name ?? "—") : "—"}</div>
+                    <div className="text-[11px] text-[var(--ink-faint)]">VRM{c.vrmId ? ` · ${userById(c.vrmId)?.role ?? ""}` : " · unassigned"}</div>
                   </div>
+                  {canEdit && (
+                    <select className="select !w-auto !py-1 text-[11px]" value={c.vrmId ? String(c.vrmId) : ""}
+                      title="Assign VRM"
+                      onChange={async (e) => {
+                        await updateCase(c.id, { vrmId: e.target.value ? parseInt(e.target.value, 10) : null });
+                        toast("success", e.target.value ? "VRM assigned." : "VRM removed.");
+                      }}>
+                      <option value="">— none —</option>
+                      {users.filter((u) => u.active).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                    </select>
+                  )}
                 </div>
-              ))}
-            </div>
-          </div>
-          </>)}
-        </div>
-
-        {/* right: MIS + pre-approval/FOL + commission + copilot + client */}
-        <div className="space-y-4">
-          <MisPanel c={c} />
-          {showPreApproval && <PreApprovalPanel c={c} />}
-          {showFol && <FolPanel c={c} />}
-          <CaseCopilot caseId={c.id} />
-          <ClientFileCard c={c} />
-          <CommissionPanel c={c} />
-          <div className="card p-4">
-            <h3 className="font-disp font-semibold text-[13.5px] m-0 mb-3">Banks in play</h3>
-            <BankChips c={c} max={99} />
-            {c.banks.length > 0 && (
-              <div className="mt-3 pt-3 text-[11.5px] text-[var(--ink-faint)]" style={{ borderTop: "1px dashed var(--line)" }}>
-                {c.wonBank ? `Booked with ${c.wonBank}.` : "Winning bank recorded when the case books."}
-              </div>
-            )}
-          </div>
-          <div className="card p-4">
-            <h3 className="font-disp font-semibold text-[13.5px] m-0 mb-3">People</h3>
-            <div className="space-y-2.5">
-              <div className="flex items-center gap-2.5">
-                <Avatar name={owner?.name ?? "?"} size={28} />
-                <div>
-                  <div className="text-[12.5px] font-medium">{owner?.name ?? "—"}</div>
-                  <div className="text-[11px] text-[var(--ink-faint)]">{c.ownerId === me?.id ? "you" : "case owner"} · {owner?.role}</div>
-                </div>
-              </div>
-              {c.vrmId && userById(c.vrmId) && (
-                <div className="flex items-center gap-2.5">
-                  <Avatar name={userById(c.vrmId)!.name} size={28} />
-                  <div>
-                    <div className="text-[12.5px] font-medium">{userById(c.vrmId)!.name}</div>
-                    <div className="text-[11px] text-[var(--ink-faint)]">VRM · {userById(c.vrmId)!.role}</div>
-                  </div>
-                </div>
-              )}
-              {c.bankRm && (
-                <div className="flex items-center gap-2.5">
-                  <Avatar name={c.bankRm} size={28} />
-                  <div>
-                    <div className="text-[12.5px] font-medium">{c.bankRm}</div>
-                    <div className="text-[11px] text-[var(--ink-faint)]">bank relationship manager</div>
-                  </div>
-                </div>
-              )}
-              {c.coApplicantName && (
-                <div className="flex items-center gap-2.5">
-                  <Avatar name={c.coApplicantName} size={28} />
-                  <div>
-                    <div className="text-[12.5px] font-medium">{c.coApplicantName}</div>
-                    <div className="text-[11px] text-[var(--ink-faint)]">co-applicant</div>
-                  </div>
-                </div>
-              )}
-              {/* client-facing advisor — may differ from the owner who runs the file */}
-              {(() => {
-                const advId = c.advisorId ?? c.ownerId;
-                const adv = userById(advId);
-                const canAssignAdvisor = flags?.super || flags?.admin || c.ownerId === me?.id;
-                return (
+                {/* Bank RM — display only (edited in Bank Tracking panel) */}
+                {c.bankRm && (
                   <div className="flex items-center gap-2.5">
-                    <Avatar name={adv?.name ?? "?"} size={28} />
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[12.5px] font-medium">{adv?.name ?? "—"}</div>
-                      <div className="text-[11px] text-[var(--ink-faint)]">advisor · {adv?.role}</div>
+                    <Avatar name={c.bankRm} size={28} />
+                    <div>
+                      <div className="text-[12.5px] font-medium">{c.bankRm}</div>
+                      <div className="text-[11px] text-[var(--ink-faint)]">bank relationship manager</div>
                     </div>
-                    {canAssignAdvisor && (
-                      <select className="select !w-auto !py-1 text-[11px]" value={String(advId)}
-                        title="Appoint the client-facing advisor"
-                        onChange={async (e) => {
-                          await updateCase(c.id, { advisorId: Number(e.target.value) });
-                          toast("success", "Advisor appointed.");
-                        }}>
-                        {users.filter((u) => u.active && u.role !== "Head of Company" && u.role !== "PA to HoC").map((u) => (
-                          <option key={u.id} value={u.id}>{u.name}</option>
-                        ))}
-                      </select>
-                    )}
                   </div>
-                );
-              })()}
-              {/* backups — who is entitled to cover this file while the owner is away */}
-              {([1, 2] as const).map((n) => {
-                const bid = n === 1 ? c.backup1Id : c.backup2Id;
-                const bUser = bid ? userById(bid) : undefined;
-                const canAssign = flags?.super || flags?.admin || c.ownerId === me?.id;
-                return (
-                  <div key={n} className="flex items-center gap-2.5" style={{ opacity: bid ? 1 : 0.6 }}>
-                    <span className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-[10px] font-disp font-bold"
-                      style={{ background: bid ? "var(--amber-tint)" : "var(--tint)", color: bid ? "var(--amber)" : "var(--ink-faint)" }}>
-                      B{n}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[12.5px] font-medium">{bUser?.name ?? "—"}</div>
-                      <div className="text-[11px] text-[var(--ink-faint)]">{bid ? `backup ${n} · covering · ${bUser?.role ?? ""}` : `no backup ${n} yet`}</div>
+                )}
+                {/* Co-applicant */}
+                {c.coApplicantName && (
+                  <div className="flex items-center gap-2.5">
+                    <Avatar name={c.coApplicantName} size={28} />
+                    <div>
+                      <div className="text-[12.5px] font-medium">{c.coApplicantName}</div>
+                      <div className="text-[11px] text-[var(--ink-faint)]">co-applicant</div>
                     </div>
-                    {canAssign && (
-                      <select className="select !w-auto !py-1 text-[11px]" value={bid ? String(bid) : ""}
-                        title={n === 1 ? "Appoint first backup" : "Appoint second backup"}
-                        onChange={async (e) => {
-                          const val = e.target.value ? Number(e.target.value) : null;
-                          await updateCase(c.id, n === 1 ? { backup1Id: val } : { backup2Id: val });
-                          toast("success", val ? `Backup ${n} appointed — they can now open and work this file.` : `Backup ${n} removed.`);
-                        }}>
-                        <option value="">— none —</option>
-                        {users.filter((u) => u.active && u.id !== c.ownerId && (n === 1 ? u.id !== c.backup2Id : u.id !== c.backup1Id)).map((u) => (
-                          <option key={u.id} value={u.id}>{u.name}</option>
-                        ))}
-                      </select>
-                    )}
                   </div>
-                );
-              })}
-              {c.profileClientVerifiedAt && (
-                <div className="flex items-center gap-2 text-[11px]" style={{ color: "var(--mint)" }}>
-                  <ICheck size={12} /> Client verified their own data sheet on {new Date(c.profileClientVerifiedAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}
-                </div>
-              )}
-              {c.partner && (
-                <div className="flex items-center gap-2.5">
-                  <Avatar name={c.partner.name} size={28} />
-                  <div>
-                    <div className="text-[12.5px] font-medium">{c.partner.name}</div>
-                    <div className="text-[11px] text-[var(--ink-faint)]">{c.partner.kind}{flags?.viewRevenue ? ` · ${c.partner.sharePct}% of our commission` : ""}</div>
-                    {c.partnerRm && <div className="text-[11px] text-[var(--ink-dim)]">RM: {c.partnerRm}</div>}
+                )}
+                {/* Client-facing advisor — may differ from the owner who runs the file */}
+                {(() => {
+                  const advId = c.advisorId ?? c.ownerId;
+                  const adv = userById(advId);
+                  const canAssignAdvisor = flags?.super || flags?.admin || c.ownerId === me?.id;
+                  return (
+                    <div className="flex items-center gap-2.5">
+                      <Avatar name={adv?.name ?? "?"} size={28} />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[12.5px] font-medium">{adv?.name ?? "—"}</div>
+                        <div className="text-[11px] text-[var(--ink-faint)]">advisor · {adv?.role}</div>
+                      </div>
+                      {canAssignAdvisor && (
+                        <select className="select !w-auto !py-1 text-[11px]" value={String(advId)}
+                          title="Appoint the client-facing advisor"
+                          onChange={async (e) => {
+                            await updateCase(c.id, { advisorId: Number(e.target.value) });
+                            toast("success", "Advisor appointed.");
+                          }}>
+                          {users.filter((u) => u.active && u.role !== "Head of Company" && u.role !== "PA to HoC").map((u) => (
+                            <option key={u.id} value={u.id}>{u.name}</option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  );
+                })()}
+                {/* Backups — Backup 1 / Backup 2 labeling (consistent; no B1/B2 shorthand) */}
+                {([1, 2] as const).map((n) => {
+                  const bid = n === 1 ? c.backup1Id : c.backup2Id;
+                  const bUser = bid ? userById(bid) : undefined;
+                  const canAssign = flags?.super || flags?.admin || c.ownerId === me?.id;
+                  return (
+                    <div key={n} className="flex items-center gap-2.5" style={{ opacity: bid ? 1 : 0.6 }}>
+                      <span className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-[10.5px] font-disp font-bold"
+                        style={{ background: bid ? "var(--amber-tint)" : "var(--tint)", color: bid ? "var(--amber)" : "var(--ink-faint)" }}>
+                        {n}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[12.5px] font-medium">{bUser?.name ?? "—"}</div>
+                        <div className="text-[11px] text-[var(--ink-faint)]">{bid ? `Backup ${n} · covering · ${bUser?.role ?? ""}` : `Backup ${n} — not set`}</div>
+                      </div>
+                      {canAssign && (
+                        <select className="select !w-auto !py-1 text-[11px]" value={bid ? String(bid) : ""}
+                          title={`Appoint backup ${n}`}
+                          onChange={async (e) => {
+                            const val = e.target.value ? Number(e.target.value) : null;
+                            await updateCase(c.id, n === 1 ? { backup1Id: val } : { backup2Id: val });
+                            toast("success", val ? `Backup ${n} appointed — they can now open and work this file.` : `Backup ${n} removed.`);
+                          }}>
+                          <option value="">— none —</option>
+                          {users.filter((u) => u.active && u.id !== c.ownerId && (n === 1 ? u.id !== c.backup2Id : u.id !== c.backup1Id)).map((u) => (
+                            <option key={u.id} value={u.id}>{u.name}</option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  );
+                })}
+                {c.profileClientVerifiedAt && (
+                  <div className="flex items-center gap-2 text-[11px]" style={{ color: "var(--mint)" }}>
+                    <ICheck size={12} /> Client verified their own data sheet on {fmtDate(c.profileClientVerifiedAt.slice(0, 10))}
+                  </div>
+                )}
+                {c.partner && (
+                  <div className="flex items-center gap-2.5">
+                    <Avatar name={c.partner.name} size={28} />
+                    <div>
+                      <div className="text-[12.5px] font-medium">{c.partner.name}</div>
+                      <div className="text-[11px] text-[var(--ink-faint)]">{c.partner.kind}{flags?.viewRevenue ? ` · ${c.partner.sharePct}% of our commission` : ""}</div>
+                      {c.partnerRm && <div className="text-[11px] text-[var(--ink-dim)]">RM: {c.partnerRm}</div>}
+                    </div>
+                  </div>
+                )}
+
+                {/* Client Connection & Notification Overrides */}
+                <div className="pt-2.5 mt-2 border-t" style={{ borderColor: "var(--line-soft)" }}>
+                  <div className="flex items-center justify-between text-[11px] mb-1.5">
+                    <span className="font-semibold text-[var(--ink-dim)]">Client Channel Overrides</span>
+                    <span className="text-[10.5px] text-[var(--ink-faint)]">3-tier hierarchy</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {(["push", "whatsapp", "email"] as const).map((ch) => {
+                      const overrides = (c.notificationOverrides as Record<string, boolean> | null) || {};
+                      const isExplicitOff = overrides[ch] === false;
+                      const isOn = ch === "email" ? overrides[ch] === true : !isExplicitOff;
+                      return (
+                        <button
+                          key={ch}
+                          type="button"
+                          className="chip text-[10.5px] px-2 py-0.5"
+                          style={
+                            isOn
+                              ? { background: "rgba(16,185,129,0.12)", color: "var(--mint)", borderColor: "rgba(16,185,129,0.4)" }
+                              : { background: "rgba(244,63,94,0.1)", color: "var(--coral)", borderColor: "rgba(244,63,94,0.3)" }
+                          }
+                          title={`Click to toggle ${ch}`}
+                          onClick={async () => {
+                            const updated = { ...overrides, [ch]: !isOn };
+                            await updateCase(c.id, { notificationOverrides: updated });
+                            toast("info", `${ch.toUpperCase()} notification for this client set to ${!isOn ? "ON" : "OFF"}`);
+                          }}
+                        >
+                          {ch === "whatsapp" ? "WhatsApp" : ch === "push" ? "Push" : "Email"}: {isOn ? "ON ✓" : "OFF ✕"}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
-              )}
+              </div>
             </div>
+            {/* Client file */}
+            <ClientFileCard c={c} />
+            {/* Pre-approval (stage-conditional) */}
+            {showPreApproval && <PreApprovalPanel c={c} />}
+            {/* FOL (stage-conditional) */}
+            {showFol && <FolPanel c={c} />}
+            {/* Commission */}
+            <CommissionPanel c={c} />
+            {/* AI Copilot */}
+            <CaseCopilot caseId={c.id} />
+            {/* Bank Tracking (collapsed by default — rarely edited) */}
+            <MisPanel c={c} />
           </div>
-          <div className="card p-4">
-            <h3 className="font-disp font-semibold text-[13.5px] m-0 mb-3">Quick calc</h3>
-            <p className="text-[12px] text-[var(--ink-faint)] m-0 mb-2">Run an affordability check on this client and save it to the case.</p>
-            <button className="btn btn-ghost btn-sm w-full justify-center" onClick={() => nav({ name: "calculator" })}>
-              <ICalc size={14} /> Open calculator
-            </button>
-          </div>
-        </div>
+        )}
       </div>
 
       {showAddTask && <AddTaskModal open={showAddTask} onClose={() => setShowAddTask(false)} caseId={c.id} />}
@@ -1031,8 +1074,6 @@ export default function CaseDetail({ id }: { id: number }) {
       )}
     </div>
   );
-
-  function completeInstruction(id: number) { return useHfmcStore.getState().completeInstruction(id); }
 }
 
 /* Client file card — the person behind this case, and every other

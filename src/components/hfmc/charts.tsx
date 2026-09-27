@@ -95,7 +95,7 @@ export function Donut({ segments, size = 148, centerLabel }: { segments: DonutSe
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
           <span className="font-disp text-[26px] font-bold leading-none">{sum}</span>
-          <span className="text-[10px] uppercase tracking-[0.12em] text-[var(--ink-faint)] mt-1">{centerLabel}</span>
+          <span className="text-[10.5px] uppercase tracking-[0.12em] text-[var(--ink-faint)] mt-1">{centerLabel}</span>
         </div>
       </div>
       <div className="space-y-2 min-w-0">

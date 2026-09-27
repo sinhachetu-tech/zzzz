@@ -5,8 +5,10 @@ import { useHfmcStore } from "@/lib/client-store";
 import { useClientStore } from "./client-store";
 import { fmtMoney, fmtDate, relTime, todayISO } from "@/lib/format";
 import { LogoMark, ICheck, IWhatsapp, IDownload, IUpload, ILogout, IUsers, IHome, IMenu } from "@/components/icons";
-import { ThemeToggle } from "@/components/hfmc/ui";
+import { ThemeToggle, Tabs } from "@/components/hfmc/ui";
 import { parseCaseProfile, ageFromDob, type CaseProfile } from "@/lib/case-profile";
+import { ChatBubble } from "@/components/chat/ChatBubble";
+import { PwaInstallBanner } from "@/components/pwa/PwaInstallBanner";
 
 /* ============================================================
    Client portal — app shell. Tabs: Journey / Documents / My
@@ -28,9 +30,12 @@ export function ClientDashboard() {
   const [tab, setTab] = useState<Tab>("journey");
 
   const activeStages = useMemo(() => stages.filter((s) => s.active).sort((a, b) => a.sortOrder - b.sortOrder), [stages]);
+  // Legacy labels (Bank Submission, Final Approval, …) resolve to the current
+  // 5-stage journey via the registry map, so old cases keep progressing the bar.
   const currentIdx = activeStages.findIndex((s) => s.label === c?.stage);
+  const folLabel = activeStages.find((s) => s.label === "FOL + Loan Booking")?.label ?? "FOL + Loan Booking";
   const showPreApproval = currentIdx >= activeStages.findIndex((s) => s.label === "Pre-Approval");
-  const showFOL = currentIdx >= activeStages.findIndex((s) => s.label === "Final Approval");
+  const showFOL = currentIdx >= activeStages.findIndex((s) => s.label === folLabel);
   const progressPct = activeStages.length > 1 && currentIdx >= 0 ? Math.round((currentIdx / (activeStages.length - 1)) * 100) : 0;
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
@@ -57,14 +62,15 @@ export function ClientDashboard() {
           </button>
         </div>
         {/* desktop pills */}
-        <div className="hidden md:flex max-w-[860px] mx-auto px-4 pb-2 gap-1.5">
-          {TABS.map(({ id, label, Icon }) => (
-            <button key={id} onClick={() => setTab(id)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-disp font-semibold transition-all"
-              style={tab === id ? { background: "var(--amber-tint)", color: "var(--amber)" } : { color: "var(--ink-faint)" }}>
-              <Icon size={14} /> {label}
-            </button>
-          ))}
+        <div className="hidden md:flex max-w-[860px] mx-auto px-4 pb-2.5">
+          <Tabs
+            scroll
+            value={tab}
+            onChange={setTab}
+            options={TABS.map(({ id, label, Icon }) => ({
+              value: id, label, icon: <Icon size={14} />,
+            }))}
+          />
         </div>
       </header>
 
@@ -103,10 +109,19 @@ export function ClientDashboard() {
             className="flex-1 flex flex-col items-center gap-0.5 py-2.5"
             style={{ color: tab === id ? "var(--amber)" : "var(--ink-faint)" }}>
             <Icon size={19} />
-            <span className="text-[9px] font-disp font-semibold">{label.split(" ")[0]}</span>
+            <span className="text-[10.5px] font-disp font-semibold leading-tight">{label.split(" ")[0]}</span>
           </button>
         ))}
       </nav>
+
+      {/* Floating live chat with mortgage team */}
+      <ChatBubble
+        userRole="CLIENT"
+        pinnedCaseId={c.id}
+        pinnedCaseNumber={c.caseNumber}
+        pinnedCustomer={c.customer}
+      />
+      <PwaInstallBanner portal="client" />
     </div>
   );
 }
@@ -126,6 +141,18 @@ function JourneyTab({ c, greeting, progressPct, engagements, switchCase, advisor
   stageTransitions: { id: number; fromStage: string; toStage: string; comment: string; userName: string; at: string }[];
   verified: string | null;
 }) {
+  // Milestone = the newest stage transition, and only when it's genuinely
+  // recent (48h). Older than that it isn't news, so the banner stays out of
+  // the way instead of shouting about something from last week.
+  const latestMilestone = useMemo(() => {
+    if (stageTransitions.length === 0) return null;
+    const t = [...stageTransitions].sort((a, b) => b.at.localeCompare(a.at))[0];
+    if (!t?.toStage) return null;
+    const age = Date.now() - new Date(t.at).getTime();
+    if (!Number.isFinite(age) || age < 0 || age > 48 * 3600 * 1000) return null;
+    return t;
+  }, [stageTransitions]);
+
   return (
     <>
       {/* hero */}
@@ -141,7 +168,7 @@ function JourneyTab({ c, greeting, progressPct, engagements, switchCase, advisor
           {verified && <span className="chip !py-0.5" style={{ background: "rgba(67,214,155,0.12)", borderColor: "var(--mint)", color: "var(--mint)" }}>DATA VERIFIED ✓</span>}
         </div>
         <div className="mt-4">
-          <div className="flex justify-between text-[10px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)] mb-1">
+          <div className="flex justify-between text-[10.5px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)] mb-1">
             <span>{currentIdx >= 0 ? activeStages[currentIdx]?.label : "Starting"}</span>
             <span>{progressPct}%</span>
           </div>
@@ -151,10 +178,32 @@ function JourneyTab({ c, greeting, progressPct, engagements, switchCase, advisor
         </div>
       </div>
 
+      {/* Milestone acknowledgement (#6) — a quiet, one-shot nod to the newest
+          meaningful stage. Deliberately NOT confetti: this is a regulated
+          broker's client portal and the house reserves that for a real deal
+          close in the calculator. Soft glow + seal, and it never replays as a
+          nag because it's derived from the latest transition, not a flag. */}
+      {latestMilestone && (
+        <div className="card anim-fade-up p-4 rounded-2xl milestone">
+          <div className="flex items-center gap-3">
+            <span className="milestone-seal w-9 h-9 rounded-full flex items-center justify-center shrink-0"
+              style={{ background: "rgba(67,214,155,0.14)", color: "var(--mint)" }}>
+              <ICheck size={17} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="text-[10.5px] uppercase tracking-[0.1em] font-disp font-semibold" style={{ color: "var(--mint)" }}>
+                Milestone reached
+              </div>
+              <div className="text-[14px] font-medium leading-tight">{latestMilestone.toStage}</div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* parallel journeys */}
       {engagements.length > 1 && (
         <div className="anim-fade-up">
-          <div className="text-[10px] uppercase tracking-[0.12em] font-disp font-semibold text-[var(--ink-faint)] mb-2">
+          <div className="text-[10.5px] uppercase tracking-[0.12em] font-disp font-semibold text-[var(--ink-faint)] mb-2">
             Your finance journeys · {engagements.length} banks in parallel
           </div>
           <div className="flex gap-2 overflow-x-auto pb-1.5">
@@ -170,8 +219,8 @@ function JourneyTab({ c, greeting, progressPct, engagements, switchCase, advisor
                   <div className="font-disp text-[12.5px] font-semibold" style={{ color: on ? "var(--amber)" : "var(--ink-dim)" }}>
                     {e.banks && e.banks.length ? e.banks.join(" + ") : "Bank TBC"}
                   </div>
-                  <div className="text-[10px] text-[var(--ink-faint)] mono">{e.caseNumber}</div>
-                  <div className="text-[10px] mt-0.5 flex items-center gap-1">
+                  <div className="text-[10.5px] text-[var(--ink-faint)] mono">{e.caseNumber}</div>
+                  <div className="text-[10.5px] mt-0.5 flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: e.caseStatus === "Active" ? "var(--mint)" : "var(--ink-faint)" }} />
                     <span style={{ color: on ? "var(--ink-dim)" : "var(--ink-faint)" }}>{e.stage}</span>
                   </div>
@@ -190,7 +239,7 @@ function JourneyTab({ c, greeting, progressPct, engagements, switchCase, advisor
             {advisor.name.split(" ").map((w: string) => w[0]).slice(0, 2).join("")}
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-[10px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)]">Your dedicated advisor</div>
+            <div className="text-[10.5px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)]">Your dedicated advisor</div>
             <div className="text-[14.5px] font-medium leading-tight">{advisor.name}</div>
             <div className="text-[11px] text-[var(--ink-faint)]">{advisor.role} · replies within hours</div>
           </div>
@@ -299,7 +348,7 @@ function JourneyTab({ c, greeting, progressPct, engagements, switchCase, advisor
         </div>
       )}
 
-      <p className="text-[10px] text-[var(--ink-faint)] text-center m-0">
+      <p className="text-[10.5px] text-[var(--ink-faint)] text-center m-0">
         HFMC Mortgage · UAE · Live status — for urgent matters, message your advisor above.
       </p>
     </>
@@ -499,7 +548,7 @@ function MoreTab({ c, advisor, me, logout, verified }: {
                 <div className="text-[13px] font-medium">{s.name}</div>
                 <div className="text-[11px] text-[var(--ink-faint)]">{s.desc}</div>
               </div>
-              {!s.live && <span className="chip !py-0.5 text-[10px]" style={{ background: "var(--bg2)", color: "var(--ink-faint)" }}>notify me</span>}
+              {!s.live && <span className="chip !py-0.5 text-[10.5px]" style={{ background: "var(--bg2)", color: "var(--ink-faint)" }}>notify me</span>}
             </div>
           ))}
         </div>
@@ -508,7 +557,7 @@ function MoreTab({ c, advisor, me, logout, verified }: {
       <button className="btn btn-ghost w-full justify-center" style={{ color: "var(--coral)" }} onClick={logout}>
         <ILogout size={15} /> Sign out
       </button>
-      <p className="text-[10px] text-[var(--ink-faint)] text-center m-0">HFMC Mortgage · UAE · {todayISO()}</p>
+      <p className="text-[10.5px] text-[var(--ink-faint)] text-center m-0">HFMC Mortgage · UAE · {todayISO()}</p>
     </div>
   );
 }
@@ -516,7 +565,7 @@ function MoreTab({ c, advisor, me, logout, verified }: {
 function Field({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (
     <div>
-      <div className="text-[9.5px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)]">{label}</div>
+      <div className="text-[10.5px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)]">{label}</div>
       <div className="mono text-[14px] mt-0.5" style={{ color: highlight ? "var(--mint)" : "var(--ink)", fontWeight: highlight ? 700 : 500 }}>{value}</div>
     </div>
   );
@@ -571,58 +620,117 @@ function DocUploadCards({ caseId, vaultDocuments, legacyDocuments }: {
   const pending = vaultDocuments.filter((d) => d.status !== "Verified" && d.status !== "Waived");
   const done = vaultDocuments.filter((d) => d.status === "Verified" || d.status === "Waived");
 
+  // A "blocking" doc is one only the client can clear: rejected (needs a
+  // re-upload). Those are pulled to the top and outrank the rest, because
+  // everything downstream is stalled behind them.
+  const blocking = pending.filter((d) => d.status === "Rejected");
+  const waitingOnBank = pending.filter((d) => d.status === "Uploaded");
+  const toUpload = pending.filter((d) => d.status !== "Rejected" && d.status !== "Uploaded");
+  const total = vaultDocuments.length;
+  const pct = total > 0 ? Math.round((done.length / total) * 100) : 0;
+  const allClear = total > 0 && done.length === total;
+
   return (
     <div className="card p-4 anim-fade-up rounded-2xl">
-      <div className="flex items-center gap-2 mb-1">
+      <div className="flex items-center gap-2 mb-1.5">
         <h3 className="font-disp font-semibold text-[13px] m-0 flex-1">Your documents</h3>
-        <span className="mono text-[11px]" style={{ color: done.length === vaultDocuments.length && vaultDocuments.length > 0 ? "var(--mint)" : "var(--amber)" }}>
-          {done.length}/{vaultDocuments.length} done
+        <span className="mono text-[11px]" style={{ color: allClear ? "var(--mint)" : "var(--amber)" }}>
+          {done.length}/{total} done
         </span>
       </div>
+
+      {/* progress bar — a bare "4/7" doesn't convey "nearly there" the way a
+          filling bar does, and this is the client's measure of their own effort */}
+      {total > 0 && (
+        <div className="h-1.5 rounded-full overflow-hidden mb-3" style={{ background: "var(--track)" }}
+          role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Documents received">
+          <div className="h-full rounded-full transition-all duration-700"
+            style={{ width: `${Math.max(2, pct)}%`, background: allClear ? "var(--mint)" : "linear-gradient(90deg, var(--amber), #f2b04c)" }} />
+        </div>
+      )}
+
       <p className="text-[11.5px] text-[var(--ink-faint)] m-0 mb-3">
         Upload clear photos or PDFs straight from your phone — your advisor reviews each one.
       </p>
       {err && <p className="text-[12px] m-0 mb-2.5" style={{ color: "var(--coral)" }}>{err}</p>}
 
-      {pending.length > 0 && (
-        <div className="space-y-2 mb-3">
-          {pending.map((d) => (
-            <div key={d.id} className="rounded-lg px-3 py-2.5" style={{
-              background: d.status === "Rejected" ? "rgba(242,115,99,0.06)" : "var(--tint)",
-              border: d.status === "Rejected" ? "1px solid rgba(242,115,99,0.3)" : "1px solid var(--line-soft)",
-            }}>
-              <div className="flex items-center gap-2">
-                <span className="text-[12.5px] font-medium flex-1">{d.title}</span>
-                <span className="mono text-[10px] px-1.5 py-0.5 rounded" style={STATUS_STYLE[d.status] ?? STATUS_STYLE["Pending upload"]}>{d.status}</span>
+      {/* BLOCKING — only the client can clear these, and they stall everything
+          after them, so they get their own labelled group at the top. */}
+      {blocking.length > 0 && (
+        <div className="mb-3">
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: "var(--coral)" }} />
+            <span className="text-[10.5px] uppercase tracking-[0.1em] font-disp font-semibold" style={{ color: "var(--coral)" }}>
+              Holding up your case
+            </span>
+          </div>
+          <div className="space-y-2">
+            {blocking.map((d) => (
+              <div key={d.id} className="rounded-lg px-3 py-2.5" style={{ background: "rgba(242,115,99,0.06)", border: "1px solid rgba(242,115,99,0.3)" }}>
+                <div className="flex items-center gap-2">
+                  <span className="text-[12.5px] font-medium flex-1">{d.title}</span>
+                  <span className="mono text-[10.5px] px-1.5 py-0.5 rounded" style={STATUS_STYLE[d.status]}>{d.status}</span>
+                </div>
+                {d.rejectionReason && (
+                  <p className="text-[11.5px] m-0 mt-1 leading-snug" style={{ color: "var(--coral)" }}>
+                    Needs attention: {d.rejectionReason}
+                  </p>
+                )}
+                {d.clientCanUpload && (
+                  <label className="btn btn-sm w-full justify-center mt-2" style={{ background: "var(--coral)", color: "#fff", cursor: uploading === d.id ? "wait" : "pointer" }}>
+                    <IUpload size={13} /> {uploading === d.id ? "Uploading…" : "Upload again"}
+                    <input type="file" accept="image/*,application/pdf" className="hidden"
+                      onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) upload(d.id, f); }} />
+                  </label>
+                )}
               </div>
-              {d.notes && <p className="text-[11px] text-[var(--ink-dim)] m-0 mt-1">{d.notes}</p>}
-              {d.status === "Rejected" && d.rejectionReason && (
-                <p className="text-[11.5px] m-0 mt-1 leading-snug" style={{ color: "var(--coral)" }}>
-                  Needs attention: {d.rejectionReason}
-                </p>
-              )}
-              {d.fileName && (
-                <p className="text-[10.5px] text-[var(--ink-faint)] m-0 mt-1">
-                  You uploaded: <a href={`/api/documents/${d.id}/file`} target="_blank" rel="noreferrer" className="mono" style={{ color: "var(--sky)" }}>{d.fileName} ↗</a>
-                </p>
-              )}
-              {d.clientCanUpload && (
-                <label className="btn btn-ghost btn-sm w-full justify-center mt-2" style={{ cursor: uploading === d.id ? "wait" : "pointer" }}>
-                  <IUpload size={13} /> {uploading === d.id ? "Uploading…" : d.status === "Rejected" || d.fileName ? "Upload again" : "Upload photo or PDF"}
-                  <input
-                    type="file"
-                    accept="image/*,application/pdf"
-                    className="hidden"
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      e.target.value = "";
-                      if (f) upload(d.id, f);
-                    }}
-                  />
-                </label>
-              )}
-            </div>
-          ))}
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* WITH THE BANK — moving, nothing needed from the client */}
+      {waitingOnBank.length > 0 && (
+        <div className="mb-3">
+          <div className="text-[10.5px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)] mb-1.5">
+            With the bank — nothing needed from you
+          </div>
+          <div className="space-y-1.5">
+            {waitingOnBank.map((d) => (
+              <div key={d.id} className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ background: "var(--tint)", border: "1px solid var(--line-soft)" }}>
+                <span className="text-[12.5px] flex-1 truncate">{d.title}</span>
+                {d.fileName && <a href={`/api/documents/${d.id}/file`} target="_blank" rel="noreferrer" className="text-[10.5px] mono" style={{ color: "var(--sky)" }}>view ↗</a>}
+                <span className="mono text-[10.5px] px-1.5 py-0.5 rounded" style={STATUS_STYLE[d.status]}>{d.status}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* STILL TO UPLOAD */}
+      {toUpload.length > 0 && (
+        <div className="mb-3">
+          <div className="text-[10.5px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)] mb-1.5">
+            Still to upload
+          </div>
+          <div className="space-y-2">
+            {toUpload.map((d) => (
+              <div key={d.id} className="rounded-lg px-3 py-2.5" style={{ background: "var(--tint)", border: "1px solid var(--line-soft)" }}>
+                <div className="flex items-center gap-2">
+                  <span className="text-[12.5px] font-medium flex-1">{d.title}</span>
+                  <span className="mono text-[10.5px] px-1.5 py-0.5 rounded" style={STATUS_STYLE[d.status] ?? STATUS_STYLE["Pending upload"]}>{d.status}</span>
+                </div>
+                {d.notes && <p className="text-[11px] text-[var(--ink-dim)] m-0 mt-1">{d.notes}</p>}
+                {d.clientCanUpload && (
+                  <label className="btn btn-ghost btn-sm w-full justify-center mt-2" style={{ cursor: uploading === d.id ? "wait" : "pointer" }}>
+                    <IUpload size={13} /> {uploading === d.id ? "Uploading…" : "Upload photo or PDF"}
+                    <input type="file" accept="image/*,application/pdf" className="hidden"
+                      onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) upload(d.id, f); }} />
+                  </label>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

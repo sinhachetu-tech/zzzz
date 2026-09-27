@@ -34,6 +34,12 @@ export async function POST(req: NextRequest) {
     coBorrowerCardLimits: Number(body.coBorrowerCardLimits) || 0,
     primaryAge: Number(body.primaryAge) || undefined,
     coBorrowerAge: Number(body.coBorrowerAge) || undefined,
+    // Phase-1 multi-axis passthrough — quote sets only constrain when passed
+    nationality: body.nationality ?? undefined,
+    emirate: body.emirate ?? undefined,
+    financeType: body.financeType ?? undefined,
+    loanKind: body.loanKind ?? undefined,
+    segment: body.segment ?? undefined,
   };
 
   if (body.caseId) {
@@ -49,6 +55,13 @@ export async function POST(req: NextRequest) {
       transactionType: c.transactionType,
       propertyLocation: c.propertyLocation,
       coApplicantName: c.coApplicantName,
+      propertyTypeCanonical: (c as unknown as { propertyTypeCanonical?: string }).propertyTypeCanonical,
+      commercialSubtype: (c as unknown as { commercialSubtype?: string | null }).commercialSubtype,
+      propertyStage: (c as unknown as { propertyStage?: string }).propertyStage,
+      constructionStatus: (c as unknown as { constructionStatus?: string }).constructionStatus,
+      partyRelationship: (c as unknown as { partyRelationship?: string }).partyRelationship,
+      existingFinance: (c as unknown as { existingFinance?: string }).existingFinance,
+      transactionPurpose: (c as unknown as { transactionPurpose?: string }).transactionPurpose,
     });
 
     base = {
@@ -74,6 +87,17 @@ export async function POST(req: NextRequest) {
       coBorrowerCardLimits: Number(body.coBorrowerCardLimits) || prof.secondParty.creditCardLimits || 0,
       primaryAge: Number(body.primaryAge) || prof.primary.age || undefined,
       coBorrowerAge: Number(body.coBorrowerAge) || prof.secondParty.age || undefined,
+      // canonical property classification → engine axes (explicit answers only;
+      // UNKNOWN/absent imposes no constraint — never blocks on a guess)
+      nationality: body.nationality ?? prof.primary.nationality ?? undefined,
+      emirate: body.emirate ?? prof.property.propertyLocation ?? c.propertyLocation ?? undefined,
+      financeType: body.financeType ?? (
+        prof.property.canonicalPropertyType === "COMMERCIAL" ? "Commercial"
+        : prof.property.canonicalPropertyType === "RESIDENTIAL" ? "Residential"
+        : undefined
+      ),
+      loanKind: body.loanKind ?? (prof.primary.islamicOnly ? "Islamic" : undefined),
+      segment: body.segment ?? undefined,
     };
   }
 

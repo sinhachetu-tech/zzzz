@@ -12,6 +12,14 @@ import crypto from "node:crypto";
 const CLIENT_EMAIL = process.env.GOOGLE_DRIVE_CLIENT_EMAIL ?? "";
 const PRIVATE_KEY_RAW = process.env.GOOGLE_DRIVE_PRIVATE_KEY ?? "";
 const ROOT_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID ?? "";
+// Optional: the mailbox to act AS. A service account has no storage quota of
+// its own, so files it creates in a personal My Drive are owned by the service
+// account and blow through the 0-byte pool (storageQuotaExceeded). Naming a
+// real user here turns the JWT into a domain-wide-delegation impersonation:
+// the files are then owned by that person, live in their real My Drive, and
+// count against the domain's pooled quota. Empty = plain service account,
+// which is what a Shared Drive target needs.
+const IMPERSONATE = process.env.GOOGLE_DRIVE_IMPERSONATE ?? "";
 
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const SCOPE = "https://www.googleapis.com/auth/drive";
@@ -33,13 +41,17 @@ async function accessToken(): Promise<string> {
   if (cachedToken && cachedToken.expiresAt > Date.now() + 60_000) return cachedToken.token;
   const now = Math.floor(Date.now() / 1000);
   const b64 = (obj: unknown) => Buffer.from(JSON.stringify(obj)).toString("base64url");
-  const assertion = `${b64({ alg: "RS256", typ: "JWT" })}.${b64({
+  const claims: Record<string, unknown> = {
     iss: CLIENT_EMAIL,
     scope: SCOPE,
     aud: TOKEN_URL,
     iat: now,
     exp: now + 3600,
-  })}`;
+  };
+  // `sub` is what makes it an impersonation token. Without it the token acts
+  // as the service account itself.
+  if (IMPERSONATE) claims.sub = IMPERSONATE;
+  const assertion = `${b64({ alg: "RS256", typ: "JWT" })}.${b64(claims)}`;
   const signature = crypto.createSign("RSA-SHA256").update(assertion).sign(privateKey()).toString("base64url");
   const res = await fetch(TOKEN_URL, {
     method: "POST",
@@ -75,7 +87,9 @@ async function ensureFolder(parentId: string, name: string): Promise<string> {
   const q = encodeURIComponent(
     `'${escapeQuery(parentId)}' in parents and name = '${escapeQuery(name)}' and mimeType = '${FOLDER_MIME}' and trashed = false`
   );
-  const list = await driveFetch(`/drive/v3/files?q=${q}&fields=files(id)&pageSize=1`);
+  const list = await driveFetch(
+    `/drive/v3/files?q=${q}&fields=files(id)&pageSize=1&supportsAllDrives=true&includeItemsFromAllDrives=true`
+  );
   if (!list.ok) throw new Error(`Drive list failed (${list.status}): ${(await list.text()).slice(0, 200)}`);
   const found = ((await list.json()) as { files: { id: string }[] }).files[0];
   if (found) {
@@ -129,20 +143,40 @@ export async function driveArchiveFile(input: {
   return { fileId };
 }
 
-/** "Test connection": create a probe folder in the root, list it back, delete it. */
-export async function driveTestConnection(): Promise<{ steps: Record<string, boolean> }> {
+/**
+ * "Test connection": read the root folder's metadata (so the panel can report
+ * whether it is a personal My Drive or a Shared Drive, and who owns it), then
+ * create a probe folder, list it back, and delete it.
+ */
+export async function driveTestConnection(): Promise<{
+  steps: Record<string, boolean>;
+  target: { space: "my-drive" | "shared-drive"; folderName?: string; owner?: string };
+}> {
   const name = `_hfmc-probe-${new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14)}`;
   const steps: Record<string, boolean> = { write: false, read: false, delete: false };
+  // `supportsAllDrives` is required for any call touching a Shared Drive, and
+  // is harmless for My Drive — so we always send it. `fields=driveId` tells us
+  // which space the root folder actually lives in: absent => My Drive.
+  const meta = await driveFetch(
+    `/drive/v3/files/${encodeURIComponent(ROOT_FOLDER_ID)}?supportsAllDrives=true&fields=id,name,owners(emailAddress),driveId,drive()`
+  );
+  const target: { space: "my-drive" | "shared-drive"; folderName?: string; owner?: string } = { space: "my-drive" };
+  if (meta.ok) {
+    const m = (await meta.json()) as { name?: string; driveId?: string; owners?: { emailAddress?: string }[] };
+    target.folderName = m.name ?? "";
+    target.owner = m.owners?.[0]?.emailAddress ?? "";
+    target.space = m.driveId ? "shared-drive" : "my-drive";
+  }
   const id = await ensureFolder(ROOT_FOLDER_ID, name);
   steps.write = true;
   const q = encodeURIComponent(`'${escapeQuery(ROOT_FOLDER_ID)}' in parents and name = '${name}' and trashed = false`);
-  const list = await driveFetch(`/drive/v3/files?q=${q}&fields=files(id)&pageSize=1`);
+  const list = await driveFetch(`/drive/v3/files?q=${q}&fields=files(id)&pageSize=1&supportsAllDrives=true&includeItemsFromAllDrives=true`);
   if (list.ok) {
     const hit = ((await list.json()) as { files: { id: string }[] }).files[0];
     steps.read = !!hit;
   }
-  const del = await driveFetch(`/drive/v3/files/${id}`, { method: "DELETE" });
+  const del = await driveFetch(`/drive/v3/files/${id}?supportsAllDrives=true`, { method: "DELETE" });
   if (del.ok) steps.delete = true;
   folderCache.delete(`${ROOT_FOLDER_ID}/${name}`);
-  return { steps };
+  return { steps, target };
 }

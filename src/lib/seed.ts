@@ -20,6 +20,7 @@ import bankProductsJson from "@/data/seed/bankProducts.json";
 import bankIntelJson from "@/data/seed/bankIntel.json";
 import bankProductsAllJson from "@/data/seed/bankProductsAll.json";
 import eiborJson from "@/data/seed/eibor.json";
+import commTemplatesJson from "@/data/seed/commTemplates.json";
 
 const DAY = 86400000;
 const ts = (daysBack: number, hourJitter = 0) =>
@@ -56,6 +57,10 @@ const BULLETIN_TODAY = bulletinsJson as Array<{ issuedBy: number; task: string; 
 const BANK_PRODUCTS_SEED = bankProductsJson as Array<Record<string, unknown> & { bankName: string }>;
 const BANK_INTEL = bankIntelJson as Record<string, { pos: string; neg: string }>;
 const BANK_PRODUCTS_ALL = bankProductsAllJson as Array<Record<string, unknown> & { bankName: string; stressBufferPct?: number | null }>;
+const COMM_TEMPLATES = commTemplatesJson as Array<{
+  id: string; channel: string; stageKey: string; bank: string | null;
+  name: string; subject: string | null; body: string; vars: string[]; active: boolean;
+}>;
 const EIBOR = eiborJson as Array<{ tenor: string; ratePct: number; updatedOn: string; note: string }>;
 
 export async function seedDatabase() {
@@ -180,9 +185,45 @@ async function ensureMasterData() {
       slaRules++;
     }
   }
+  // Retired labels from the old 10-stage list stay readable but inactive —
+  // history (StageTransition) and old case.stage values keep resolving via
+  // LEGACY_MAP in src/lib/workflow/registry.ts. FARD is retired everywhere.
+  const RETIRED_STAGES = [
+    "WhatsApp Group Creation",
+    "Property Identification",
+    "MOU / FARD",
+    "Bank Submission",
+    "Final Approval",
+    "Disbursement",
+  ];
+  for (const s of STAGES) {
+    const exists = await db.stageItem.findFirst({ where: { label: s.label } });
+    if (!exists) await db.stageItem.create({ data: { ...s, active: true } });
+  }
+  for (const label of RETIRED_STAGES) {
+    const row = await db.stageItem.findFirst({ where: { label } });
+    if (row && row.active) await db.stageItem.update({ where: { id: row.id }, data: { active: false } });
+  }
   // "Lead" stage — self-registrations from the client portal land here
   const lead = await db.stageItem.findFirst({ where: { label: "Lead" } });
   if (!lead) await db.stageItem.create({ data: { label: "Lead", active: true, sortOrder: 0 } });
+
+  // Stage-wise communication templates — create-if-missing by key, so admin
+  // edits in Admin → Templates survive every seed top-up.
+  let commTemplates = 0;
+  for (let i = 0; i < COMM_TEMPLATES.length; i++) {
+    const t = COMM_TEMPLATES[i];
+    const exists = await db.commTemplate.findUnique({ where: { key: t.id } });
+    if (exists) continue;
+    await db.commTemplate.create({
+      data: {
+        key: t.id, channel: t.channel, stageKey: t.stageKey, bank: t.bank,
+        name: t.name, subject: t.subject, body: t.body,
+        vars: JSON.stringify(t.vars ?? []), sortOrder: i * 10, active: t.active ?? true,
+      },
+    });
+    commTemplates++;
+  }
 
   // Bank rule products — phase 0 banks (DIB + ENBD), decoded from the workbooks
   if ((await db.bankProduct.count()) === 0) {
@@ -266,5 +307,5 @@ async function ensureMasterData() {
       await db.bankItem.update({ where: { id: bank.id }, data: { posPoints: it.pos, negPoints: it.neg } });
     }
   }
-  return { ensured: { docRules, feeRules, slaRules, bankProducts } };
+  return { ensured: { docRules, feeRules, slaRules, bankProducts, commTemplates } };
 }

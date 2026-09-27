@@ -79,6 +79,16 @@ interface MatchResult {
     effectiveAge?: number;
     summary: string;
   };
+  // Tier-4 promotion overlay — set when an active promo discounted this card
+  promo?: {
+    name: string;
+    description?: string;
+    rateDiscountBps?: number | null;
+    processingFeeOverridePct?: number | null;
+    valuationFeeWaived?: boolean;
+    validFrom: string;
+    validTo: string;
+  } | null;
 }
 
 const VERDICT: Record<string, { tone: "mint" | "amber" | "coral"; label: string }> = {
@@ -180,7 +190,7 @@ export function BankMatchPanel({ c }: { c: LoanCase }) {
         {/* Joint application role banner */}
         <div className={`p-2.5 rounded-lg border text-[11.5px] mb-3 flex flex-wrap items-center justify-between gap-2 ${secondPartyRole === "co_borrower" ? "bg-[var(--mint-tint)] border-[var(--mint)]" : secondPartyRole === "co_applicant" ? "bg-[var(--amber-tint)] border-[var(--amber)]" : "bg-[var(--bg2)] border-[var(--line-soft)]"}`}>
           <div className="flex items-center gap-2">
-            <span className="font-semibold uppercase tracking-wider text-[10px]">Application Type:</span>
+            <span className="font-semibold uppercase tracking-wider text-[10.5px]">Application Type:</span>
             {secondPartyRole === "co_borrower" && (
               <span className="text-[var(--mint)] font-semibold">
                 Joint Co-Borrower ({initProf.secondParty.fullName || "Co-Borrower"}) � Incomes & Debts Pooled for DBR
@@ -212,7 +222,7 @@ export function BankMatchPanel({ c }: { c: LoanCase }) {
         {/* If co_borrower is active, show the pooled second party inputs */}
         {secondPartyRole === "co_borrower" && (
           <div className="p-2.5 rounded-lg bg-[var(--surface)] border border-[var(--mint)] mb-3 space-y-1.5">
-            <div className="text-[10px] uppercase tracking-wider font-semibold text-[var(--mint)]">
+            <div className="text-[10.5px] uppercase tracking-wider font-semibold text-[var(--mint)]">
               Co-Borrower Financial Inputs ({initProf.secondParty.fullName || "Co-Borrower"})
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
@@ -277,12 +287,11 @@ export function BankMatchPanel({ c }: { c: LoanCase }) {
           {ratePref === "fixed" ? (
             <div>
               <label className="label">Fixed tenure</label>
-              <select className="select" value={term} onChange={(e) => setTerm(Number(e.target.value))}>
-                <option value={1}>1 year</option>
-                <option value={2}>2 years</option>
-                <option value={3}>3 years</option>
-                <option value={4}>4 years</option>
-                <option value={5}>5 years</option>
+              <select className="select" value={term} onChange={(e) => setTerm(Number(e.target.value))}
+                title="UAE sheets publish 1-5y plus longer terms (ADIB: 7y, 8-10y, 11-15y, 16-20y). 'All terms' picks the best rate among the terms each bank actually publishes.">
+                {[1, 2, 3, 4, 5, 6, 7, 10, 15, 20].map((y) => (
+                  <option key={y} value={y}>{y} year{y === 1 ? "" : "s"}</option>
+                ))}
                 <option value={-1}>All terms — best</option>
               </select>
             </div>
@@ -326,8 +335,13 @@ export function BankMatchPanel({ c }: { c: LoanCase }) {
                     <span className="text-[12.5px] font-semibold">{r.bankName}</span>
                     <span className="text-[11.5px] text-[var(--ink-dim)]">{r.productName}</span>
                     <Chip tone={v.tone}>{v.label}</Chip>
+                    {r.promo && (
+                      <span className="mono text-[10.5px] px-1.5 py-0.5 rounded font-medium" style={{ background: "rgba(67,214,155,0.15)", color: "var(--mint)" }} title={`${r.promo.description || ""} · applies ${r.promo.validFrom} → ${r.promo.validTo}. Base pricing untouched — this override expires by itself.`}>
+                        🎉 {r.promo.name}
+                      </span>
+                    )}
                     {r.version && (
-                      <span className="mono text-[10px] px-1.5 py-0.5 rounded font-medium" style={{ background: "var(--amber-tint)", color: "var(--amber)" }}>
+                      <span className="mono text-[10.5px] px-1.5 py-0.5 rounded font-medium" style={{ background: "var(--amber-tint)", color: "var(--amber)" }}>
                         v{r.version}{r.effectiveDate ? ` · ${r.effectiveDate.slice(0, 10)}` : ""}
                       </span>
                     )}
@@ -372,7 +386,7 @@ export function BankMatchPanel({ c }: { c: LoanCase }) {
                   )}
                   {(r.fees || r.insurance) && (
                     <div className="rounded-md p-2 mt-2 space-y-1.5" style={{ background: "var(--bg2)" }}>
-                      <div className="text-[10px] uppercase tracking-[0.08em] font-semibold text-[var(--ink-faint)] flex items-center justify-between">
+                      <div className="text-[10.5px] uppercase tracking-[0.08em] font-semibold text-[var(--ink-faint)] flex items-center justify-between">
                         <span>Bank Charges & Insurance</span>
                         {r.costBreakdown?.grandTotal != null && (
                           <span className="mono text-[10.5px] text-[var(--ink)]">

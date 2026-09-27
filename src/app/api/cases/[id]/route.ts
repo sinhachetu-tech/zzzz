@@ -75,6 +75,38 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     data.propertyType = body.propertyType;
     profileChanged = true;
   }
+  // --- FINAL PROPERTY CLASSIFICATION (canonical dims — validated, additive) ---
+  // Validation rules enforced server-side:
+  //  - commercialSubtype must be NULL unless propertyTypeCanonical = COMMERCIAL
+  //  - unknown/guessed values are rejected: only the documented enums pass
+  const VALID = {
+    propertyTypeCanonical: ["RESIDENTIAL", "COMMERCIAL", "UNKNOWN"],
+    commercialSubtype: ["OFFICE", "RETAIL_SHOP", "WAREHOUSE", "INDUSTRIAL", "HOTEL_HOSPITALITY", "MIXED_USE", "LAND_PLOT", "OTHER_COMMERCIAL", "UNKNOWN"],
+    propertyStage: ["OFF_PLAN", "HANDOVER", "COMPLETED", "UNKNOWN"],
+    constructionStatus: ["NOT_STARTED", "UNDER_CONSTRUCTION", "COMPLETED", "UNKNOWN"],
+    partyRelationship: ["DEVELOPER", "EXISTING_OWNER", "SELF", "UNKNOWN"],
+    existingFinance: ["NONE", "MORTGAGE", "UNKNOWN"],
+    transactionPurpose: ["PURCHASE", "REFINANCE", "EQUITY_RELEASE", "REFINANCE_AND_EQUITY", "UNKNOWN"],
+  } as const;
+  for (const [field, allowed] of Object.entries(VALID)) {
+    if (body[field] === undefined) continue;
+    const v = body[field];
+    if (v !== null && v !== "" && !(allowed as readonly string[]).includes(String(v))) {
+      return NextResponse.json({ error: `${field}: invalid value "${v}"` }, { status: 400 });
+    }
+    data[field] = v === "" ? (field === "commercialSubtype" ? null : "UNKNOWN") : v;
+  }
+  if (data.propertyTypeCanonical !== undefined && data.propertyTypeCanonical !== "COMMERCIAL") {
+    data.commercialSubtype = null; // subtype NULL iff not COMMERCIAL — never guessed
+  } else if (data.propertyTypeCanonical === "COMMERCIAL" && data.commercialSubtype === undefined && existing.commercialSubtype) {
+    // subtype left untouched on a COMMERCIAL update
+  } else if (data.propertyTypeCanonical === "COMMERCIAL" && data.commercialSubtype === undefined) {
+    data.commercialSubtype = "UNKNOWN"; // commercial but subtype not yet known — TO_VERIFY, not invented
+  }
+  if (data.commercialSubtype !== undefined && data.commercialSubtype !== null && data.commercialSubtype !== "UNKNOWN"
+      && (data.propertyTypeCanonical ?? (existing as unknown as { propertyTypeCanonical?: string }).propertyTypeCanonical) !== "COMMERCIAL") {
+    data.commercialSubtype = null; // guard: subtype only sticks when the property IS commercial
+  }
   if (body.residency !== undefined && body.residency !== existing.residency) {
     data.residency = body.residency;
     profileChanged = true;
@@ -93,6 +125,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (body.advisorId !== undefined) data.advisorId = body.advisorId ? Number(body.advisorId) : null;
   if (body.backup1Id !== undefined) data.backup1Id = body.backup1Id ? Number(body.backup1Id) : null;
   if (body.backup2Id !== undefined) data.backup2Id = body.backup2Id ? Number(body.backup2Id) : null;
+  if (body.notificationOverrides !== undefined) {
+    data.notificationOverrides = body.notificationOverrides ? JSON.stringify(body.notificationOverrides) : null;
+  }
   if (body.preApprovalDate !== undefined) data.preApprovalDate = body.preApprovalDate;
   if (body.preApprovalAmount !== undefined) data.preApprovalAmount = body.preApprovalAmount;
   if (body.preApprovalTenure !== undefined) data.preApprovalTenure = body.preApprovalTenure;
@@ -101,6 +136,30 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (body.folAmount !== undefined) data.folAmount = body.folAmount;
   if (body.folTenure !== undefined) data.folTenure = body.folTenure;
   if (body.folRoi !== undefined) data.folRoi = body.folRoi;
+  // stage timeline (Case 360 drawer). RULE: signing can never precede conversion.
+  const STAGE_DATES = [
+    "valuationInitiatedDate", "inspectionDate", "valuationReportDate",
+    "folConversionDate", "folSignedDate",
+    "liabilityLetterDate", "settlementDate", "transferDate", "titleDeedDate",
+  ] as const;
+  for (const f of STAGE_DATES) {
+    if (body[f] === undefined) continue;
+    if (f === "folSignedDate" && body[f]) {
+      // RULE 4.1 → 4.4: signing can never be recorded before the FOL conversion.
+      // Cast keeps this compiling while the Prisma client catches up after
+      // `prisma generate` (schema.prisma already carries the column).
+      const ex = existing as unknown as { folConversionDate?: string | null };
+      const conv = body.folConversionDate !== undefined ? body.folConversionDate : ex.folConversionDate;
+      if (!conv) {
+        return NextResponse.json(
+          { error: "FOL conversion must be recorded before signing (4.1 → 4.4)." },
+          { status: 400 }
+        );
+      }
+    }
+    data[f] = body[f] === "" ? null : body[f];
+  }
+  if (body.ddaActive !== undefined) data.ddaActive = !!body.ddaActive;
   if (body.whatsapp !== undefined) data.whatsapp = body.whatsapp;
   if (body.waGroup !== undefined) data.waGroup = body.waGroup;
   if (body.customer !== undefined) data.customer = body.customer;

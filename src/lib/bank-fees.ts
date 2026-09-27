@@ -13,6 +13,13 @@ export interface BankFees {
     equityRelease?: number;
     /** % for buyout / balance transfer */
     buyout?: number;
+    /** Slabbed schedule — first slab whose upTo >= loanAmount wins
+     *  (null upTo = catch-all). Takes precedence over the flat fields. */
+    slabs?: FeeSlab[];
+    /** Component split for buyout+equity deals (see FeeComponentSplit). */
+    componentSplit?: FeeComponentSplit;
+    /** Equity (cash-out) portion in AED — only used with componentSplit. */
+    equityPortionAed?: number;
     /** Minimum AED charge regardless of % calculation */
     minFee?: number;
     /** AED cap (e.g. some banks cap at AED 30,000) */
@@ -70,6 +77,23 @@ export interface BankInsurance {
   };
 }
 
+/* --------------- Optional slabs / component splits (additive) --------------- */
+
+// Slabbed + component (buyout+equity split) processing-fee structures.
+// Additive: existing default/buyout/equityRelease rows keep working as before.
+export interface FeeSlab {
+  /** loan amount ceiling for this slab (inclusive); null = open-ended top slab */
+  upTo: number | null;
+  /** % of loan charged inside this slab */
+  pct: number;
+}
+export interface FeeComponentSplit {
+  /** % charged on the buyout portion of a buyout+equity deal */
+  buyoutPortion?: number;
+  /** % charged on the cash-out portion (overrides equityRelease for this shape) */
+  equityPortion?: number;
+}
+
 /* --------------- Parsers --------------- */
 
 export function parseFees(json: string | null | undefined): BankFees | null {
@@ -93,10 +117,26 @@ export function parseInsurance(json: string | null | undefined): BankInsurance |
 }
 
 /* --------------- Fee calculators --------------- */
+/** Resolve the slab % for a loan amount, or null when no slab schedule fits. */
+export function slabFeePct(fees: BankFees | null, loanAmount: number): number | null {
+  const slabs = fees?.processing?.slabs;
+  if (!slabs || slabs.length === 0 || loanAmount <= 0) return null;
+  const sorted = [...slabs].sort((a, b) => (a.upTo ?? Number.MAX_SAFE_INTEGER) - (b.upTo ?? Number.MAX_SAFE_INTEGER));
+  for (const s of sorted) {
+    if (s.pct == null) continue;
+    if (s.upTo == null || loanAmount <= s.upTo) return s.pct;
+  }
+  return null;
+}
 
-/** Processing fee % for a transaction. Falls back from segment to default. */
-export function processingFeePct(fees: BankFees | null, txn: string): number | null {
+/** Processing fee % for a transaction. Slab schedules win when a slab fits the
+ *  loan amount; otherwise falls back from segment to default. */
+export function processingFeePct(fees: BankFees | null, txn: string, loanAmount?: number): number | null {
   if (!fees?.processing) return null;
+  if (loanAmount != null && loanAmount > 0) {
+    const slab = slabFeePct(fees, loanAmount);
+    if (slab != null) return slab;
+  }
   if ((txn === "Equity Release" || txn === "Buyout + Equity Release") && fees.processing.equityRelease != null)
     return fees.processing.equityRelease;
   if (txn.startsWith("Buyout") && fees.processing.buyout != null)
@@ -104,9 +144,24 @@ export function processingFeePct(fees: BankFees | null, txn: string): number | n
   return fees.processing.default ?? null;
 }
 
-/** Processing fee in AED for a loan amount. Respects minFee and maxFee. */
-export function processingFeeAed(fees: BankFees | null, txn: string, loanAmount: number): number | null {
-  const pct = processingFeePct(fees, txn);
+/** Processing fee in AED for a loan amount. Respects minFee and maxFee.
+ *  Component-split deals (buyout+equity) charge per-portion % when a split is
+ *  filed and the equity portion is known; otherwise the single % applies. */
+export function processingFeeAed(
+  fees: BankFees | null, txn: string, loanAmount: number, equityPortionAed?: number,
+): number | null {
+  const split = fees?.processing?.componentSplit;
+  const eqPortion = equityPortionAed ?? fees?.processing?.equityPortionAed ?? null;
+  if (split && (txn === "Buyout + Equity Release" || txn === "Buyout") && eqPortion != null && eqPortion > 0 && eqPortion < loanAmount) {
+    const buyoutPortion = loanAmount - eqPortion;
+    const buyoutPct = split.buyoutPortion ?? processingFeePct(fees, "Buyout", buyoutPortion) ?? 0;
+    const equityPct = split.equityPortion ?? processingFeePct(fees, "Equity Release", eqPortion) ?? 0;
+    let aed = Math.round((buyoutPortion * buyoutPct + eqPortion * equityPct) / 100);
+    if (fees!.processing.minFee != null) aed = Math.max(aed, fees!.processing.minFee);
+    if (fees!.processing.maxFee != null) aed = Math.min(aed, fees!.processing.maxFee);
+    return aed;
+  }
+  const pct = processingFeePct(fees, txn, loanAmount);
   if (pct == null) return null;
   let aed = Math.round((loanAmount * pct) / 100);
   if (fees!.processing.minFee != null) aed = Math.max(aed, fees!.processing.minFee);

@@ -66,10 +66,10 @@ export async function r2PresignGet(key: string, opts?: { expirySeconds?: number;
 }
 
 /** Canonical key layout: cases/{caseId}/{docId}/{timestamp}-{safeName}[.variant] */
-export function docKey(caseId: number, docId: number, fileName: string, variant?: "compressed"): string {
+export function docKey(caseId: number, docId: number, fileName: string, variant?: "compressed" | "converted" | "merged" | "zip"): string {
     const safe = fileName.replace(/[^a-zA-Z0-9._-]+/g, "-").slice(-120) || "file";
     const ts = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
     return variant
-        ? `cases/${caseId}/${docId}/${ts}-${safe}.compressed`
+        ? `cases/${caseId}/${docId}/${ts}-${safe}.${variant}`
         : `cases/${caseId}/${docId}/${ts}-${safe}`;
 }

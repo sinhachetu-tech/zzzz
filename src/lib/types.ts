@@ -38,6 +38,7 @@ export interface Designation {
   super: boolean;
   viewRevenue: boolean; // commission rates & earnings are restricted
   manageDocs: boolean; // may upload/verify/reject/waive/delete/compress vault documents
+  clientChat: boolean; // may reply to client & agent chats
   builtIn: boolean;
 }
 
@@ -78,8 +79,17 @@ export interface LoanCase {
   // --- Bank submission tracking ---
   // Document Vault profile vectors
   employmentProfile: string; // Salaried | Self-Employed
-  propertyType: string; // Ready | Off-Plan
+  propertyType: string; // Ready | Off-Plan (legacy display)
   residency: string; // UAE National | Resident Expatriate | Non-Resident
+  // --- FINAL PROPERTY CLASSIFICATION (canonical dims — additive, UNKNOWN-safe) ---
+  // Never merged with case stage/status or transactionPurpose. Unknown = "UNKNOWN", never guessed.
+  propertyTypeCanonical: string; // RESIDENTIAL | COMMERCIAL | UNKNOWN
+  commercialSubtype: string | null; // OFFICE | ... ; NULL unless propertyTypeCanonical = COMMERCIAL
+  propertyStage: string; // OFF_PLAN | HANDOVER | COMPLETED | UNKNOWN
+  constructionStatus: string; // NOT_STARTED | UNDER_CONSTRUCTION | COMPLETED | UNKNOWN
+  partyRelationship: string; // DEVELOPER | EXISTING_OWNER | SELF | UNKNOWN
+  existingFinance: string; // NONE | MORTGAGE | UNKNOWN
+  transactionPurpose: string; // PURCHASE | REFINANCE | EQUITY_RELEASE | REFINANCE_AND_EQUITY | UNKNOWN
   loanType: string | null; // NSTL | STL
   fileSubmittedDate: string | null; // ISO date
   bankRate: number | null; // actual rate the bank quoted
@@ -94,6 +104,18 @@ export interface LoanCase {
   folAmount: number | null;
   folTenure: number | null; // months
   folRoi: number | null; // rate of interest
+  // --- Stage timeline (captured in the Case 360 stage drawer).
+  // The journey ticks read these fields first; daily-note sniffing is a fallback.
+  valuationInitiatedDate: string | null;
+  inspectionDate: string | null;
+  valuationReportDate: string | null;
+  folConversionDate: string | null; // 4.1 — must precede folSignedDate
+  folSignedDate: string | null; // 4.4 — never before conversion
+  ddaActive: boolean; // 4.5 — DDA activated
+  liabilityLetterDate: string | null;
+  settlementDate: string | null;
+  transferDate: string | null;
+  titleDeedDate: string | null;
   profileJson?: string | null;
   profile?: CaseProfile;
   // Client master links — the person behind the engagement
@@ -103,6 +125,7 @@ export interface LoanCase {
   backup1Id: number | null;      // first backup staffer — covers the file while the owner is on leave
   backup2Id: number | null;      // second backup staffer — covers the file while the owner is on leave
   profileClientVerifiedAt: string | null; // when the client last confirmed their data sheet
+  notificationOverrides?: { push?: boolean; whatsapp?: boolean; email?: boolean } | null;
 }
 
 // Client master — one row per human across all their engagements
@@ -426,12 +449,61 @@ export interface CaseDocument {
   // --- Independent Google Drive archive (optional, env-driven) ---
   driveFileId: string | null; // set once the file was copied into Drive's per-case folder
   driveLink: string | null; // webViewLink so the team can open the archive copy
+  displayName: string | null; // custom inline renamed label
+  source: string; // "vault" | "chat"
+}
+
+export interface ChatMessageDto {
+  id: number;
+  caseId: number;
+  senderId: number | null;
+  senderType: "STAFF" | "CLIENT" | "AGENT";
+  senderName: string;
+  threadType: "CLIENT" | "AGENT";
+  text: string | null;
+  attachmentKey: string | null;
+  attachmentName: string | null;
+  attachmentSize: number | null;
+  mimeType: string | null;
+  documentId: number | null;
+  sentAt: string;
+  readByStaff: boolean;
+  readByExternal: boolean;
+}
+
+export interface UserDeviceDto {
+  id: number;
+  userId: number | null;
+  caseId: number | null;
+  deviceType: "mobile" | "desktop" | "tablet";
+  pwaInstalled: boolean;
+  installedAt: string | null;
+  pushEndpoint: string | null;
+  lastSeenAt: string;
+  userAgent: string | null;
 }
 
 // SOP §6.9 — transfer fee rule (Admin → Fee rules); feeds the Calculator's Transfer Fees tab
 export type FeeEmirate = "Dubai" | "Abu Dhabi";
 export type FeeTxnType = "Primary" | "Resale" | "Buyout";
 export type FeeAmountType = "pct_property" | "pct_loan" | "fixed";
+
+// Tier-4 promotion overlay — applied ON TOP of base pricing, never overwrites it.
+// Self-expires by date (validFrom/validTo inclusive); active=false kills it early.
+export interface Promotion {
+  id: number;
+  bankProductId: number;
+  name: string;
+  description: string;
+  rateOptionTermYears: number | null; // null = all rate options
+  rateDiscountBps: number | null;     // e.g. -25 = intro rate down 0.25%
+  processingFeeOverridePct: number | null; // null = base fee; 0 = waived
+  valuationFeeWaived: boolean;
+  validFrom: string; // ISO date inclusive
+  validTo: string;   // ISO date inclusive
+  active: boolean;
+  createdBy: string;
+}
 
 export interface FeeRule {
   id: number;
@@ -447,6 +519,25 @@ export interface FeeRule {
 }
 
 export type Tone = "mint" | "amber" | "coral" | "sky" | "slate";
+
+// Stage-wise communication templates (WhatsApp / email / call script).
+// Wording is admin-editable; stage files reference only `key`.
+export type CommChannel = "whatsapp" | "email" | "call";
+export type CommStageKey = "doc" | "pre" | "val" | "fol" | "transfer";
+
+export interface CommTemplate {
+  id: number;
+  key: string;
+  channel: CommChannel;
+  stageKey: CommStageKey;
+  bank: string | null;
+  name: string;
+  subject: string | null;
+  body: string;
+  vars: string[];
+  sortOrder: number;
+  active: boolean;
+}
 
 export const SOURCES: CaseSource[] = ["Direct", "Agent", "Broker", "Website", "Referral"];
 export const PARTNER_SHARES = [10, 15, 20, 30];
@@ -499,4 +590,34 @@ export interface UnmatchedEmail {
   bestGuessCaseId: number | null;
   status: string; // Pending | Linked | Ignored
   messageId: string | null;
+}
+
+/* ── Notification & device types ─────────────────────────────────── */
+
+export interface UserNotificationPrefs {
+  pushChatMessage: boolean;
+  pushTaskAssigned: boolean;
+  pushTaskOverdue: boolean;
+  pushDocUpload: boolean;
+  pushStageChange: boolean;
+  pushLeadAssigned: boolean;
+  emailChatMessage: boolean;
+  emailTaskAssigned: boolean;
+  emailTaskOverdue: boolean;
+  emailDocUpload: boolean;
+  emailStageChange: boolean;
+  emailLeadAssigned: boolean;
+  soundEnabled: boolean;
+  quietHoursEnabled: boolean;
+  quietHoursStart: string; // "22:00"
+  quietHoursEnd: string;   // "07:00"
+}
+
+export interface DeviceInfo {
+  id: number;
+  userId: number | null;
+  caseId: number | null;
+  deviceType: string;
+  pushEndpoint: string | null;
+  createdAt: string;
 }

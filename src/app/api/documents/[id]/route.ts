@@ -29,6 +29,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const actions: string[] = [];
 
   if (body.title !== undefined) data.title = String(body.title).trim();
+  if (body.displayName !== undefined) data.displayName = body.displayName ? String(body.displayName).trim() : null;
   if (body.category !== undefined) data.category = body.category;
   if (body.mandatory !== undefined) data.mandatory = !!body.mandatory;
   if (body.visibleToClient !== undefined) data.visibleToClient = !!body.visibleToClient;

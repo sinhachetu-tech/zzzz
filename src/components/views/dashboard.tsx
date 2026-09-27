@@ -7,9 +7,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useHfmcStore } from "@/lib/client-store";
 import type { BulletinItem } from "@/lib/types";
 import { activityPerDay, computeKpis } from "@/lib/domain";
-import { TONE_HEX, caseStatusOf, dueDay, fmtDue, fmtMoney, isOverdueDue, parseTaskDue, relTime, todayISO } from "@/lib/format";
-import { Avatar, DueChip } from "@/components/hfmc/ui";
-import { BarList, Donut, Spark, useCountUp } from "@/components/hfmc/charts";
+import { TONE_HEX, caseStatusOf, dueDay, fmtDue, fmtMoney, greetingFor, isOverdueDue, parseTaskDue, relTime, todayISO } from "@/lib/format";
+import { Avatar, DueChip, KpiValue } from "@/components/hfmc/ui";
+import { BarList, Donut, Spark } from "@/components/hfmc/charts";
 import { IArrowR, ICheck, IFlag } from "@/components/icons";
 
 function useTick(intervalMs: number) {
@@ -21,13 +21,16 @@ function useTick(intervalMs: number) {
 }
 
 function Kpi({ label, value, format, tone, sub }: { label: string; value: number; format?: (n: number) => string; tone?: "mint" | "amber" | "coral" | "sky"; sub?: string }) {
-  const v = useCountUp(value);
+  // on the shared .kpi primitive (was a hand-rolled card with its own 30px/11px
+  // type), so the dashboard strip matches admin/agent/calculator tiles
   const color = tone ? `var(--${tone})` : "var(--ink)";
   return (
-    <div className="card card-hover px-4 py-3.5 min-w-[150px]">
-      <div className="text-[11px] uppercase tracking-[0.12em] text-[var(--ink-faint)] font-disp font-semibold">{label}</div>
-      <div className="font-disp font-bold text-[30px] leading-tight mt-0.5" style={{ color }}>{format ? format(v) : v}</div>
-      {sub && <div className="text-[11.5px] text-[var(--ink-faint)]">{sub}</div>}
+    // `shrink-0` matters: without it the flex strip squeezes all 7 tiles to fit
+    // 390px instead of honouring min-w-[150px] and scrolling.
+    <div className="kpi kpi-plain min-w-[150px] shrink-0">
+      <div className="kpi-label">{label}</div>
+      <KpiValue value={value} format={format} style={{ color, fontSize: 26, marginTop: 2 }} />
+      {sub && <div className="kpi-sub">{sub}</div>}
     </div>
   );
 }
@@ -96,15 +99,13 @@ export default function Dashboard() {
     me?.role === "Head of Company" || me?.role === "PA to HoC" || me?.role === "Mortgage Head" || me?.role === "Super Admin"
       ? "all teams"
       : me?.role === "Team Leader SPO" || me?.role === "Team Leader VRM"
-      ? `team ${me.team}`
-      : "your book";
+        ? `team ${me.team}`
+        : "your book";
 
   // 1) ROLE-BASED HOME — My Day strip for frontline (SPO / VRM incl. Team Leaders).
   const roleName = (me?.role ?? "").toLowerCase();
   const isFrontline = roleName.includes("spo") || roleName.includes("vrm");
-  const firstName = (me?.name ?? "").split(" ")[0] || "there";
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  const greeting = greetingFor(me?.name);
   const myOpenAll = me ? openTasks.filter((t) => t.ownerId === me.id) : [];
   const myOverdueAll = myOpenAll.filter((t) => isOverdueDue(t.dueDate));
   const myDueNowCount = me ? myOpenAll.filter((t) => !isOverdueDue(t.dueDate) && dueDay(t.dueDate) <= todayISO()).length : 0;
@@ -125,7 +126,7 @@ export default function Dashboard() {
         <div className="card p-4 sm:p-5 anim-fade-up" style={{ borderLeft: "3px solid var(--amber)" }}>
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <h2 className="font-disp font-bold text-[20px] tracking-tight m-0">{greeting}, {firstName} 👋</h2>
+              <h2 className="font-disp font-bold text-[20px] tracking-tight m-0">{greeting}</h2>
               <p className="text-[12.5px] text-[var(--ink-dim)] mt-1 mb-0">
                 <strong style={{ color: myOverdueAll.length ? "var(--coral)" : "var(--ink)" }}>{myOverdueAll.length} overdue</strong>
                 {" · "}{myDueNowCount} due today{" · "}{myNewLeads.length} new lead{myNewLeads.length === 1 ? "" : "s"} · {myOpenAll.length} open total
@@ -166,6 +167,12 @@ export default function Dashboard() {
           )}
         </div>
       )}
+      {/* Frontline get their greeting inside the My Day card above; managers
+          (HoC, Mortgage Head, PA, Super Admin) previously got none at all, so
+          they now get the same one here. Same helper, same format, everyone. */}
+      {!isFrontline && (
+        <h2 className="font-disp font-bold text-[20px] tracking-tight m-0 anim-fade-up">{greeting}</h2>
+      )}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-disp font-bold text-[24px] tracking-tight m-0">
@@ -182,7 +189,11 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="flex gap-3 overflow-x-auto pb-1 stagger">
+      {/* Mobile: a 2-up grid so every KPI is visible without sideways scrolling
+          (a horizontal strip hid 5 of 7 tiles behind a swipe). From md up it
+          returns to the original single-row scroll strip, which is denser and
+          suits a wide desktop. */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:flex md:gap-3 md:overflow-x-auto md:pb-1 stagger">
         <Kpi label="Cases in flight" value={k.openCases} />
         <Kpi label="Overdue" value={k.overdue} tone="coral" />
         <Kpi label="At risk" value={k.atRisk} tone="amber" />
@@ -194,52 +205,52 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-4 items-start">
         <div className="space-y-4">
-        <div className="card p-4 anim-fade-up">
-          <h3 className="font-disp font-semibold text-[13.5px] mt-0 mb-3">Pipeline by stage</h3>
-          {funnelRows.length ? <BarList items={funnelRows.map((r) => ({ ...r, color: TONE_HEX.amber }))} /> : <p className="text-[12.5px] text-[var(--ink-faint)] m-0">No live cases — open a lead to start.</p>}
-        </div>
-        <div className="card p-4 anim-fade-up">
-          <div className="flex items-center justify-between gap-2 mb-3">
-            <h3 className="font-disp font-semibold text-[13.5px] m-0">My tasks due today</h3>
-            <button className="btn btn-ghost btn-sm" onClick={() => nav({ name: "tasks" })}>Task queue <IArrowR size={12} /></button>
+          <div className="card p-4 anim-fade-up">
+            <h3 className="font-disp font-semibold text-[13.5px] mt-0 mb-3">Pipeline by stage</h3>
+            {funnelRows.length ? <BarList items={funnelRows.map((r) => ({ ...r, color: TONE_HEX.amber }))} /> : <p className="text-[12.5px] text-[var(--ink-faint)] m-0">No live cases — open a lead to start.</p>}
           </div>
-          <div className="space-y-2">
-            {myDueToday.length === 0 && <p className="text-[12.5px] text-[var(--ink-faint)] m-0">Nothing due on you today — clean slate.</p>}
-            {myDueToday.map((t) => {
-              const c = cases.find((x) => x.id === t.caseId);
-              return (
-                <button key={t.id} className="rowlink w-full text-left flex items-center gap-2.5 rounded-lg px-2 py-1.5" onClick={() => c && nav({ name: "case", id: c.id })}>
-                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: isOverdueDue(t.dueDate) ? "var(--coral)" : "var(--amber)" }} />
-                  <span className="text-[12.5px] flex-1 truncate">{t.description}</span>
-                  <span className="mono text-[10.5px] text-[var(--ink-faint)]">{c?.caseNumber}</span>
-                </button>
-              );
-            })}
+          <div className="card p-4 anim-fade-up">
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <h3 className="font-disp font-semibold text-[13.5px] m-0">My tasks due today</h3>
+              <button className="btn btn-ghost btn-sm" onClick={() => nav({ name: "tasks" })}>Task queue <IArrowR size={12} /></button>
+            </div>
+            <div className="space-y-2">
+              {myDueToday.length === 0 && <p className="text-[12.5px] text-[var(--ink-faint)] m-0">Nothing due on you today — clean slate.</p>}
+              {myDueToday.map((t) => {
+                const c = cases.find((x) => x.id === t.caseId);
+                return (
+                  <button key={t.id} className="rowlink w-full text-left flex items-center gap-2.5 rounded-lg px-2 py-1.5" onClick={() => c && nav({ name: "case", id: c.id })}>
+                    <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: isOverdueDue(t.dueDate) ? "var(--coral)" : "var(--amber)" }} />
+                    <span className="text-[12.5px] flex-1 truncate">{t.description}</span>
+                    <span className="mono text-[10.5px] text-[var(--ink-faint)]">{c?.caseNumber}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
-        <div className="card p-4 anim-fade-up">
-          <h3 className="font-disp font-semibold text-[13.5px] mt-0 mb-3">Latest activity</h3>
-          <div className="space-y-2.5">
-            {recent.length === 0 && <p className="text-[12.5px] text-[var(--ink-faint)] m-0">Quiet so far.</p>}
-            {recent.map((a) => {
-              const c = cases.find((x) => x.id === a.caseId);
-              return (
-                <button key={a.id} className="rowlink w-full text-left flex gap-2.5 rounded-lg px-2 py-1.5" onClick={() => c && nav({ name: "case", id: c.id })}>
-                  <Avatar name={userById(a.userId)?.name ?? "?"} size={24} />
-                  <span className="min-w-0">
-                    <span className="block text-[12px] leading-snug">
-                      <strong className="font-medium">{userById(a.userId)?.name.split(" ")[0]}</strong>{" "}
-                      <span className="text-[var(--ink-dim)]">{a.action.toLowerCase()}</span>
+          <div className="card p-4 anim-fade-up">
+            <h3 className="font-disp font-semibold text-[13.5px] mt-0 mb-3">Latest activity</h3>
+            <div className="space-y-2.5">
+              {recent.length === 0 && <p className="text-[12.5px] text-[var(--ink-faint)] m-0">Quiet so far.</p>}
+              {recent.map((a) => {
+                const c = cases.find((x) => x.id === a.caseId);
+                return (
+                  <button key={a.id} className="rowlink w-full text-left flex gap-2.5 rounded-lg px-2 py-1.5" onClick={() => c && nav({ name: "case", id: c.id })}>
+                    <Avatar name={userById(a.userId)?.name ?? "?"} size={24} />
+                    <span className="min-w-0">
+                      <span className="block text-[12px] leading-snug">
+                        <strong className="font-medium">{userById(a.userId)?.name.split(" ")[0]}</strong>{" "}
+                        <span className="text-[var(--ink-dim)]">{a.action.toLowerCase()}</span>
+                      </span>
+                      <span className="block text-[10.5px] text-[var(--ink-faint)] mono">
+                        {c?.caseNumber} · {relTime(a.at)}
+                      </span>
                     </span>
-                    <span className="block text-[10.5px] text-[var(--ink-faint)] mono">
-                      {c?.caseNumber} · {relTime(a.at)}
-                    </span>
-                  </span>
-                </button>
-              );
-            })}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
         </div>
 
         <div className="space-y-4">

@@ -13,10 +13,16 @@ import {
 } from "@/lib/bank-fees";
 import { emi, loanForEmi } from "@/lib/calc";
 import type { BankProduct } from "@/lib/types";
+import type { Promotion } from "@/lib/types";
 
 export interface MatchInput {
-  employmentProfile: string; // Salaried | Self-Employed | Non-Resident
+  employmentProfile: string; // Salaried | Self-Employed (never Non-Resident — that's residency)
   residency: string;         // UAE National | Resident Expatriate | Non-Resident
+  nationality?: string | null; // passport country — checked against quote nationalityRule
+  emirate?: string | null;     // Dubai | Abu Dhabi | ... — checked against quote emirates
+  financeType?: string | null; // Residential | Commercial
+  loanKind?: string | null;    // Conventional | Islamic
+  segment?: string | null;     // GECO | Premium | AUH Developer | ... — strict quote matching
   transactionType: string;   // free text from the case
   loanAmount: number;        // requested finance
   propertyValue: number;
@@ -112,6 +118,17 @@ export interface MatchResult {
     effectiveAge?: number;
     summary: string;
   };
+  // Tier-4 promotion overlay — active promo applied ON TOP of base pricing
+  // (null = no active promo for this product/term today; self-expires by date)
+  promo?: {
+    name: string;
+    description?: string;
+    rateDiscountBps?: number | null;
+    processingFeeOverridePct?: number | null;
+    valuationFeeWaived?: boolean;
+    validFrom: string;
+    validTo: string;
+  } | null;
 }
 
 const MAX_DBR = 0.5; // CBUAE ceiling
@@ -132,10 +149,11 @@ export function canonicalTxn(transactionType: string): string {
 }
 
 function productApplies(p: BankProduct, input: MatchInput): string | null {
-  const emp = p.employment;
   const norm = (s: string) => (s || "").toLowerCase().replace(/[^a-z]/g, "");
   const pEmp = norm(p.employment);
-  const cEmp = norm(input.employmentProfile);
+  // legacy rows store "Non-Resident" in employment — treat it as residency, not a blocker
+  const cEmpRaw = norm(input.employmentProfile);
+  const cEmp = cEmpRaw.includes("nonresident") ? "" : cEmpRaw;
   const empMatches =
     !pEmp ||
     pEmp.includes("salariedorselfemployed") ||
@@ -151,7 +169,16 @@ function productApplies(p: BankProduct, input: MatchInput): string | null {
   if (productResident !== clientResident) {
     return `product is for ${p.residency.toLowerCase()} clients`;
   }
-  if (p.financeType !== "Residential") return "commercial product — residential match pending";
+  // Finance type: only enforced when the PRODUCT declares one. Legacy rows with
+  // a blank financeType impose no constraint (never guess a blocker).
+  const prodFinance = (p.financeType ?? "").trim().toLowerCase();
+  const caseCommercial = /commercial/i.test(input.financeType ?? "");
+  if (prodFinance.includes("commercial") && !caseCommercial) {
+    return "commercial product — case is not classified as commercial";
+  }
+  if (prodFinance.includes("residential") && caseCommercial) {
+    return "residential product — case is classified as commercial";
+  }
   return null;
 }
 
@@ -174,10 +201,14 @@ function baseResult(p: { id: number; version?: number; effectiveDate?: string | 
   };
 }
 
-/** Build the MatchFees object from a parsed BankFees structure + loan context. */
-function buildMatchFees(bfees: BankFees, txn: string, loanAmount: number, stl: boolean): MatchFees {
-  const pfPct = processingFeePct(bfees, txn);
-  const pfAed = processingFeeAed(bfees, txn, loanAmount);
+/** Build the MatchFees object from a parsed BankFees structure + loan context.
+ *  loanAmount is threaded through so slabbed schedules and buyout+equity
+ *  component splits resolve correctly (flat-only fees behave exactly as before). */
+function buildMatchFees(
+  bfees: BankFees, txn: string, loanAmount: number, stl: boolean, equityPortionAed?: number,
+): MatchFees {
+  const pfPct = processingFeePct(bfees, txn, loanAmount);
+  const pfAed = processingFeeAed(bfees, txn, loanAmount, equityPortionAed);
   const paAed = preApprovalFeeAed(bfees, { stl });
   const esPct = bfees.earlySettlement?.pct ?? null;
   const esCap = bfees.earlySettlement?.cap ?? null;
@@ -234,6 +265,17 @@ export async function runBankMatch(input: MatchInput): Promise<MatchResult[]> {
   const eibor: EiborCurve = Object.fromEntries(eiborRows.map((e) => [e.tenor, e.ratePct]));
   const txn = canonicalTxn(input.transactionType);
   const results: MatchResult[] = [];
+  // Tier-4 promotion overlay — one query filtered to today's active window.
+  // Self-expiring: no admin action needed to revert after validTo.
+  const todayStr = today.length === 10 ? today : today.slice(0, 10);
+  const activePromos = (await db.promotion.findMany({
+    where: { active: true, validFrom: { lte: todayStr }, validTo: { gte: todayStr } },
+  }).catch(() => [])) as unknown as Promotion[];
+  const promoFor = (bankProductId: number, termYears: number | null): Promotion | null =>
+    activePromos.find((pr) =>
+      pr.bankProductId === bankProductId &&
+      (pr.rateOptionTermYears == null || (termYears != null && pr.rateOptionTermYears === termYears))
+    ) ?? null;
 
   // Joint pooling calculations - strictly distinguishes co_borrower vs co_applicant
   const isCoBorrower = input.secondPartyRole === "co_borrower";
@@ -278,13 +320,27 @@ export async function runBankMatch(input: MatchInput): Promise<MatchResult[]> {
     }
 
     const pricing = parsePricing(p.pricingJson);
-    const baseReq = { stl: input.stl, ftv: p.maxLtvExpatriate ?? 80, txn, on: today };
+    const ltvReq = input.propertyValue > 0 ? (input.loanAmount / input.propertyValue) * 100 : (p.maxLtvExpatriate ?? 80);
+    const stlLabel = (input.stl ? "STL" : "NSTL") as "STL" | "NSTL";
+    const normEmp = /self/i.test(input.employmentProfile) ? "Self-Employed" : /salaried/i.test(input.employmentProfile) ? "Salaried" : null;
+    const baseReq: import("@/lib/bank-pricing").QuoteMatchInput = {
+      stl: input.stl, salaryTransfer: stlLabel, ftv: ltvReq, txn,
+      segment: input.segment ?? null,
+      residency: input.residency ?? null,
+      employment: normEmp,
+      financeType: input.financeType ?? (p.financeType || null),
+      loanKind: input.loanKind ?? (p.loanKind || null),
+      emirate: input.emirate ?? null,
+      nationality: input.nationality ?? null,
+      on: today,
+    };
     let quote: RateQuote | null = null;
     if (input.ratePref === "flexible") {
       quote = resolveQuote(pricing, { ...baseReq, termYears: null, ratePref: "flexible" });
     } else if (input.ratePref === "fixed" && input.termYears === -1) {
-      // best across every fixed tenure the bank publishes
-      for (const t of [1, 2, 3, 4, 5]) {
+      // best across every fixed tenure any quote publishes (1..20y, not just 1-5)
+      const terms = [...new Set((pricing?.quotes ?? []).map((q) => q.termYears ?? 0))].filter((t) => t > 0);
+      for (const t of (terms.length ? terms : [1, 2, 3, 4, 5])) {
         const q = resolveQuote(pricing, { ...baseReq, termYears: t, ratePref: "fixed" });
         if (q && (!quote || (q.ratePct ?? 99) < (quote.ratePct ?? 99))) quote = q;
       }
@@ -322,6 +378,15 @@ export async function runBankMatch(input: MatchInput): Promise<MatchResult[]> {
     let followOnEmi: number | null = null;
     let stressEmi: number | null = null;
     const schedule: RateSchedule | null = rateSchedule(quote, eibor, (p as unknown as { stressBufferPct?: number | null }).stressBufferPct ?? 0);
+    // Tier-4 promo overlay — apply AFTER the base schedule so base pricing is
+    // never mutated: rate discount reduces the intro rate only (follow-on/stress untouched).
+    const promo = promoFor(p.id, quote.termYears ?? null);
+    if (promo && promo.rateDiscountBps != null && schedule && schedule.introRatePct != null) {
+      schedule.introRatePct = Math.round((schedule.introRatePct + promo.rateDiscountBps / 100) * 10000) / 10000;
+      if (quote.rateType === "FIXED" && quote.ratePct != null) {
+        quote = { ...quote, ratePct: schedule.introRatePct }; // display copy — original quote row untouched
+      }
+    }
     // indicative EMIs: product tenor, else the 25-year UAE norm — then capped by
     // the borrower's age AT DISBURSEMENT, all in MONTHS: eligible tenure =
     // (maturity-age cap − age at application) × 12 − processing months
@@ -377,6 +442,17 @@ export async function runBankMatch(input: MatchInput): Promise<MatchResult[]> {
     const bins = parseInsurance((p as unknown as { insuranceJson?: string }).insuranceJson);
     const matchFees = bfees ? buildMatchFees(bfees, txn, input.loanAmount, input.stl) : null;
     const matchIns = bins ? buildMatchInsurance(bins, input.loanAmount, input.propertyValue) : null;
+    // Tier-4 promo fee overlay — processing override (0 = waived) + valuation waiver
+    if (promo && matchFees) {
+      if (promo.processingFeeOverridePct != null) {
+        matchFees.processingFeePct = promo.processingFeeOverridePct;
+        matchFees.processingFeeAed = Math.round((input.loanAmount * promo.processingFeeOverridePct) / 100);
+        matchFees.processingFeeNote = ` promo: ${promo.processingFeeOverridePct}% (${promo.name})`;
+      }
+      if (promo.valuationFeeWaived && matchFees.valuationNote) {
+        matchFees.valuationNote = `Waived — ${promo.name}`;
+      }
+    }
 
     // Total cost of finance (only if we have an EMI and tenor)
     let costBreakdown: TotalCostBreakdown | null = null;
@@ -417,6 +493,11 @@ export async function runBankMatch(input: MatchInput): Promise<MatchResult[]> {
         valuationValidityDays: p.valuationValidityDays ?? null,
       },
       jointAffordability,
+      promo: promo ? {
+        name: promo.name, description: promo.description,
+        rateDiscountBps: promo.rateDiscountBps, processingFeeOverridePct: promo.processingFeeOverridePct,
+        valuationFeeWaived: promo.valuationFeeWaived, validFrom: promo.validFrom, validTo: promo.validTo,
+      } : null,
     });
   }
 

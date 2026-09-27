@@ -31,7 +31,7 @@ interface ProposalResult {
   monthlyEmi: number | null;
   reasons: string[];
   commission: { gross: number; partnerCut: number; net: number; ratePct: number; partnerSharePct: number } | null;
-  bankCosts: { processingFeePct: number | null; processingFee: number | null; lifeMonthly: number | null; propertyYearly: number | null };
+  bankCosts: { processingFeePct: number | null; processingFee: number | null; lifeMonthly: number | null; propertyYearly: number | null; valuationNote?: string | null };
   dbrIntro: number | null;
   dbrFollowOn: number | null;
   dbrStress: number | null;
@@ -45,6 +45,15 @@ interface ProposalResult {
   tenorUsedMonths: number | null;
   posPoints: string | null;
   negPoints: string | null;
+  promo?: {
+    name: string;
+    description?: string;
+    rateDiscountBps?: number | null;
+    processingFeeOverridePct?: number | null;
+    valuationFeeWaived?: boolean;
+    validFrom: string;
+    validTo: string;
+  } | null;
   policy: {
     tenorYears: number | null; maxLtvNational: number | null; maxLtvExpatriate: number | null;
     minLoan: number | null; maxLoan: number | null; minSalary: number | null; dbrPct: number | null;
@@ -56,7 +65,12 @@ interface ProposalResult {
 interface ProposalData {
   mode: "client" | "internal";
   generatedAt: string;
-  case: { caseNumber: string; customer: string; employmentProfile: string; residency: string; transactionType: string; propertyType: string; loanAmount: number; propertyValue: number; emirate: string; feeTxn: string; goldenVisa?: boolean; islamicOnly?: boolean };
+  case: { caseNumber: string; customer: string; employmentProfile: string; residency: string; transactionType: string; propertyType: string; loanAmount: number; propertyValue: number; emirate: string; feeTxn: string; goldenVisa?: boolean; islamicOnly?: boolean;
+    // FINAL PROPERTY CLASSIFICATION — canonical dims (UNKNOWN renders as "to verify")
+    propertyTypeCanonical?: string; commercialSubtype?: string | null; propertyStage?: string;
+    constructionStatus?: string; partyRelationship?: string; existingFinance?: string;
+    transactionPurpose?: string; propertyLocation?: string | null;
+  };
   results: ProposalResult[];
   costs: { equity: number; transferFees: { label: string; note: string; amount: number }[]; sellerFees: { label: string; note: string; amount: number }[]; transferTotal: number; grossCashNeeded: number };
   eibor?: { tenor: string; ratePct: number }[];
@@ -136,7 +150,7 @@ export default function ProposalPage() {
           <div>
             <LogoMark size={34} />
             <div className="font-disp font-bold text-[16px] mt-1.5">HFMC Home Finance</div>
-            <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--ink-faint)]">Mortgage proposal · UAE</div>
+            <div className="text-[10.5px] uppercase tracking-[0.16em] text-[var(--ink-faint)]">Mortgage proposal · UAE</div>
           </div>
           <div className="text-right">
             <div className="mono text-[13px]" style={{ color: "var(--amber)" }}>{c.caseNumber}</div>
@@ -144,8 +158,8 @@ export default function ProposalPage() {
             <div className="text-[11px] text-[var(--ink-faint)]">{c.employmentProfile} · {c.residency} · {c.propertyType} · {c.transactionType || "Resale"}</div>
             {(c.goldenVisa || c.islamicOnly) && (
               <div className="flex gap-1.5 justify-end mt-1 flex-wrap">
-                {c.goldenVisa && <span className="mono text-[9.5px] px-1.5 py-0.5 rounded" style={{ background: "rgba(67,214,155,0.15)", color: "var(--mint)" }}>GOLDEN VISA — ask RM for preferential pricing</span>}
-                {c.islamicOnly && <span className="mono text-[9.5px] px-1.5 py-0.5 rounded" style={{ background: "rgba(87,194,234,0.15)", color: "var(--sky)" }}>SHARIA-COMPLIANT ONLY</span>}
+                {c.goldenVisa && <span className="mono text-[10.5px] px-1.5 py-0.5 rounded" style={{ background: "rgba(67,214,155,0.15)", color: "var(--mint)" }}>GOLDEN VISA — ask RM for preferential pricing</span>}
+                {c.islamicOnly && <span className="mono text-[10.5px] px-1.5 py-0.5 rounded" style={{ background: "rgba(87,194,234,0.15)", color: "var(--sky)" }}>SHARIA-COMPLIANT ONLY</span>}
               </div>
             )}
             <div className="text-[11px] text-[var(--ink-faint)]">{new Date(data.generatedAt).toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" })}</div>
@@ -158,6 +172,53 @@ export default function ProposalPage() {
           <Stat label="Emirate" value={c.emirate} />
         </div>
 
+        {/* FINAL PROPERTY CLASSIFICATION — the six canonical dimensions, printed so the
+            bank reads the same classification the CRM stores. Anything unknown prints
+            as "to verify" (amber) rather than being guessed. */}
+        {(() => {
+          const L: Record<string, string> = {
+            RESIDENTIAL: "Residential", COMMERCIAL: "Commercial", UNKNOWN: "To verify",
+            OFFICE: "Office", RETAIL_SHOP: "Retail / Shop", WAREHOUSE: "Warehouse",
+            INDUSTRIAL: "Industrial", HOTEL_HOSPITALITY: "Hotel / Hospitality",
+            MIXED_USE: "Mixed-use", LAND_PLOT: "Land / Plot", OTHER_COMMERCIAL: "Other commercial",
+            OFF_PLAN: "Off-plan", HANDOVER: "At handover", COMPLETED: "Completed",
+            NOT_STARTED: "Not started", UNDER_CONSTRUCTION: "Under construction",
+            DEVELOPER: "Developer", EXISTING_OWNER: "Existing owner / seller", SELF: "Customer owns it",
+            NONE: "None", MORTGAGE: "Existing mortgage",
+            PURCHASE: "Purchase", REFINANCE: "Refinance", EQUITY_RELEASE: "Equity release",
+            REFINANCE_AND_EQUITY: "Refinance + equity",
+          };
+          const rows: [string, string | null | undefined][] = [
+            ["Property type", c.propertyTypeCanonical],
+            ...(c.propertyTypeCanonical === "COMMERCIAL" ? [["Commercial subtype", c.commercialSubtype] as [string, string | null | undefined]] : []),
+            ["Property stage", c.propertyStage],
+            ["Construction status", c.constructionStatus],
+            ["Dealing with", c.partyRelationship],
+            ["Existing finance", c.existingFinance],
+            ["Transaction purpose", c.transactionPurpose],
+          ];
+          return (
+            <div className="rounded-lg p-3 mb-4" style={{ background: "var(--tint)", border: "1px solid var(--line-soft)" }}>
+              <div className="text-[10.5px] uppercase tracking-[0.12em] font-disp font-semibold text-[var(--ink-faint)] mb-2">
+                Property classification
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1.5 text-[11.5px]">
+                {rows.map(([label, value]) => {
+                  const unknown = !value || value === "UNKNOWN";
+                  return (
+                    <div key={label}>
+                      <div className="text-[10.5px] uppercase tracking-[0.08em] text-[var(--ink-faint)]">{label}</div>
+                      <div style={{ color: unknown ? "var(--amber)" : "var(--ink)" }} className={unknown ? "" : "font-medium"}>
+                        {unknown ? "To verify" : (L[value!] ?? value)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+
         <ProductInspector data={data} />
 
         {/* side-by-side comparison */}
@@ -166,10 +227,15 @@ export default function ProposalPage() {
           <table className="w-full text-[11px]" style={{ borderCollapse: "collapse", minWidth: 640 }}>
             <thead>
               <tr>
-                <th className="text-left py-1.5 pr-2 font-disp text-[10px] uppercase tracking-[0.1em] text-[var(--ink-faint)]">Metric</th>
+                <th className="text-left py-1.5 pr-2 font-disp text-[10.5px] uppercase tracking-[0.1em] text-[var(--ink-faint)]">Metric</th>
                 {results.map((r) => (
                   <th key={r.bankProductId} className="text-left py-1.5 px-2 font-disp text-[11px]" style={{ borderBottom: "2px solid var(--amber)" }}>
                     {r.bankName}
+                    {r.promo && (
+                      <div className="mono text-[8.5px] px-1 py-0.5 mt-0.5 rounded" style={{ background: "rgba(67,214,155,0.15)", color: "var(--mint)", display: "inline-block" }} title={`${r.promo.description || ""} valid ${r.promo.validFrom} → ${r.promo.validTo}`}>
+                        🎉 {r.promo.name}
+                      </div>
+                    )}
                   </th>
                 ))}
               </tr>
@@ -178,6 +244,14 @@ export default function ProposalPage() {
               <CompareRow label="Eligible loan" values={results.map((r) => fmt(r.eligibleLoan))} bold />
               <CompareRow label="Eligible tenure (months)" values={results.map((r) => r.tenorUsedMonths != null ? String(r.tenorUsedMonths) : "—")} />
               <CompareRow label="Intro rate" values={results.map((r) => r.schedule?.introRatePct != null ? r.schedule.introRatePct.toFixed(2) + "%" : "—")} />
+              <CompareRow label="Promotion" values={results.map((r) => {
+                if (!r.promo) return "—";
+                const bits: string[] = [];
+                if (r.promo.rateDiscountBps != null) bits.push(`${r.promo.rateDiscountBps > 0 ? "+" : ""}${r.promo.rateDiscountBps} bps`);
+                if (r.promo.processingFeeOverridePct != null) bits.push(`PF ${r.promo.processingFeeOverridePct}%`);
+                if (r.promo.valuationFeeWaived) bits.push("valuation waived");
+                return `${r.promo.name}${bits.length ? ` (${bits.join(", ")})` : ""} to ${r.promo.validTo}`;
+              })} />
               <CompareRow label="Intro EMI" values={results.map((r) => fmt(r.introEmi))} />
               <CompareRow label="After-intro rate" values={results.map((r) => r.schedule?.followOnRatePct != null ? r.schedule.followOnRatePct.toFixed(2) + "%" : "—")} />
               <CompareRow label="Follow-on EMI" values={results.map((r) => fmt(r.followOnEmi))} />
@@ -187,6 +261,7 @@ export default function ProposalPage() {
               <CompareRow label="Income consumed — after intro" values={results.map((r) => r.dbrFollowOn != null ? r.dbrFollowOn + "%" : "—")} />
               <CompareRow label="Income consumed — stress" values={results.map((r) => r.dbrStress != null ? r.dbrStress + "%" : "—")} />
               <CompareRow label="Bank processing fee" values={results.map((r) => r.bankCosts?.processingFee != null ? fmt(r.bankCosts.processingFee) : "—")} />
+              <CompareRow label="Valuation fee" values={results.map((r) => r.bankCosts?.valuationNote || "—")} />
               <CompareRow label="Life insurance" values={results.map((r) => r.bankCosts?.lifeMonthly != null ? fmt(r.bankCosts.lifeMonthly) + "/mo" : "—")} />
               <CompareRow label="Property insurance" values={results.map((r) => r.bankCosts?.propertyYearly != null ? fmt(r.bankCosts.propertyYearly) + "/yr" : "—")} />
               <CompareRow label="Early settlement" values={results.map((r) => r.earlySettlement ?? "—")} />
@@ -196,7 +271,7 @@ export default function ProposalPage() {
             </tbody>
           </table>
         </div>
-        <p className="text-[10px] text-[var(--ink-faint)] m-0 mt-1">Government &amp; transfer fees are identical across banks — see the cost sheet below. "Income consumed" = EMI as % of the income supplied to the match.</p>
+        <p className="text-[10.5px] text-[var(--ink-faint)] m-0 mt-1">Government &amp; transfer fees are identical across banks — see the cost sheet below. "Income consumed" = EMI as % of the income supplied to the match.</p>
 
         {results.map((r) => (
           <div key={r.bankProductId} className="my-4 rounded-xl p-4" style={{ border: "1px solid var(--line)", background: "var(--tint)" }}>
@@ -208,7 +283,7 @@ export default function ProposalPage() {
               )}
               <span className="text-[12px] text-[var(--ink-dim)]">{r.productName}</span>
               {(r as any).version && (
-                <span className="mono text-[10px] px-2 py-0.5 rounded font-semibold" style={{ background: "var(--amber-tint)", color: "var(--amber)" }}>
+                <span className="mono text-[10.5px] px-2 py-0.5 rounded font-semibold" style={{ background: "var(--amber-tint)", color: "var(--amber)" }}>
                   v{(r as any).version} {(r as any).effectiveDate ? (" · Eff: " + (r as any).effectiveDate.slice(0, 10)) : (" · Exp: " + ((r as any).expiryDate ? (r as any).expiryDate.slice(0, 10) : "2099-12-31"))}
                 </span>
               )}
@@ -260,12 +335,12 @@ export default function ProposalPage() {
             Seller-side (not client cost): {costs.sellerFees.map((f) => `${f.label} ${fmt(f.amount)}`).join(" · ")}
           </p>
         )}
-        <p className="text-[10px] text-[var(--ink-faint)] m-0 mt-1">Government and bank charges per the HFMC fee matrices — indicative, confirm at transfer.</p>
+        <p className="text-[10.5px] text-[var(--ink-faint)] m-0 mt-1">Government and bank charges per the HFMC fee matrices — indicative, confirm at transfer.</p>
 
         {/* internal-only commission — the server only includes it for viewRevenue users */}
         {data.mode === "internal" && (
           <div className="mt-5 rounded-lg p-4" style={{ background: "var(--amber-tint)", border: "1px solid var(--amber)" }}>
-            <div className="text-[10px] uppercase tracking-[0.12em] font-disp font-semibold text-[var(--amber)] mb-2">Internal · revenue (restricted)</div>
+            <div className="text-[10.5px] uppercase tracking-[0.12em] font-disp font-semibold text-[var(--amber)] mb-2">Internal · revenue (restricted)</div>
             <table className="w-full text-[12px]" style={{ borderCollapse: "collapse" }}>
               <tbody>
                 {results.map((r) => r.commission ? (
@@ -287,11 +362,11 @@ export default function ProposalPage() {
           {checklist.map((d) => (
             <div key={d.title} className="flex items-center gap-2 text-[11.5px] rounded px-2 py-1" style={{ background: "var(--tint)" }}>
               <span className="flex-1 truncate">{d.title}{d.mandatory ? " *" : ""}</span>
-              <span className="mono text-[10px]" style={{ color: d.status === "Verified" ? "var(--mint)" : d.status === "Rejected" ? "var(--coral)" : "var(--ink-faint)" }}>{d.status}</span>
+              <span className="mono text-[10.5px]" style={{ color: d.status === "Verified" ? "var(--mint)" : d.status === "Rejected" ? "var(--coral)" : "var(--ink-faint)" }}>{d.status}</span>
             </div>
           ))}
         </div>
-        <p className="text-[10px] text-[var(--ink-faint)] mt-4 text-center">
+        <p className="text-[10.5px] text-[var(--ink-faint)] mt-4 text-center">
           Indicative figures per HFMC rule engine (source: bank rate cards & HFMC-SOP-MASTER-2026) · not a bank approval · terms confirmed by the final offer letter.
         </p>
       </div>
@@ -342,7 +417,7 @@ const num = (v: number | null | undefined) => (v == null ? "" : String(v));
 function Stat({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (
     <div className="rounded-lg px-3 py-2" style={{ background: "var(--tint)" }}>
-      <div className="text-[9.5px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)]">{label}</div>
+      <div className="text-[10.5px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)]">{label}</div>
       <div className="mono text-[14px] mt-0.5" style={{ fontWeight: highlight ? 700 : 500, color: highlight ? "var(--amber)" : "var(--ink)" }}>{value}</div>
     </div>
   );
@@ -351,7 +426,7 @@ function Stat({ label, value, highlight }: { label: string; value: string; highl
 function RateBox({ n, label, rate, emi, tone }: { n: string; label: string; rate: number | null | undefined; emi: number | null; tone?: "mint" | "amber" }) {
   return (
     <div className="rounded-lg px-3 py-2" style={{ background: tone === "amber" ? "var(--amber-tint)" : "var(--bg2)", border: tone === "amber" ? "1px solid var(--amber)" : "1px solid var(--line)" }}>
-      <div className="text-[10px] font-disp font-semibold" style={{ color: tone === "amber" ? "var(--amber)" : "var(--ink-faint)" }}>{n} · {label}</div>
+      <div className="text-[10.5px] font-disp font-semibold" style={{ color: tone === "amber" ? "var(--amber)" : "var(--ink-faint)" }}>{n} · {label}</div>
       <div className="mt-0.5">{rate != null ? <strong style={{ color: tone === "mint" ? "var(--mint)" : undefined }}>{rate.toFixed(2)}%</strong> : "—"}{emi != null ? <span className="text-[var(--ink-dim)]"> · {fmt(emi)}/mo</span> : null}</div>
     </div>
   );
@@ -386,7 +461,7 @@ function ProductInspector({ data }: { data: ProposalData }) {
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1">
         <div>
-          <div className="text-[10px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)] mb-1">Client inputs given to the match</div>
+          <div className="text-[10.5px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)] mb-1">Client inputs given to the match</div>
           <Row k="Monthly income (net)" v={"AED " + (data.input.monthlyIncome ?? 0).toLocaleString()} />
           <Row k="Existing EMIs" v={"AED " + (data.input.existingEmis ?? 0).toLocaleString()} />
           <Row k="Credit-card limits total" v={"AED " + (data.input.cardLimitsTotal ?? 0).toLocaleString()} />
@@ -401,7 +476,7 @@ function ProductInspector({ data }: { data: ProposalData }) {
           <Row k="Processing time assumed" v={(data.input.processingMonths ?? 3) + " months"} />
         </div>
         <div>
-          <div className="text-[10px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)] mb-1">Bank policy fields consumed</div>
+          <div className="text-[10.5px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)] mb-1">Bank policy fields consumed</div>
           <Row k="Max tenure used" v={(P?.tenorYears ?? 25) + "y" + (P?.tenorYears ? "" : " (25y norm fallback)")} />
           <Row k="Max LTV — expat / national" v={(P?.maxLtvExpatriate ?? "—") + "% / " + (P?.maxLtvNational ?? "—") + "%"} />
           <Row k="Min / max loan" v={fmt(P?.minLoan) + " – " + fmt(P?.maxLoan)} />
@@ -414,7 +489,7 @@ function ProductInspector({ data }: { data: ProposalData }) {
           <Row k="TAT (PA / total)" v={(P?.paTatDays ?? "—") + "d / " + (P?.totalTatDays ?? "—") + "d"} />
         </div>
         <div>
-          <div className="text-[10px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)] mb-1">Quote selected</div>
+          <div className="text-[10.5px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)] mb-1">Quote selected</div>
           <Row k="Rate structure" v={q?.rateType === "FIXED" ? "Fixed " + (q.termYears ?? "?") + "y" : String(q?.rateType ?? "—").replace("_EIBOR", " EIBOR")} tone="mint" />
           {q?.rateType === "FIXED"
             ? <Row k="Fixed rate" v={(q.ratePct ?? 0).toFixed(2) + "%"} tone="mint" />
@@ -428,7 +503,7 @@ function ProductInspector({ data }: { data: ProposalData }) {
           {q?.rateType === "FIXED" && va && <Row k="EIBOR (follow-on basis)" v={(eiborFor(va.basis.replace("_EIBOR", "")) ?? "—") + "%"} />}
         </div>
         <div>
-          <div className="text-[10px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)] mb-1">Computed by the engine</div>
+          <div className="text-[10.5px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)] mb-1">Computed by the engine</div>
           <Row k="Card obligation counted" v={r.cardObligation != null ? "AED " + r.cardObligation.toLocaleString() + "/mo" : "—"} />
           <Row k="Qualifying income (after bank rules)" v={r.eligibleIncome != null ? "AED " + r.eligibleIncome.toLocaleString() : "—"} tone="mint" />
           <Row k="DBR applied" v={r.dbrPctUsed != null ? r.dbrPctUsed + "%" : "—"} />

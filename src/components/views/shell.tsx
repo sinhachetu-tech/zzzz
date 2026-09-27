@@ -41,7 +41,7 @@ function parseRateDate(s: string): string | null {
   if (iso) return iso[0];
   const dmy = t.match(/^(\d{1,2})\s+([A-Za-z]{3,9})\.?\s+(\d{4})$/);
   if (dmy) {
-    const mo = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"].indexOf(dmy[2].slice(0, 3).toLowerCase());
+    const mo = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"].indexOf(dmy[2].slice(0, 3).toLowerCase());
     if (mo >= 0) {
       const pad = (n: number) => String(n).padStart(2, "0");
       return `${dmy[3]}-${pad(mo + 1)}-${pad(Number(dmy[1]))}`;
@@ -125,24 +125,42 @@ function EiborModal({ onClose }: { onClose: () => void }) {
     <Modal title="EIBOR benchmark rates" sub={`Last edited ${lastEditAt} by ${updatedBy} · rates as on ${updatedOn} — saving reprices every calculation.`} onClose={onClose} width={480}>
       <div className="space-y-3">
         <div className="grid grid-cols-[70px_1fr] gap-2 items-center">
-          {TENOR_ORDER.map((t) => (
-            <div key={t} className="contents">
-              <label className="label !mb-0 mono">{t}</label>
-              <input className="input mono !py-1.5" type="number" step={0.001} min={0} max={25} value={values[t] ?? ""}
-                onChange={(e) => setValues((v) => ({ ...v, [t]: e.target.value }))} />
-            </div>
-          ))}
+          {TENOR_ORDER.map((t) => {
+            // Direction of THIS tenor vs the stored rate. Shown before saving,
+            // so staff can sanity-check the paste: fell = mint, rose = coral.
+            // Only flashes when the typed value is a real, in-range number that
+            // actually differs from what's stored.
+            const orig = eibor.find((e) => e.tenor === t)?.ratePct;
+            const typed = Number(values[t]);
+            const moved = orig !== undefined && Number.isFinite(typed) && typed > 0 && typed <= 25
+              && Math.abs(orig - typed) >= 0.00001;
+            return (
+              <div key={t} className="contents">
+                <label className="label !mb-0 mono">{t}</label>
+                <input
+                  type="number" step={0.001} min={0} max={25}
+                  value={values[t] ?? ""}
+                  onChange={(e) => setValues((v) => ({ ...v, [t]: e.target.value }))}
+                  className={`input mono !py-1.5 ${moved ? (typed < orig ? "flash-down" : "flash-up") : ""}`}
+                  style={moved ? { borderColor: typed < orig ? "var(--mint)" : "var(--coral)" } : undefined}
+                />
+              </div>
+            );
+          })}
         </div>
+        <p className="text-[11px] m-0" style={{ color: "var(--ink-faint)" }}>
+          Changed tenors are tinted — <span style={{ color: "var(--mint)" }}>green fell</span>, <span style={{ color: "var(--coral)" }}>red rose</span>. Unchanged ones are skipped on save.
+        </p>
         <div>
           <div className="grid grid-cols-2 gap-2">
-          <div>
-          <label className="label">Published on <span className="normal-case tracking-normal" style={{ color: "var(--ink-faint)" }}>— shown “as on”</span></label>
-          <input className="input mono" type="date" value={pubDate} onChange={(e) => setPubDate(e.target.value)} />
-          </div>
-          <div>
-          <label className="label">Value date <span className="normal-case tracking-normal" style={{ color: "var(--ink-faint)" }}>— rate takes effect</span></label>
-          <input className="input mono" type="date" value={effFrom} onChange={(e) => setEffFrom(e.target.value)} />
-          </div>
+            <div>
+              <label className="label">Published on <span className="normal-case tracking-normal" style={{ color: "var(--ink-faint)" }}>— shown “as on”</span></label>
+              <input className="input mono" type="date" value={pubDate} onChange={(e) => setPubDate(e.target.value)} />
+            </div>
+            <div>
+              <label className="label">Value date <span className="normal-case tracking-normal" style={{ color: "var(--ink-faint)" }}>— rate takes effect</span></label>
+              <input className="input mono" type="date" value={effFrom} onChange={(e) => setEffFrom(e.target.value)} />
+            </div>
           </div>
         </div>
         <div className="rounded-lg p-3" style={{ background: "var(--tint)", border: "1px solid var(--line-soft)" }}>
@@ -209,8 +227,8 @@ function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void })
   const nm = customer.trim().toLowerCase();
   const knownClient = open && (ph.length >= 7 || nm.length >= 4)
     ? clients.find((cl) =>
-        (ph.length >= 7 && cl.phone === ph) ||
-        (nm.length >= 4 && cl.fullName.trim().toLowerCase() === nm))
+      (ph.length >= 7 && cl.phone === ph) ||
+      (nm.length >= 4 && cl.fullName.trim().toLowerCase() === nm))
     : undefined;
   const knownClientCases = knownClient
     ? cases.filter((c) => c.clientId === knownClient.id || c.secondPartyClientId === knownClient.id)
@@ -567,7 +585,7 @@ function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void })
 }
 
 export default function Shell({ children }: { children: ReactNode }) {
-  const { me, route, nav, logout, escalations, instructions, bulletin, visibleCases, newCaseOpen, openNewCase, closeNewCase, eibor, flags } = useHfmcStore();
+  const { me, route, nav, logout, escalations, instructions, bulletin, visibleCases, newCaseOpen, openNewCase, closeNewCase, eibor, flags, loading } = useHfmcStore();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [fabOpen, setFabOpen] = useState(false);
   const [eiborOpen, setEiborOpen] = useState(false);
@@ -654,18 +672,22 @@ export default function Shell({ children }: { children: ReactNode }) {
 
   const title =
     route.name === "dashboard" ? "Dashboard" :
-    route.name === "cases" ? "Cases" :
-    route.name === "leads" ? "Leads" :
-    route.name === "case" ? "Case 360" :
-    route.name === "tasks" ? "Task Queue" :
-    route.name === "bulletin" ? "Morning Bulletin" :
-    route.name === "calculator" ? "Calculator" :
-    route.name === "reports" ? "Reports" :
-    "Admin";
+      route.name === "cases" ? "Cases" :
+        route.name === "leads" ? "Leads" :
+          route.name === "case" ? "Case 360" :
+            route.name === "tasks" ? "Task Queue" :
+              route.name === "bulletin" ? "Morning Bulletin" :
+                route.name === "calculator" ? "Calculator" :
+                  route.name === "reports" ? "Reports" :
+                    "Admin";
 
   return (
     <div className="flex h-screen overflow-hidden">
       <div className="app-bg" />
+
+      {/* surfaces the store's `loading` flag — set by every hydrate, but never
+          rendered, so a post-save refresh used to look like a frozen screen */}
+      {loading && <div className="progress-bar" role="status" aria-label="Refreshing data" />}
 
       {/* Desktop sidebar — hidden on mobile. Collapsible: the width is inline so
           the rail can animate between 228px and the 68px icon strip, and
@@ -690,14 +712,14 @@ export default function Shell({ children }: { children: ReactNode }) {
 
       {/* Mobile drawer */}
       {drawerOpen && (
-        <div className="fixed inset-0 z-[90] md:hidden anim-fade-in" style={{ background: "rgba(4,12,15,0.76)" }} onClick={() => setDrawerOpen(false)}>
+        <div className="fixed inset-0 z-[90] md:hidden anim-fade-in" style={{ background: "rgba(4,12,15,0.4)" }} onClick={() => setDrawerOpen(false)}>
           <aside className="side-dark w-[260px] max-w-[80vw] h-full border-r flex flex-col anim-slide-right" style={{ borderColor: "#18313b", background: "rgba(11,23,29,0.96)" }} onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-4">
               <div className="flex items-center gap-2.5">
                 <LogoMark size={30} />
                 <div>
                   <div className="font-disp font-bold text-[15px] tracking-[0.04em] leading-none">HFMC</div>
-                  <div className="text-[9.5px] uppercase tracking-[0.18em] text-[var(--ink-faint)] mt-1">Mortgage · UAE</div>
+                  <div className="text-[10.5px] uppercase tracking-[0.18em] text-[var(--ink-faint)] mt-1">Mortgage · UAE</div>
                 </div>
               </div>
               <button className="btn btn-ghost btn-sm !px-2" onClick={() => { haptic('light'); setDrawerOpen(false); }} aria-label="Close menu">✕</button>
@@ -742,7 +764,7 @@ export default function Shell({ children }: { children: ReactNode }) {
           >
             <ISearch size={14} />
             <span className="flex-1 text-left truncate">Search cases, leads…</span>
-            <kbd className="mono text-[10px] px-1.5 py-0.5 rounded" style={{ background: "var(--raised)", border: "1px solid var(--line)" }}>⌘K</kbd>
+            <kbd className="mono text-[10.5px] px-1.5 py-0.5 rounded" style={{ background: "var(--raised)", border: "1px solid var(--line)" }}>⌘K</kbd>
           </button>
           <button
             className="md:!hidden btn btn-ghost btn-sm !px-2"
@@ -750,6 +772,14 @@ export default function Shell({ children }: { children: ReactNode }) {
             aria-label="Search"
           >
             <ISearch size={18} />
+          </button>
+          {/* Mobile Add Lead button */}
+          <button
+            className="md:!hidden btn btn-primary btn-sm !px-2"
+            onClick={() => { haptic('light'); openNewCase(); }}
+            aria-label="Add lead"
+          >
+            <IPlus size={18} />
           </button>
           {route.name === "case" && <span className="text-[12px] text-[var(--ink-faint)] hidden lg:inline">the full story of one file</span>}
           {/* EIBOR ticker — live benchmark, drives every calculation; click to edit if permitted */}
@@ -767,7 +797,7 @@ export default function Shell({ children }: { children: ReactNode }) {
                 style={{ background: "var(--tint)", border: "1px solid var(--line-soft)", color: "var(--ink-dim)", cursor: canEdit ? "pointer" : "default" }}
               >
                 <span className="dot-live shrink-0" style={{ animation: "pulse 2s infinite" }} />
-                <span className="font-disp font-semibold text-[10px] tracking-[0.1em]" style={{ color: "var(--ink-faint)" }}>EIBOR</span>
+                <span className="font-disp font-semibold text-[10.5px] tracking-[0.1em]" style={{ color: "var(--ink-faint)" }}>EIBOR</span>
                 {last?.updatedOn && (
                   <span className="whitespace-nowrap" style={{ color: "var(--ink-faint)" }}>
                     as on {new Date(last.updatedOn + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}
@@ -819,12 +849,12 @@ export default function Shell({ children }: { children: ReactNode }) {
               <span className="relative">
                 <n.icon size={20} />
                 {!!n.badge && n.badge > 0 && (
-                  <span className="absolute -top-1.5 -right-2 mono text-[9px] px-1 py-px rounded-full" style={{ background: "var(--amber)", color: "#231a08", minWidth: 14, textAlign: "center" }}>
+                  <span className="absolute -top-1.5 -right-2 mono text-[10.5px] px-1 py-px rounded-full" style={{ background: "var(--amber)", color: "#231a08", minWidth: 14, textAlign: "center" }}>
                     {n.badge > 9 ? "9+" : n.badge}
                   </span>
                 )}
               </span>
-              <span className="text-[9.5px] font-disp font-medium">{n.label.split(" ")[0]}</span>
+              <span className="text-[10.5px] font-disp font-medium leading-tight">{n.label.split(" ")[0]}</span>
               {active && <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-full" style={{ background: "var(--amber)" }} />}
             </button>
           );
@@ -954,7 +984,7 @@ function SidebarContent({
           {!collapsed && (
             <div className="min-w-0 flex-1">
               <div className="font-disp font-bold text-[15px] tracking-[0.04em] leading-none">HFMC</div>
-              <div className="text-[9.5px] uppercase tracking-[0.18em] text-[var(--ink-faint)] mt-1">Mortgage · UAE</div>
+              <div className="text-[10.5px] uppercase tracking-[0.18em] text-[var(--ink-faint)] mt-1">Mortgage · UAE</div>
             </div>
           )}
           {onToggle && (
@@ -974,16 +1004,16 @@ function SidebarContent({
 
       <nav className={`mt-2 space-y-1 flex-1 ${collapsed ? "px-2" : "px-3"}`}>
         {navItems.map((n) => {
-            const active = route.name === n.route.name || (route.name === "case" && n.route.name === "cases");
-            const instr = n.label === "Task Queue" && openInstr > 0 && canInstruct;
-            return (
-              <button
-                key={n.label}
-                className={`nav-item w-full text-left ${active ? "active" : ""}`}
-                onClick={() => { nav(n.route); haptic('light'); }}
-                aria-label={n.label}
-                title={collapsed ? n.label : undefined}
-              >
+          const active = route.name === n.route.name || (route.name === "case" && n.route.name === "cases");
+          const instr = n.label === "Task Queue" && openInstr > 0 && canInstruct;
+          return (
+            <button
+              key={n.label}
+              className={`nav-item w-full text-left ${active ? "active" : ""}`}
+              onClick={() => { nav(n.route); haptic('light'); }}
+              aria-label={n.label}
+              title={collapsed ? n.label : undefined}
+            >
               <span className="relative inline-flex shrink-0">
                 <n.icon size={17} />
                 {/* collapsed: a chip would be clipped, so the count becomes a dot on the icon */}
@@ -993,12 +1023,12 @@ function SidebarContent({
               </span>
               {!collapsed && <span className="whitespace-nowrap">{n.label}</span>}
               {!collapsed && !!n.badge && n.badge > 0 && (
-                <span className="ml-auto mono text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: "rgba(242,176,76,0.18)", color: "var(--amber)", border: "1px solid rgba(242,176,76,0.4)" }}>
+                <span className="ml-auto mono text-[10.5px] px-1.5 py-0.5 rounded-full" style={{ background: "rgba(242,176,76,0.18)", color: "var(--amber)", border: "1px solid rgba(242,176,76,0.4)" }}>
                   {n.badge}
                 </span>
               )}
               {!collapsed && instr && (
-                <span className="ml-auto mono text-[10px] px-1.5 py-0.5 rounded" style={{ background: "rgba(87,194,234,0.15)", color: "var(--sky)" }}>{openInstr}</span>
+                <span className="ml-auto mono text-[10.5px] px-1.5 py-0.5 rounded" style={{ background: "rgba(87,194,234,0.15)", color: "var(--sky)" }}>{openInstr}</span>
               )}
             </button>
           );
@@ -1032,7 +1062,7 @@ function SidebarContent({
         {collapsed ? (
           <div className="flex flex-col items-center gap-1 py-2 rounded-lg" style={{ background: "var(--tint)" }}>
             <span title={`${me?.name ?? ""}${me?.role ? " · " + me.role : ""}`}><Avatar name={me?.name ?? "?"} size={30} /></span>
-            <button className="text-[var(--ink-faint)] hover:text-[var(--coral)] transition-colors" onClick={() => { haptic('light'); logout(); }} title="Sign out">
+            <button className="text-[var(--ink)] hover:text-[var(--coral)] transition-colors" onClick={() => { haptic('light'); logout(); }} title="Sign out">
               <ILogout size={16} />
             </button>
           </div>
@@ -1040,10 +1070,10 @@ function SidebarContent({
           <div className="flex items-center gap-2.5 px-2 py-2 rounded-lg" style={{ background: "var(--tint)" }}>
             <Avatar name={me?.name ?? "?"} size={32} />
             <div className="min-w-0 flex-1">
-              <div className="text-[12.5px] font-medium truncate">{me?.name}</div>
+              <div className="text-[12.5px] font-medium truncate text-[var(--ink)]">{me?.name}</div>
               <div className="text-[10.5px] text-[var(--ink-faint)] truncate">{me?.role}</div>
             </div>
-            <button className="text-[var(--ink-faint)] hover:text-[var(--coral)] transition-colors" onClick={() => { haptic('light'); logout(); }} title="Sign out">
+            <button className="text-[var(--ink)] hover:text-[var(--coral)] transition-colors" onClick={() => { haptic('light'); logout(); }} title="Sign out">
               <ILogout size={16} />
             </button>
           </div>

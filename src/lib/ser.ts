@@ -1,8 +1,8 @@
 import { parseCaseProfile } from "./case-profile";
 // Serialization: Prisma row → API DTO matching the original HFMC types.
 import type {
-  Activity, BankItem, BulletinItem, CasePartner, ClientDto, Instruction, LoanCase,
-  BankProduct, Proposal, CaseDocument, CaseUpdate, DocRule, FeeRule, MasterItem, PartnerItem, Reply, SlaRule, StageItem, StageTransition, StageTransitionDto, Task, User,
+  Activity, BankItem, BulletinItem, CasePartner, ClientDto, CommTemplate, Instruction, LoanCase,
+  BankProduct, Proposal, CaseDocument, CaseUpdate, DocRule, FeeRule, MasterItem, PartnerItem, Promotion, Reply, SlaRule, StageItem, StageTransition, StageTransitionDto, Task, User,
 } from "./types";
 
 type PrismaUser = {
@@ -45,6 +45,14 @@ type PrismaCase = {
   employmentProfile: string;
   propertyType: string;
   residency: string;
+  // --- FINAL PROPERTY CLASSIFICATION (canonical dims — optional pre-push) ---
+  propertyTypeCanonical?: string;
+  commercialSubtype?: string | null;
+  propertyStage?: string;
+  constructionStatus?: string;
+  partyRelationship?: string;
+  existingFinance?: string;
+  transactionPurpose?: string;
   loanType?: string | null;
   fileSubmittedDate?: string | null;
   bankRate?: number | null;
@@ -59,6 +67,17 @@ type PrismaCase = {
   folAmount?: number | null;
   folTenure?: number | null;
   folRoi?: number | null;
+  // --- Stage timeline (Case 360 drawer) — fields first, note-sniffing second
+  valuationInitiatedDate?: string | null;
+  inspectionDate?: string | null;
+  valuationReportDate?: string | null;
+  folConversionDate?: string | null;
+  folSignedDate?: string | null;
+  ddaActive?: boolean;
+  liabilityLetterDate?: string | null;
+  settlementDate?: string | null;
+  transferDate?: string | null;
+  titleDeedDate?: string | null;
   profileJson?: string | null;
   // Client master links
   clientId?: number | null;
@@ -67,6 +86,7 @@ type PrismaCase = {
   backup1Id?: number | null;
   backup2Id?: number | null;
   profileClientVerifiedAt?: Date | string | null;
+  notificationOverrides?: string | null;
 };
 
 export function serCase(c: PrismaCase): LoanCase {
@@ -100,6 +120,14 @@ export function serCase(c: PrismaCase): LoanCase {
     lostReason: c.lostReason ?? null,
     // Bank submission
     employmentProfile: c.employmentProfile, propertyType: c.propertyType, residency: c.residency,
+    // FINAL PROPERTY CLASSIFICATION — canonical dims (UNKNOWN-safe defaults pre-push)
+    propertyTypeCanonical: c.propertyTypeCanonical ?? "UNKNOWN",
+    commercialSubtype: c.commercialSubtype ?? null,
+    propertyStage: c.propertyStage ?? "UNKNOWN",
+    constructionStatus: c.constructionStatus ?? "UNKNOWN",
+    partyRelationship: c.partyRelationship ?? "UNKNOWN",
+    existingFinance: c.existingFinance ?? "UNKNOWN",
+    transactionPurpose: c.transactionPurpose ?? "UNKNOWN",
     loanType: c.loanType ?? null,
     fileSubmittedDate: c.fileSubmittedDate ?? null,
     bankRate: c.bankRate ?? null,
@@ -114,6 +142,17 @@ export function serCase(c: PrismaCase): LoanCase {
     folAmount: c.folAmount ?? null,
     folTenure: c.folTenure ?? null,
     folRoi: c.folRoi ?? null,
+    // stage timeline (drawer-captured)
+    valuationInitiatedDate: c.valuationInitiatedDate ?? null,
+    inspectionDate: c.inspectionDate ?? null,
+    valuationReportDate: c.valuationReportDate ?? null,
+    folConversionDate: c.folConversionDate ?? null,
+    folSignedDate: c.folSignedDate ?? null,
+    ddaActive: c.ddaActive ?? false,
+    liabilityLetterDate: c.liabilityLetterDate ?? null,
+    settlementDate: c.settlementDate ?? null,
+    transferDate: c.transferDate ?? null,
+    titleDeedDate: c.titleDeedDate ?? null,
     // structured qualification profile — without this the editor round-trips empty
     profileJson: c.profileJson ?? null,
     // Client master links
@@ -125,6 +164,10 @@ export function serCase(c: PrismaCase): LoanCase {
     profileClientVerifiedAt: (c as unknown as { profileClientVerifiedAt?: Date | string | null }).profileClientVerifiedAt
       ? new Date((c as unknown as { profileClientVerifiedAt: Date | string }).profileClientVerifiedAt).toISOString()
       : null,
+    notificationOverrides: (() => {
+      if (!c.notificationOverrides) return null;
+      try { return JSON.parse(c.notificationOverrides); } catch { return null; }
+    })(),
   };
 }
 
@@ -407,6 +450,7 @@ type PrismaCaseDocumentRow = {
   // storage columns (nullable for legacy rows created before the R2 migration)
   storageKey?: string | null; compressedKey?: string | null; compressedSize?: number | null;
   selectedVersion?: string | null; driveFileId?: string | null; fileData?: unknown;
+  displayName?: string | null; source?: string | null;
 };
 
 export function serCaseDocument(d: PrismaCaseDocumentRow): CaseDocument {
@@ -428,6 +472,68 @@ export function serCaseDocument(d: PrismaCaseDocumentRow): CaseDocument {
     // independent Google Drive archive copy (never deleted by the app)
     driveFileId: d.driveFileId ?? null,
     driveLink: d.driveFileId ? `https://drive.google.com/file/d/${d.driveFileId}/view` : null,
+    displayName: d.displayName ?? null,
+    source: d.source ?? "vault",
+  };
+}
+
+export function serChatMessage(m: {
+  id: number; caseId: number; senderId: number | null; senderType: string;
+  senderName: string; threadType: string; text: string | null;
+  attachmentKey: string | null; attachmentName: string | null;
+  attachmentSize: number | null; mimeType: string | null;
+  documentId?: number | null;
+  sentAt: Date; readByStaff: boolean; readByExternal: boolean;
+}): import("./types").ChatMessageDto {
+  return {
+    id: m.id,
+    caseId: m.caseId,
+    senderId: m.senderId,
+    senderType: m.senderType as "STAFF" | "CLIENT" | "AGENT",
+    senderName: m.senderName,
+    threadType: m.threadType as "CLIENT" | "AGENT",
+    text: m.text,
+    attachmentKey: m.attachmentKey,
+    attachmentName: m.attachmentName,
+    attachmentSize: m.attachmentSize,
+    mimeType: m.mimeType,
+    documentId: (m as { documentId?: number | null }).documentId ?? null,
+    sentAt: m.sentAt.toISOString(),
+    readByStaff: m.readByStaff,
+    readByExternal: m.readByExternal,
+  };
+}
+
+export function serUserDevice(d: {
+  id: number; userId: number | null; caseId: number | null;
+  deviceType: string; pwaInstalled: boolean; installedAt: Date | null;
+  pushEndpoint: string | null; lastSeenAt: Date; userAgent: string | null;
+}): import("./types").UserDeviceDto {
+  return {
+    id: d.id,
+    userId: d.userId,
+    caseId: d.caseId,
+    deviceType: d.deviceType as "mobile" | "desktop" | "tablet",
+    pwaInstalled: d.pwaInstalled,
+    installedAt: d.installedAt ? d.installedAt.toISOString() : null,
+    pushEndpoint: d.pushEndpoint,
+    lastSeenAt: d.lastSeenAt.toISOString(),
+    userAgent: d.userAgent,
+  };
+}
+
+type PrismaCommTemplateRow = {
+  id: number; key: string; channel: string; stageKey: string; bank: string | null;
+  name: string; subject: string | null; body: string; vars: string;
+  sortOrder: number; active: boolean;
+};
+export function serCommTemplate(t: PrismaCommTemplateRow): CommTemplate {
+  let vars: string[] = [];
+  try { vars = JSON.parse(t.vars || "[]"); } catch { vars = []; }
+  return {
+    id: t.id, key: t.key, channel: t.channel as CommTemplate["channel"],
+    stageKey: t.stageKey as CommTemplate["stageKey"], bank: t.bank, name: t.name,
+    subject: t.subject, body: t.body, vars, sortOrder: t.sortOrder, active: t.active,
   };
 }
 
@@ -440,6 +546,21 @@ export function serFeeRule(f: PrismaFeeRuleRow): FeeRule {
     id: f.id, emirate: f.emirate as FeeRule["emirate"], txnType: f.txnType as FeeRule["txnType"],
     label: f.label, amountType: f.amountType as FeeRule["amountType"], amount: f.amount,
     paidBy: f.paidBy, note: f.note, sortOrder: f.sortOrder, active: f.active,
+  };
+}
+
+type PrismaPromotionRow = {
+  id: number; bankProductId: number; name: string; description: string;
+  rateOptionTermYears: number | null; rateDiscountBps: number | null;
+  processingFeeOverridePct: number | null; valuationFeeWaived: boolean;
+  validFrom: string; validTo: string; active: boolean; createdBy: string;
+};
+export function serPromotion(p: PrismaPromotionRow): Promotion {
+  return {
+    id: p.id, bankProductId: p.bankProductId, name: p.name, description: p.description ?? "",
+    rateOptionTermYears: p.rateOptionTermYears ?? null, rateDiscountBps: p.rateDiscountBps ?? null,
+    processingFeeOverridePct: p.processingFeeOverridePct ?? null, valuationFeeWaived: !!p.valuationFeeWaived,
+    validFrom: p.validFrom, validTo: p.validTo, active: p.active, createdBy: p.createdBy ?? "",
   };
 }
 

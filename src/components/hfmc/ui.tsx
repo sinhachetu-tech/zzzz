@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { createPortal } from "react-dom";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
+// `m` (not `motion`) so this uses the LazyMotion feature bundle from
+// MotionProvider — see components/hfmc/motion.tsx for why.
+import { m } from "framer-motion";
 import type { CaseStatus, Tone } from "@/lib/types";
 import { STATUS_TONE, dueInfo, fmtDue, initials } from "@/lib/format";
 import { IMoon, ISun, IX, ICheck, IAlert } from "../icons";
@@ -23,11 +26,27 @@ export function ThemeToggle({ compact = false }: { compact?: boolean }) {
     if (t !== "light") setTheme(t);
   }, []);
   const flip = () => {
-    setTheme((cur) => {
-      const next = cur === "light" ? "dark" : "light";
+    // wrap the swap in a View Transition so the whole palette cross-fades as one
+    // unit (surfaces + borders, not just body bg). Feature-detected, and the
+    // CSS gate on prefers-reduced-motion disables the animation itself.
+    const apply = (next: "light" | "dark") => {
       document.documentElement.dataset.theme = next;
       try { localStorage.setItem("hfmc.theme", next); } catch { /* private mode */ }
-      return next;
+    };
+    const start = (document as Document & {
+      startViewTransition?: (cb: () => void) => { finished: Promise<void> };
+    }).startViewTransition;
+    if (typeof start === "function") {
+      setTheme((cur) => {
+        const next = cur === "light" ? "dark" : "light";
+        start.call(document, () => apply(next));
+        return next;
+      });
+      return;
+    }
+    setTheme((cur) => {
+      apply(cur === "light" ? "dark" : "light");
+      return cur === "light" ? "dark" : "light";
     });
   };
   return (
@@ -118,13 +137,12 @@ export function Modal({
   if (!mounted) return null;
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 anim-fade-in"
-      style={{ background: "rgba(6,13,17,0.72)" }}
+      className="modal-scrim"
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
-        className={"card anim-scale-in flex flex-col " + (full ? "w-full h-[96vh] max-w-none" : "w-full max-h-[88vh]")}
-        style={full ? { background: "var(--raised)" } : { maxWidth: width, background: "var(--raised)" }}
+        className={"modal-pop " + (full ? "w-full h-[96vh] max-w-none" : "w-full")}
+        style={full ? undefined : { maxWidth: width }}
       >
         <div className="flex items-start justify-between px-5 pt-4 pb-3 border-b border-[var(--line-soft)]">
           <div>
@@ -163,30 +181,135 @@ export function SectionLabel({ children }: { children: ReactNode }) {
   return <p className="font-disp text-[11px] font-semibold uppercase tracking-[0.11em] text-[var(--ink-faint)] mb-2.5 mt-0">{children}</p>;
 }
 
+/* rAF is JavaScript, so the CSS reduced-motion kill-switch cannot stop it.
+   Framer gets this for free from MotionConfig's reducedMotion="user"; a hand
+   rolled rAF loop has to ask. */
+function prefersReducedMotion(): boolean {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+/* ---------------- KPI value (count-up) ----------------
+   Reuses the same easing the app already uses in `useCountUp` (charts.tsx) —
+   a cubic ease-out on rAF — so numbers in tiles feel identical to the ones in
+   report cards.
+
+   Two deliberate differences from the shared hook:
+   - it animates on FIRST paint only, then snaps on later value changes. The
+     store re-hydrates often (every save), and a tile that re-counts from zero
+     each time reads as a glitch rather than a refresh.
+   - it honours prefers-reduced-motion (see the note on the helper above). */
+
+export function KpiValue({
+  value, format, className = "", style, duration = 700,
+}: {
+  value: number;
+  format?: (n: number) => string;
+  className?: string;
+  style?: CSSProperties;
+  duration?: number;
+}) {
+  const [v, setV] = useState<number>(0);
+  // Later value changes land instantly. Done as a render-time adjustment (the
+  // documented React pattern) rather than a setState inside the effect, which
+  // would trip react-hooks/set-state-in-effect and cause a cascading render.
+  const [prev, setPrev] = useState<number>(value);
+  if (prev !== value) {
+    setPrev(value);
+    setV(value);
+  }
+  useEffect(() => {
+    // Mount-only: the effect starts the count-up. Every setState here is inside
+    // a rAF callback, never synchronous in the effect body.
+    if (prefersReducedMotion() || !Number.isFinite(value) || value <= 0) return;
+    let raf = 0;
+    const t0 = performance.now();
+    const tick = (t: number) => {
+      const p = Math.min(1, (t - t0) / duration);
+      setV(Math.round(value * (1 - Math.pow(1 - p, 3))));
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  return (
+    <div className={`kpi-value ${className}`} style={style}>
+      {format ? format(v) : v}
+    </div>
+  );
+}
+
+/* ---------------- tabs ----------------
+   ONE component for every tab strip in the app (admin's two nav levels, the
+   client + agent portals, SegGroup, the Case 360 workspace switcher, the cases
+   state filter). Previously each of those hand-rolled its own markup.
+
+   The active item is a single sliding pill driven by framer-motion's `layoutId`
+   shared-layout animation, so switching tabs glides the highlight instead of
+   having it jump. That is the one place framer earns its keep: it measures and
+   animates for us, with no scroll/resize listeners.
+
+   Cost controls:
+   - `m.button` (not `motion.button`) so it uses the LazyMotion bundle.
+   - layoutId is scoped per instance via useId(), so two strips on one screen
+     (admin has two) never animate each other's highlight across the page.
+   - `reducedMotion="user"` is set app-wide in MotionProvider, so users who ask
+     for less motion get an instant swap and the CSS ::after underline as backup. */
+
+const TABS_SPRING = { type: "spring", stiffness: 520, damping: 38, mass: 0.7 } as const;
+
+export function Tabs<T extends string>({
+  options, value, onChange, flush = false, scroll = false, className = "",
+}: {
+  options: { value: T; label: string; count?: number; icon?: ReactNode; badge?: ReactNode }[];
+  value: T;
+  onChange: (v: T) => void;
+  /** drop the track background (for a strip that sits on its own card) */
+  flush?: boolean;
+  /** allow horizontal scrolling instead of wrapping (headers, mobile) */
+  scroll?: boolean;
+  className?: string;
+}) {
+  const layoutId = useId();
+  return (
+    <div className={`tabs${flush ? " tabs-flush" : ""}${scroll ? " tabs-scroll" : ""} ${className}`}>
+      {options.map((o) => {
+        const active = value === o.value;
+        return (
+          <button
+            key={o.value}
+            onClick={() => onChange(o.value)}
+            className={`tabs-item${active ? " active" : ""}`}
+            aria-current={active ? "page" : undefined}
+          >
+            {o.icon}
+            {o.label}
+            {o.count !== undefined && <span className="mono text-[11px] ml-1.5 opacity-70">{o.count}</span>}
+            {o.badge}
+            {/* the sliding highlight: one element that travels between tabs */}
+            {active && !flush && (
+              <m.span
+                aria-hidden
+                layoutId={`tabpill-${layoutId}`}
+                className="tabs-pill"
+                transition={TABS_SPRING}
+              />
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export function Seg<T extends string>({
   options, value, onChange,
 }: {
   options: { value: T; label: string; count?: number }[]; value: T; onChange: (v: T) => void;
 }) {
-  return (
-    <div className="inline-flex rounded-lg p-[3px] gap-[2px]" style={{ background: "var(--bg2)", border: "1px solid var(--line-soft)" }}>
-      {options.map((o) => (
-        <button
-          key={o.value}
-          onClick={() => onChange(o.value)}
-          className="px-3 py-[5px] rounded-[6px] font-disp text-[12.5px] font-medium transition-all whitespace-nowrap"
-          style={
-            value === o.value
-              ? { background: "var(--raised)", color: "var(--ink)", boxShadow: "0 1px 4px rgba(15,23,42,0.12)", border: "1px solid var(--line)" }
-              : { color: "var(--ink-faint)", border: "1px solid transparent" }
-          }
-        >
-          {o.label}
-          {o.count !== undefined && <span className="mono text-[11px] ml-1.5 opacity-70">{o.count}</span>}
-        </button>
-      ))}
-    </div>
-  );
+  // thin wrapper over Tabs so admin's two nav levels and the portals are the
+  // same control with the same sliding highlight
+  return <Tabs options={options} value={value} onChange={onChange} />;
 }
 
 export { ICheck, IAlert };

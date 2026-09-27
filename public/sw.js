@@ -72,3 +72,46 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 });
+
+// Web Push Notifications
+self.addEventListener("push", (event) => {
+  if (!event.data) return;
+  try {
+    const data = event.data.json();
+    const title = data.title || "HFMC Mortgage";
+    const options = {
+      body: data.body || "New update available",
+      icon: data.icon || "/icon-192.png",
+      badge: "/icon-192.png",
+      vibrate: [120, 60, 120],
+      data: { url: data.url || "/" },
+    };
+    event.waitUntil(self.registration.showNotification(title, options));
+  } catch (err) {
+    const text = event.data.text();
+    event.waitUntil(
+      self.registration.showNotification("HFMC Mortgage", {
+        body: text,
+        icon: "/icon-192.png",
+      })
+    );
+  }
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const urlToOpen = event.notification.data?.url || "/";
+  event.waitUntil(
+    clients.matchAll({ type: "window", includeUncontrolled: true }).then((windowClients) => {
+      for (const client of windowClients) {
+        if (client.url === urlToOpen && "focus" in client) {
+          return client.focus();
+        }
+      }
+      if (clients.openWindow) {
+        return clients.openWindow(urlToOpen);
+      }
+    })
+  );
+});
+

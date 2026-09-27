@@ -4,6 +4,16 @@ import type { BankItem, CaseStatus, LoanCase, Task, Tone } from "./types";
 
 const DAY = 86400000;
 
+/* One greeting for the whole app: "Hello, Fatima 👋".
+   This existed in four drifting shapes — the staff dashboard showed a bare
+   "Hello 👋" for SPOs, "Good morning, Fatima 👋" for VRMs and nothing at all for
+   managers, while the agent portal had a fifth variant split across two lines.
+   One helper means the next person can't reintroduce a fourth. */
+export function greetingFor(name?: string | null): string {
+  const first = (name ?? "").trim().split(/\s+/)[0] || "there";
+  return `Hello, ${first} 👋`;
+}
+
 export function todayISO(): string {
   return toISODate(new Date());
 }

@@ -29,7 +29,7 @@ export function AgentLogin() {
           <LogoMark size={36} />
           <div>
             <div className="font-disp font-bold text-[18px] tracking-[0.04em] leading-none">HFMC</div>
-            <div className="text-[9px] uppercase tracking-[0.18em] text-[var(--ink-faint)] mt-0.5">Agent Portal</div>
+            <div className="text-[10.5px] uppercase tracking-[0.18em] text-[var(--ink-faint)] mt-0.5">Agent Portal</div>
           </div>
         </div>
         <div className="card p-6 rounded-2xl">

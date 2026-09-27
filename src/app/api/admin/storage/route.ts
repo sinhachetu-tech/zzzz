@@ -37,6 +37,10 @@ function status() {
       clientEmail: !!process.env.GOOGLE_DRIVE_CLIENT_EMAIL,
       privateKey: !!process.env.GOOGLE_DRIVE_PRIVATE_KEY,
       folderId: !!process.env.GOOGLE_DRIVE_FOLDER_ID,
+      // Set = domain-wide-delegation impersonation (required for a PERSONAL
+      // My Drive target; a bare service account has 0 bytes of quota there).
+      // Empty = plain service account, which is what a Shared Drive needs.
+      impersonate: process.env.GOOGLE_DRIVE_IMPERSONATE || "",
     },
   };
 }
@@ -81,13 +85,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "No credentials yet — paste the three Google Drive values into .env, then restart the server." }, { status: 400 });
     }
     try {
-      const { steps } = await driveTestConnection();
+      const { steps, target } = await driveTestConnection();
       const ok = steps.write && steps.read && steps.delete;
-      return NextResponse.json({ ok, steps, target: "google-drive" });
+      return NextResponse.json({ ok, steps, target, targetKind: "google-drive" });
     } catch (e) {
       return NextResponse.json({
         ok: false,
         steps: { write: false, read: false, delete: false },
+        targetKind: "google-drive",
         error: e instanceof Error ? e.message : "drive test failed",
       }, { status: 502 });
     }

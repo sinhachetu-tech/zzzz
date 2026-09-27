@@ -106,7 +106,7 @@ function ReplyThread({ replies, onSend }: { replies: Reply[]; onSend: (text: str
             >
               <div className="flex items-baseline gap-2">
                 <span className="text-[12px] font-semibold">{u?.name ?? "—"}</span>
-                <span className="mono text-[10px] text-[var(--ink-faint)]">{relTime(r.at)}</span>
+                <span className="mono text-[10.5px] text-[var(--ink-faint)]">{relTime(r.at)}</span>
               </div>
               <p className="text-[12.5px] text-[var(--ink-dim)] m-0 mt-0.5 leading-snug">{r.text}</p>
             </div>
@@ -232,7 +232,7 @@ function DirectiveCard({ b }: { b: BulletinItem }) {
                 </span>
                 <span className="truncate max-w-[160px]">{linkedCase.customer}</span>
                 {linkedCase.caseStatus !== "Active" && (
-                  <span className="text-[10px] text-[var(--ink-faint)]">
+                  <span className="text-[10.5px] text-[var(--ink-faint)]">
                     · {linkedCase.caseStatus === "Closed" ? "booked" : "lost"}
                   </span>
                 )}

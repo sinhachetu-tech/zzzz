@@ -4,7 +4,7 @@ import { parseCaseProfile, computeJointAffordability } from "@/lib/case-profile"
 
 /* Leads view — the top of the funnel. Lead-stage cases (including portal
    self-registrations) with qualify / assign / convert actions. Converting
-   moves the lead into the live pipeline (WhatsApp Group Creation). */
+   moves the lead into the live pipeline (Document Collection). */
 
 import { useMemo, useState } from "react";
 import { useHfmcStore } from "@/lib/client-store";
@@ -22,7 +22,7 @@ function leadAge(createdAt: string): { hours: number; label: string; tone: "mint
 }
 
 export default function Leads() {
-  const { cases, users, userById, updateCase, deleteCase, toast, nav, me, flags, banks, channels, stages } = useHfmcStore();
+  const { cases, users, userById, updateCase, deleteCase, toast, nav, me, flags, banks, channels, stages, openNewCase } = useHfmcStore();
   const [filter, setFilter] = useState<"all" | "mine" | "unassigned">("all");
   const [qualifyingCase, setQualifyingCase] = useState<any>(null);
   const [losingCase, setLosingCase] = useState<{ id: number; caseNumber: string; customer: string } | null>(null);
@@ -45,8 +45,8 @@ export default function Leads() {
       cases.filter((c) => c.stage === "Lead" && c.caseStatus === "Active")
         .filter((c) =>
           filter === "all" ? true
-          : filter === "unassigned" ? !c.ownerId || c.ownerId === 1
-          : c.ownerId === me?.id,
+            : filter === "unassigned" ? !c.ownerId || c.ownerId === 1
+              : c.ownerId === me?.id,
         )
         // Stale first — oldest leads need the nudge most.
         .sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
@@ -54,7 +54,7 @@ export default function Leads() {
   );
 
   const convert = async (c: { id: number; caseNumber: string }) => {
-    await updateCase(c.id, { stage: "WhatsApp Group Creation" });
+    await updateCase(c.id, { stage: "Document Collection" });
     toast("success", `${c.caseNumber} converted — moved into the live pipeline.`);
   };
 
@@ -78,6 +78,10 @@ export default function Leads() {
             </button>
           ))}
         </div>
+        {/* Add Lead button in Leads view */}
+        <button className="btn btn-primary btn-sm ml-2" onClick={() => openNewCase()}>
+          Add lead
+        </button>
       </div>
 
       {leads.length === 0 ? (
@@ -188,7 +192,8 @@ const fmtMoneyShort = (n: number) => (n > 0 ? "AED " + (n / 1_000_000).toFixed(2
 function EditCaseDetailsModal({
   c, onClose, onSaved,
 }: {
-  c: { id: number; caseNumber: string; customer: string; loanAmount: number; banks: string; stage: string; ownerId: number;
+  c: {
+    id: number; caseNumber: string; customer: string; loanAmount: number; banks: string; stage: string; ownerId: number;
     advisorId?: number | null; backup1Id?: number | null; backup2Id?: number | null;
     source: string; partnerName?: string | null; partnerSharePct?: number | null;
     whatsapp?: string | null; waGroup?: string | null; transactionType?: string | null;

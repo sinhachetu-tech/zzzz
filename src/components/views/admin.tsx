@@ -3,23 +3,25 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useHfmcStore } from "@/lib/client-store";
 import type {
-  BankItem, BankProduct, Designation, DocRule, FeeRule, MasterItem, PartnerItem, PartnerKind,
-  SlaRule, StageItem, User,
+  BankItem, BankProduct, Designation, DocRule, FeeRule, MasterItem, PartnerItem, PartnerKind, Promotion,
+  SlaRule, StageItem, User, CommTemplate,
 } from "@/lib/types";
 import { fmtRate } from "@/lib/format";
-import { Avatar, Chip, EmptyState, Modal, Seg } from "@/components/hfmc/ui";
+import { Avatar, Chip, EmptyState, KpiValue, Modal, Seg } from "@/components/hfmc/ui";
 import { ConfirmModal } from "@/components/hfmc/bits";
 import { parsePricing, resolveQuote, rateSchedule, type ProductPricing, type RateQuote } from "@/lib/bank-pricing";
 import { parseRateTable } from "@/lib/quote-parser";
 import { emi, loanForEmi } from "@/lib/calc";
 import { BankFees, BankInsurance, parseFees, parseInsurance, extractFromAxes } from "@/lib/bank-fees";
+import { CANONICAL_TXN } from "@/lib/bank-rules-taxonomy";
 import {
-  IBank, ICheck, IPencil, IPlus, IShield, ITrash, ITrophy, IUsers, IX,
+  IBank, ICheck, IPencil, IPlus, IShield, ITrash, ITrophy, IUpload, IUsers, IX,
 } from "@/components/icons";
+import { PolicyImporterModal } from "@/components/views/policy-import";
 
 /* ------------------------------ types ------------------------------ */
 
-type Tab = "users" | "designations" | "banks" | "bankrules" | "partners" | "channels" | "stages" | "masters" | "sla" | "docrules" | "feerules" | "storage" | "portal";
+type Tab = "users" | "designations" | "banks" | "bankrules" | "promotions" | "dataquality" | "partners" | "channels" | "stages" | "masters" | "sla" | "docrules" | "feerules" | "templates" | "storage" | "portal" | "notifications" | "devices";
 type MasterKind = "whyPending" | "waitingFor";
 
 const TEAMS = ["Management", "Dubai", "Abu Dhabi"];
@@ -29,6 +31,8 @@ const TAB_OPTIONS: { value: Tab; label: string }[] = [
   { value: "designations", label: "Designations" },
   { value: "banks", label: "Banks & rates" },
   { value: "bankrules", label: "Bank Rules" },
+  { value: "promotions", label: "Promotions" },
+  { value: "dataquality", label: "Data quality" },
   { value: "partners", label: "Partners" },
   { value: "channels", label: "Channels" },
   { value: "stages", label: "Stages" },
@@ -36,17 +40,21 @@ const TAB_OPTIONS: { value: Tab; label: string }[] = [
   { value: "sla", label: "SLA rules" },
   { value: "docrules", label: "Doc Rules" },
   { value: "feerules", label: "Fee rules" },
+  { value: "templates", label: "Templates" },
   { value: "storage", label: "Storage" },
   { value: "portal", label: "Portal settings" },
+  { value: "notifications", label: "Notifications" },
+  { value: "devices", label: "Devices" },
 ];
 
 // Two-level admin navigation: group row on top, tabs for the active group below.
 // New sections slot into a group — the top row stays small no matter how much grows.
 const GROUPS: { key: string; label: string; tabs: { value: Tab; label: string }[] }[] = [
   { key: "team", label: "Team & Access", tabs: TAB_OPTIONS.filter((t) => ["users", "designations"].includes(t.value)) },
-  { key: "market", label: "Marketplace", tabs: TAB_OPTIONS.filter((t) => ["banks", "bankrules", "partners", "channels"].includes(t.value)) },
-  { key: "workflow", label: "Workflow", tabs: TAB_OPTIONS.filter((t) => ["stages", "masters", "sla", "portal"].includes(t.value)) },
-  { key: "docs", label: "Docs & Fees", tabs: TAB_OPTIONS.filter((t) => ["docrules", "feerules", "storage"].includes(t.value)) },
+  { key: "market", label: "Marketplace", tabs: TAB_OPTIONS.filter((t) => ["banks", "bankrules", "promotions", "partners", "channels"].includes(t.value)) },
+  { key: "workflow", label: "Workflow", tabs: TAB_OPTIONS.filter((t) => ["stages", "masters", "sla", "dataquality", "portal"].includes(t.value)) },
+  { key: "docs", label: "Docs & Fees", tabs: TAB_OPTIONS.filter((t) => ["docrules", "feerules", "templates", "storage"].includes(t.value)) },
+  { key: "settings", label: "Settings", tabs: TAB_OPTIONS.filter((t) => ["notifications", "devices"].includes(t.value)) },
 ];
 
 const DOC_CATEGORIES = ["KYC", "Income", "Approval", "Property", "Valuation", "Transfer"];
@@ -225,6 +233,8 @@ export default function Admin() {
         {tab === "storage" && <StorageTab />}
       {tab === "banks" && <BanksTab />}
       {tab === "bankrules" && <BankRulesTab />}
+      {tab === "promotions" && <PromotionsTab />}
+      {tab === "dataquality" && <DataQualityTab />}
       {tab === "partners" && <PartnersTab />}
       {tab === "channels" && <ChannelsTab />}
       {tab === "stages" && <StagesTab />}
@@ -232,7 +242,10 @@ export default function Admin() {
       {tab === "sla" && <SlaTab />}
       {tab === "docrules" && <DocRulesTab />}
       {tab === "feerules" && <FeeRulesTab />}
+      {tab === "templates" && <CommTemplatesTab />}
       {tab === "portal" && <PortalTab />}
+      {tab === "notifications" && <NotificationsTab />}
+      {tab === "devices" && <DevicesTab />}
     </div>
   );
 }
@@ -470,11 +483,12 @@ interface DesigDraft {
   super: boolean;
   viewRevenue: boolean;
   manageDocs: boolean;
+  clientChat: boolean;
   builtIn: boolean;
 }
 
 function blankDesig(): DesigDraft {
-  return { id: 0, name: "", scope: "own", issueTasks: false, admin: false, super: false, viewRevenue: false, manageDocs: true, builtIn: false };
+  return { id: 0, name: "", scope: "own", issueTasks: false, admin: false, super: false, viewRevenue: false, manageDocs: true, clientChat: true, builtIn: false };
 }
 
 function DesignationsTab() {
@@ -505,6 +519,7 @@ function DesignationsTab() {
       super: editing.super,
       viewRevenue: editing.viewRevenue,
       manageDocs: editing.manageDocs,
+      clientChat: editing.clientChat ?? true,
     };
     const res = creating
       ? await adminPost(body)
@@ -577,6 +592,7 @@ function DesignationsTab() {
                       <Chip tone={d.admin ? "mint" : "slate"}>{d.admin ? "admin" : "no admin"}</Chip>
                       <Chip tone={d.viewRevenue ? "amber" : "slate"}>{d.viewRevenue ? "sees revenue" : "no revenue"}</Chip>
                       <Chip tone={d.manageDocs ? "mint" : "slate"}>{d.manageDocs ? "manages docs" : "no docs"}</Chip>
+                      <Chip tone={(d.clientChat ?? true) ? "mint" : "slate"}>{(d.clientChat ?? true) ? "chat" : "no chat"}</Chip>
                     </span>
                   </td>
                   <td className="text-[12.5px] text-[var(--ink-dim)] mono">{holders}</td>
@@ -664,6 +680,11 @@ function DesignationsTab() {
                   onClick={() => setEditing({ ...editing, manageDocs: !editing.manageDocs })}
                   label="manages documents"
                 />
+                <Toggle
+                  on={editing.clientChat ?? true}
+                  onClick={() => setEditing({ ...editing, clientChat: !(editing.clientChat ?? true) })}
+                  label="client & agent chat"
+                />
               </div>
               {editing.super && (
                 <p className="text-[11.5px] text-[var(--ink-faint)] mt-1.5 mb-0">
@@ -699,7 +720,11 @@ interface StorageStatus {
     configured: boolean; accountId: boolean; accessKeyId: boolean;
     secretAccessKey: boolean; bucket: boolean; bucketName: string; endpoint: string;
   };
-  drive: { configured: boolean; clientEmail: boolean; privateKey: boolean; folderId: boolean };
+  drive: {
+    configured: boolean; clientEmail: boolean; privateKey: boolean; folderId: boolean;
+    /** Set = acting as this user via domain-wide delegation (required for a personal My Drive). */
+    impersonate: string;
+  };
   stats: {
     totalDocuments: number; filesOnR2: number; compressedCopies: number;
     legacyInDatabase: number; originalBytes: number; compressedBytes: number;
@@ -788,10 +813,10 @@ function StorageTab() {
   };
 
   const copyDriveEnv = async () => {
-    const block = ["GOOGLE_DRIVE_CLIENT_EMAIL=", "GOOGLE_DRIVE_PRIVATE_KEY=", "GOOGLE_DRIVE_FOLDER_ID="].join("\n");
+    const block = ["GOOGLE_DRIVE_CLIENT_EMAIL=", "GOOGLE_DRIVE_PRIVATE_KEY=", "GOOGLE_DRIVE_FOLDER_ID=", "GOOGLE_DRIVE_IMPERSONATE="].join("\n");
     try {
       await navigator.clipboard.writeText(block);
-      toast("success", "Copied — paste into .env and fill in the three values.");
+      toast("success", "Copied — paste into .env and fill in the values.");
     } catch {
       toast("error", "Clipboard blocked by the browser — copy them from .env.example instead.");
     }
@@ -808,7 +833,10 @@ function StorageTab() {
       ? `create ${data.steps.write ? "✓" : "✗"} · read ${data.steps.read ? "✓" : "✗"} · delete ${data.steps.delete ? "✓" : "✗"}`
       : "";
     if (res.ok && data.ok) {
-      setDriveProbe(`Connected — probe passed (${steps})`);
+      const where = data.target
+        ? ` — archiving into ${data.target.space === "shared-drive" ? "a Shared Drive" : "a personal My Drive"}${data.target.owner ? ` owned by ${data.target.owner}` : ""}`
+        : "";
+      setDriveProbe(`Connected — probe passed (${steps})${where}`);
       toast("success", "Google Drive is connected and working.");
     } else {
       setDriveProbe(`${data.error ?? "Test failed"} ${steps}`.trim());
@@ -904,17 +932,36 @@ function StorageTab() {
           <div>
             <KeyRow label="Service-account email" envName="GOOGLE_DRIVE_CLIENT_EMAIL" present={!!drive?.clientEmail} />
             <KeyRow label="Service-account private key" envName="GOOGLE_DRIVE_PRIVATE_KEY" present={!!drive?.privateKey} />
-            <KeyRow label="Shared archive folder ID" envName="GOOGLE_DRIVE_FOLDER_ID" present={!!drive?.folderId} />
+            <KeyRow label="Archive folder ID" envName="GOOGLE_DRIVE_FOLDER_ID" present={!!drive?.folderId} />
+            <KeyRow
+              label={drive?.impersonate ? `Impersonating ${drive.impersonate}` : "Impersonate as (My Drive only)"}
+              envName="GOOGLE_DRIVE_IMPERSONATE"
+              present={!!drive?.impersonate}
+            />
           </div>
           {driveProbe && (
             <p className="text-[12px] m-0 mono" style={{ color: driveProbe.startsWith("Connected") ? "var(--mint)" : "var(--coral)" }}>{driveProbe}</p>
+          )}
+          {!drive?.impersonate && (
+            <p className="text-[12px] m-0" style={{ color: "var(--coral)" }}>
+              <span className="font-medium">Personal My Drive target?</span> Set <code className="mono">GOOGLE_DRIVE_IMPERSONATE</code> to a Workspace
+              mailbox in your domain. A bare service account has no storage quota of its own, so uploads into a personal Drive fail with
+              {" "}<code className="mono">storageQuotaExceeded</code> until it is impersonating a real user.
+            </p>
           )}
           <p className="text-[11.5px] text-[var(--ink-faint)] m-0">
             Setup: Google Cloud Console → <span className="font-medium">APIs &amp; Services</span> → enable <span className="font-medium">Google Drive API</span> →
             <span className="font-medium"> IAM &amp; Admin → Service Accounts</span> → create one → <span className="font-medium">Keys → Add key → JSON</span>
             (copy <code className="mono">client_email</code> and <code className="mono">private_key</code>, keep the <code className="mono">\n</code> escapes) →
-            create a folder in Drive, share it with the service-account email as <span className="font-medium">Editor</span>, paste its ID from the URL.
-            Fill all three in <code className="mono">.env</code> and <span className="font-medium">restart the server</span>.
+            create a folder in Drive and share it with the service-account email as <span className="font-medium">Editor</span>, paste its ID from the URL.
+            <br />
+            <span className="font-medium">For a Shared Drive</span>, add the service account as a <span className="font-medium">Content manager</span> on the drive itself
+            and leave <code className="mono">GOOGLE_DRIVE_IMPERSONATE</code> empty.
+            <br />
+            <span className="font-medium">For a personal My Drive</span>, the service account needs <span className="font-medium">domain-wide delegation</span>:
+            in Admin console → <span className="font-medium">Security → API controls → Domain-wide delegation</span>, add the service account’s
+            numeric <span className="font-medium">Client ID</span> with scope <code className="mono">https://www.googleapis.com/auth/drive</code>, then set
+            {" "}<code className="mono">GOOGLE_DRIVE_IMPERSONATE</code> to the mailbox that should own the archive. Restart the server afterwards.
           </p>
         </div>
       </div>
@@ -2226,7 +2273,7 @@ function DocRulesTab() {
                 <tr key={d.id} style={{ opacity: d.active ? 1 : 0.5 }}>
                   <td>
                     <span className="font-medium">{d.name}</span>
-                    {d.code && <span className="block mono text-[10px] text-[var(--ink-faint)]">{d.code}</span>}
+                    {d.code && <span className="block mono text-[10.5px] text-[var(--ink-faint)]">{d.code}</span>}
                   </td>
                   <td><Chip tone="slate">{d.category}</Chip></td>
                   <td className="text-[11.5px] text-[var(--ink-dim)] max-w-[200px]">{condSummary(d)}</td>
@@ -2374,6 +2421,302 @@ function ToggleChip({ on, onClick, onLabel, offLabel }: { on: boolean; onClick: 
         : { background: "var(--bg2)", borderColor: "var(--line)", color: "var(--ink-faint)" }}>
       {on ? onLabel : offLabel}
     </button>
+  );
+}
+
+/* ------------------------------ data quality (classification backlog) ------------------------------
+   The classification plan requires UNKNOWN/TO_VERIFY values to be *visible work*, not
+   silent gaps: this tab lists every case still missing a canonical dimension so it can
+   be answered deliberately. Nothing is auto-filled here — an admin opens the case. */
+
+const CLASS_DIMS: { key: "propertyTypeCanonical" | "commercialSubtype" | "propertyStage" | "constructionStatus" | "partyRelationship" | "existingFinance" | "transactionPurpose"; label: string }[] = [
+  { key: "propertyTypeCanonical", label: "Property type" },
+  { key: "commercialSubtype", label: "Commercial subtype" },
+  { key: "propertyStage", label: "Property stage" },
+  { key: "constructionStatus", label: "Construction status" },
+  { key: "partyRelationship", label: "Dealing with" },
+  { key: "existingFinance", label: "Existing finance" },
+  { key: "transactionPurpose", label: "Transaction purpose" },
+];
+
+function dimIsUnknown(c: Record<string, unknown>, key: string): boolean {
+  const v = c[key];
+  if (v == null || v === "" || v === "UNKNOWN") return true;
+  // subtype only counts for commercial properties — NULL is CORRECT for residential
+  if (key === "commercialSubtype") return c.propertyTypeCanonical === "COMMERCIAL" && (v == null || v === "UNKNOWN");
+  return false;
+}
+
+function DataQualityTab() {
+  const { cases, nav, promotions } = useHfmcStore();
+  const needsWork = cases
+    .map((c) => ({ c, missing: CLASS_DIMS.filter((d) => dimIsUnknown(c as unknown as Record<string, unknown>, d.key)) }))
+    .filter((x) => x.missing.length > 0)
+    .sort((a, b) => b.missing.length - a.missing.length);
+  const clean = cases.length - needsWork.length;
+  const livePromos = promotions.filter((p) => promoStatus(p) === "Live").length;
+
+  return (
+    <div className="space-y-3">
+      <div className="card anim-fade-up">
+        <CardHeader
+          title="Property classification — to verify"
+          sub="Cases still missing a canonical dimension. Answer them on the case (Property tab or Case 360 → Attributes) — nothing here is guessed for you."
+        />
+        <div className="p-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div className="kpi kpi-plain">
+            <div className="kpi-label">Fully classified</div>
+            <KpiValue className="mono" value={clean} style={{ color: "var(--mint)" }} />
+            <div className="kpi-sub">of {cases.length}</div>
+          </div>
+          <div className="kpi kpi-plain">
+            <div className="kpi-label">Needing verification</div>
+            <KpiValue className="mono" value={needsWork.length} style={{ color: "var(--amber)" }} />
+          </div>
+          <div className="kpi kpi-plain">
+            <div className="kpi-label">Commercial properties</div>
+            <KpiValue className="mono" value={cases.filter((c) => c.propertyTypeCanonical === "COMMERCIAL").length} />
+          </div>
+          <div className="kpi kpi-plain">
+            <div className="kpi-label">Live promotions</div>
+            <KpiValue className="mono" value={livePromos} style={{ color: "var(--mint)" }} />
+          </div>
+        </div>
+        {/* per-dimension gap counts — shows which question staff skip most */}
+        <div className="px-3 pb-3 flex flex-wrap gap-1.5">
+          {CLASS_DIMS.map((d) => {
+            const n = cases.filter((c) => dimIsUnknown(c as unknown as Record<string, unknown>, d.key)).length;
+            if (n === 0) return null;
+            return <Chip key={d.key} tone="amber">{d.label}: {n} to verify</Chip>;
+          })}
+          {needsWork.length === 0 && <Chip tone="mint">Every case classified</Chip>}
+        </div>
+      </div>
+
+      {needsWork.length > 0 && (
+        <div className="card anim-fade-up">
+          <CardHeader title="Cases awaiting classification" sub="Sorted by how many dimensions are missing" />
+          <div className="p-3 space-y-2">
+            {needsWork.slice(0, 40).map(({ c, missing }) => (
+              <div key={c.id} className="rounded-lg px-3 py-2 flex flex-wrap items-center gap-2" style={{ background: "var(--surface)", border: "1px solid var(--line-soft)" }}>
+                <span className="mono text-[11px] text-[var(--amber)]">{c.caseNumber}</span>
+                <span className="text-[12.5px] font-semibold">{c.customer}</span>
+                <span className="text-[11px] text-[var(--ink-faint)]">{c.transactionType || "—"} · {c.propertyType}</span>
+                <span className="text-[10.5px] text-[var(--ink-faint)]">missing: {missing.map((m) => m.label).join(", ")}</span>
+                <button className="btn btn-ghost btn-sm ml-auto" onClick={() => nav({ name: "case", id: c.id })}>Open case →</button>
+              </div>
+            ))}
+            {needsWork.length > 40 && (
+              <p className="text-[11px] text-[var(--ink-faint)] m-0">Showing the 40 cases with the most gaps — work top-down.</p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------ promotions (Tier-4 override layer) ------------------------------
+   Festival bonanzas / fee waivers. Applied ON TOP of base pricing by the match
+   engine; self-expiring by date — after validTo the promo simply stops applying,
+   no revert step needed. Base rates are never edited from here. */
+
+type PromoDraft = {
+  id: number;
+  bankProductId: number;
+  name: string;
+  description: string;
+  rateOptionTermYears: string;   // "" = all rate options
+  rateDiscountBps: string;       // "" = no rate cut
+  processingFeeOverridePct: string; // "" = keep base fee; "0" = waived
+  valuationFeeWaived: boolean;
+  validFrom: string;
+  validTo: string;
+  active: boolean;
+};
+
+function blankPromo(): PromoDraft {
+  const today = new Date().toISOString().slice(0, 10);
+  return { id: 0, bankProductId: 0, name: "", description: "", rateOptionTermYears: "", rateDiscountBps: "", processingFeeOverridePct: "", valuationFeeWaived: false, validFrom: today, validTo: today, active: true };
+}
+
+function promoStatus(p: { active: boolean; validFrom: string; validTo: string }): "Live" | "Scheduled" | "Expired" | "Paused" {
+  if (!p.active) return "Paused";
+  const today = new Date().toISOString().slice(0, 10);
+  if (p.validTo < today) return "Expired";
+  if (p.validFrom > today) return "Scheduled";
+  return "Live";
+}
+const PROMO_TONE: Record<string, "mint" | "amber" | "slate" | "coral"> = { Live: "mint", Scheduled: "amber", Expired: "slate", Paused: "coral" };
+
+function PromotionsTab() {
+  const { promotions, bankProducts, hydrate, toast } = useHfmcStore();
+  const [draft, setDraft] = useState<PromoDraft | null>(null);
+  const [deleting, setDeleting] = useState<Promotion | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const productLabel = (id: number) => {
+    const pr = bankProducts.find((b) => b.id === id);
+    return pr ? `${pr.bankName} — ${pr.name}` : `#${id}`;
+  };
+
+  const save = async () => {
+    if (!draft) return;
+    if (!draft.name.trim()) { toast("error", "Promo name is required."); return; }
+    if (!draft.bankProductId) { toast("error", "Pick the product this promo applies to."); return; }
+    if (!draft.validFrom || !draft.validTo) { toast("error", "Start and end dates are required."); return; }
+    if (draft.validTo < draft.validFrom) { toast("error", "End date must be on/after the start date."); return; }
+    setBusy(true);
+    const body = {
+      kind: "promotion",
+      ...(draft.id ? { id: draft.id } : {}),
+      bankProductId: draft.bankProductId,
+      name: draft.name.trim(),
+      description: draft.description.trim(),
+      rateOptionTermYears: draft.rateOptionTermYears === "" ? null : Number(draft.rateOptionTermYears),
+      rateDiscountBps: draft.rateDiscountBps === "" ? null : Number(draft.rateDiscountBps),
+      processingFeeOverridePct: draft.processingFeeOverridePct === "" ? null : Number(draft.processingFeeOverridePct),
+      valuationFeeWaived: draft.valuationFeeWaived,
+      validFrom: draft.validFrom,
+      validTo: draft.validTo,
+      active: draft.active,
+    };
+    const r = draft.id ? await adminPatch(body) : await adminPost(body);
+    setBusy(false);
+    if (!r.ok) { toast("error", r.error ?? "Save failed."); return; }
+    toast("success", draft.id ? "Promotion updated." : "Promotion launched — it applies automatically inside its dates.");
+    setDraft(null);
+    await hydrate();
+  };
+
+  const doDelete = async () => {
+    if (!deleting) return;
+    const r = await adminDelete("promotion", deleting.id);
+    setDeleting(null);
+    if (!r.ok) { toast("error", r.error ?? "Delete failed."); return; }
+    toast("success", "Promotion deleted.");
+    await hydrate();
+  };
+
+  const statusOf = (p: Promotion) => promoStatus(p);
+
+  return (
+    <div className="card anim-fade-up">
+      <CardHeader
+        title="Promotions / Bonanzas"
+        sub="Overrides apply on top of base pricing only inside their dates — the engine reverts by itself after the end date. Never edit a base rate for a campaign."
+        action={
+          <button className="btn btn-primary btn-sm" onClick={() => setDraft(blankPromo())}>
+            <IPlus size={13} /> New promotion
+          </button>
+        }
+      />
+      {promotions.length === 0 ? (
+        <EmptyState icon={<ITrophy size={20} />} title="No promotions yet" body="Launch a dated rate-cut or fee-waiver campaign for a product — automatic on, automatic off." />
+      ) : (
+        <div className="p-3 space-y-2">
+          {[...promotions]
+            .sort((a, b) => statusOf(a).localeCompare(statusOf(b)) || b.validFrom.localeCompare(a.validFrom))
+            .map((pr) => {
+              const status = statusOf(pr);
+              const hasOverride = pr.rateDiscountBps != null || pr.processingFeeOverridePct != null || pr.valuationFeeWaived;
+              return (
+                <div key={pr.id} className="rounded-lg px-3 py-2.5 flex flex-wrap items-center gap-2" style={{ background: "var(--surface)", border: "1px solid var(--line-soft)" }}>
+                  <Chip tone={PROMO_TONE[status]}>{status}</Chip>
+                  <span className="text-[12.5px] font-semibold">{pr.name}</span>
+                  <span className="text-[11px] text-[var(--ink-faint)] truncate max-w-[280px]">{productLabel(pr.bankProductId)}</span>
+                  <span className="text-[10.5px] mono text-[var(--ink-faint)]">{pr.validFrom} → {pr.validTo}</span>
+                  <span className="text-[10.5px]" style={{ color: "var(--mint)" }}>
+                    {pr.rateDiscountBps != null && `${pr.rateDiscountBps > 0 ? "+" : ""}${pr.rateDiscountBps} bps`}
+                    {pr.rateDiscountBps != null && pr.processingFeeOverridePct != null && " · "}
+                    {pr.processingFeeOverridePct != null && `PF ${pr.processingFeeOverridePct}%`}
+                    {hasOverride && pr.valuationFeeWaived && " · valuation waived"}
+                    {!hasOverride && "no overrides (informational)"}
+                  </span>
+                  <span className="ml-auto flex items-center gap-1.5">
+                    <button className="btn btn-ghost btn-sm" onClick={() => setDraft({
+                      id: pr.id, bankProductId: pr.bankProductId, name: pr.name, description: pr.description,
+                      rateOptionTermYears: pr.rateOptionTermYears == null ? "" : String(pr.rateOptionTermYears),
+                      rateDiscountBps: pr.rateDiscountBps == null ? "" : String(pr.rateDiscountBps),
+                      processingFeeOverridePct: pr.processingFeeOverridePct == null ? "" : String(pr.processingFeeOverridePct),
+                      valuationFeeWaived: pr.valuationFeeWaived, validFrom: pr.validFrom, validTo: pr.validTo, active: pr.active,
+                    })}><IPencil size={12} /></button>
+                    <button className="btn btn-ghost btn-sm" style={{ color: "var(--coral)" }} onClick={() => setDeleting(pr)}><ITrash size={12} /></button>
+                  </span>
+                </div>
+              );
+            })}
+        </div>
+      )}
+      {draft && (
+        <Modal
+          title={draft.id ? "Edit promotion" : "New promotion"}
+          sub="Overrides apply on top of the product's base pricing — never in place of it."
+          onClose={() => setDraft(null)}
+          width={560}
+        >
+          <div className="space-y-3">
+            <Field label="Product">
+              <select className="select" value={draft.bankProductId || ""} onChange={(e) => setDraft({ ...draft, bankProductId: Number(e.target.value) })}>
+                <option value="">— pick a bank product —</option>
+                {bankProducts.map((bp) => (
+                  <option key={bp.id} value={bp.id}>{bp.bankName} — {bp.name}</option>
+                ))}
+              </select>
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Promo name" hint='e.g. "National Day Bonanza"'>
+                <input className="input" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
+              </Field>
+              <Field label="Applies to fixed term" hint="Blank = every rate option (incl. Day-1 variable)">
+                <select className="select" value={draft.rateOptionTermYears} onChange={(e) => setDraft({ ...draft, rateOptionTermYears: e.target.value })}>
+                  <option value="">All rate options</option>
+                  {[1, 2, 3, 4, 5, 7, 10, 15, 20].map((y) => <option key={y} value={y}>{y} year fixed</option>)}
+                </select>
+              </Field>
+            </div>
+            <Field label="Description" hint="Shown to staff next to the override summary">
+              <input className="input" value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} />
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Rate discount (bps)" hint="Negative = rate cut. -25 → 0.25% lower. Blank = no rate change">
+                <input className="input mono" type="number" step="1" placeholder="-25" value={draft.rateDiscountBps} onChange={(e) => setDraft({ ...draft, rateDiscountBps: e.target.value })} />
+              </Field>
+              <Field label="Processing fee override (%)" hint="Blank = keep base fee; 0 = fully waived">
+                <input className="input mono" type="number" step="0.05" min="0" placeholder="0" value={draft.processingFeeOverridePct} onChange={(e) => setDraft({ ...draft, processingFeeOverridePct: e.target.value })} />
+              </Field>
+            </div>
+            <label className="flex items-center gap-2.5 text-[12.5px] cursor-pointer">
+              <input type="checkbox" checked={draft.valuationFeeWaived} onChange={(e) => setDraft({ ...draft, valuationFeeWaived: e.target.checked })} />
+              Waive the valuation fee for this campaign
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Start date" hint="Inclusive — promo applies from this day">
+                <input className="input mono" type="date" value={draft.validFrom} onChange={(e) => setDraft({ ...draft, validFrom: e.target.value })} />
+              </Field>
+              <Field label="End date" hint="Inclusive — engine reverts automatically the next day">
+                <input className="input mono" type="date" value={draft.validTo} onChange={(e) => setDraft({ ...draft, validTo: e.target.value })} />
+              </Field>
+            </div>
+            <div className="flex items-center justify-between pt-1">
+              <Toggle on={draft.active} onClick={() => setDraft({ ...draft, active: !draft.active })} label={draft.active ? "Active" : "Paused"} />
+              <div className="flex gap-2">
+                <button className="btn btn-ghost btn-sm" onClick={() => setDraft(null)}>Cancel</button>
+                <button className="btn btn-primary btn-sm" onClick={save} disabled={busy}>{busy ? "Saving…" : draft.id ? "Save changes" : "Launch promotion"}</button>
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
+      <ConfirmModal
+        open={!!deleting}
+        onClose={() => setDeleting(null)}
+        title="Delete promotion?"
+        body={<>Permanently delete <strong>{deleting?.name}</strong>? Base pricing is untouched — only this override disappears.</>}
+        confirmLabel="Delete"
+        onConfirm={doDelete}
+      />
+    </div>
   );
 }
 
@@ -2698,6 +3041,7 @@ function BankRulesTab() {
   const { bankProducts, banks, saveBankProduct, toast, hydrate } = useHfmcStore();
   const [bankFilter, setBankFilter] = useState<string>("DIB");
   const [editing, setEditing] = useState<BankProduct | null>(null);
+  const [importing, setImporting] = useState<{ product: BankProduct | null } | null>(null);
   const [busy, setBusy] = useState(false);
 
   const bankList = useMemo(() => {
@@ -2715,9 +3059,14 @@ function BankRulesTab() {
         title="Bank rule products"
         sub="Decoded from the rates & policy workbooks. Draft → approve workflow: approved rules feed the eligibility engine. DIB + ENBD are the phase-0 banks."
         action={
-          <select className="select !w-auto" value={bankFilter} onChange={(e) => setBankFilter(e.target.value)}>
-            {bankList.map((b) => <option key={b} value={b}>{b}</option>)}
-          </select>
+          <div className="flex items-center gap-1.5">
+            <button className="btn btn-primary btn-sm" onClick={() => setImporting({ product: null })}>
+              <IUpload size={13} /> Import policy
+            </button>
+            <select className="select !w-auto" value={bankFilter} onChange={(e) => setBankFilter(e.target.value)}>
+              {bankList.map((b) => <option key={b} value={b}>{b}</option>)}
+            </select>
+          </div>
         }
       />
       {rows.length === 0 ? (
@@ -2737,6 +3086,9 @@ function BankRulesTab() {
                 </span>
                 {p.approvedBy && <span className="text-[10.5px] text-[var(--ink-faint)]">by {p.approvedBy}</span>}
                 <div className="ml-auto flex gap-1.5">
+                  <button className="btn btn-ghost btn-sm" title="Upload a workbook or paste policy text — answers what's missing, commits as draft" onClick={() => setImporting({ product: p })}>
+                    <IUpload size={13} /> Import
+                  </button>
                   <button className="btn btn-ghost btn-sm" onClick={() => setEditing(p)}>
                     <IPencil size={13} /> Edit
                   </button>
@@ -2807,7 +3159,7 @@ function BankRulesTab() {
                 </span>
               </div>
               
-              <span className="text-[10px] text-[var(--ink-faint)] ml-auto">Default: 31-Dec-2099 (active indefinitely)</span>
+              <span className="text-[10.5px] text-[var(--ink-faint)] ml-auto">Default: 31-Dec-2099 (active indefinitely)</span>
             </div>
             <div className="flex items-center justify-between pb-1">
               <FieldRowBadge role="engine" text="Green fields feed Bank Match and the final proposal. Amber fields are displayed but not calculated yet." />
@@ -2844,14 +3196,14 @@ function BankRulesTab() {
                     value={(editing[f.key] as number | null) ?? ""}
                     onChange={(e) => setEditing({ ...editing, [f.key]: e.target.value === "" ? null : Number(e.target.value) })}
                   />
-                  <p className="text-[10px] text-[var(--ink-faint)] m-0 mt-1 leading-snug">
+                  <p className="text-[10.5px] text-[var(--ink-faint)] m-0 mt-1 leading-snug">
                     <FieldRoleDot role={f.role} /> {f.help}
                   </p>
                 </Field>
               ))}
             </div>
             <div className="rounded-lg p-3" style={{ background: "var(--bg2)" }}>
-              <div className="text-[10px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)] mb-1.5">
+              <div className="text-[10.5px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)] mb-1.5">
                 Live check — reference client (AED 20k salary, STL, 2.5M property, resale)
               </div>
               <LivePreview editing={editing} />
@@ -2895,7 +3247,7 @@ function BankRulesTab() {
                   value={String(editing[b.key] ?? "")}
                   onChange={(e) => setEditing({ ...editing, [b.key]: e.target.value })}
                 />
-                <p className="text-[10px] text-[var(--ink-faint)] m-0 mt-1 leading-snug">
+                <p className="text-[10.5px] text-[var(--ink-faint)] m-0 mt-1 leading-snug">
                   <FieldRoleDot role={b.engineReady ? "engine" : "display"} /> {b.hint}
                 </p>
               </Field>
@@ -2907,6 +3259,22 @@ function BankRulesTab() {
           </div>
         </Modal>
       )}
+
+      {importing && (
+        <PolicyImporterModal
+          product={importing.product}
+          onClose={() => setImporting(null)}
+          onApplied={(pid) => {
+            setImporting(null);
+            const fresh = bankProducts.find((b) => b.id === pid);
+            if (fresh) setEditing(fresh);
+            else void hydrate().then(() => {
+              const ref = useHfmcStore.getState().bankProducts.find((b) => b.id === pid);
+              if (ref) setEditing(ref);
+            });
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -2915,7 +3283,7 @@ function DetailBlock({ label, text }: { label: string; text: string }) {
   if (!text) return null;
   return (
     <div className="rounded-lg px-3 py-2" style={{ background: "var(--tint)" }}>
-      <div className="text-[10px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)]">{label}</div>
+      <div className="text-[10.5px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)]">{label}</div>
       <p className="text-[11.5px] text-[var(--ink-dim)] m-0 mt-1 whitespace-pre-wrap leading-snug">{text.slice(0, 600)}{text.length > 600 ? "…" : ""}</p>
     </div>
   );
@@ -2975,7 +3343,7 @@ function FieldIssues({ editing }: { editing: BankProduct }) {
   if (issues.length === 0) return null;
   return (
     <div className="rounded-lg p-3 space-y-1.5" style={{ background: "rgba(242,176,76,0.06)" }}>
-      <div className="text-[10px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)]">
+      <div className="text-[10.5px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)]">
         Before approving — {issues.filter((i) => i.blocking).length} blocking, {issues.filter((i) => !i.blocking).length} advisory
       </div>
       {issues.map((i, idx) => (
@@ -3021,7 +3389,11 @@ function LivePreview({ editing }: { editing: BankProduct }) {
 
 /* ---------------- guided quote rows editor (phase 4 human side) ---------------- */
 
-const TXN_OPTIONS = ["any", "Resale", "Primary Handover", "Buyout", "Equity Release", "Buyout + Equity Release", "Land", "Self Construction", "LAP"];
+const TXN_OPTIONS = ["any", "Resale", "Primary Handover", "Primary Purchase", "Off-Plan", "Buyout", "Equity Release", "Buyout + Equity Release", "Land", "Self Construction", "Self-Construction", "LAP"];
+
+// Multi-axis applicability editor — tick which values a quote covers.
+// Blank-everything = matches all (Phase 1 sets semantics). Kept compact:
+// one details row per quote so a 30-quote product stays reviewable.
 
 function QuoteRowsEditor({ quotes, rateTable, onChange, productId, onFeesDraft }: {
   quotes: RateQuote[];
@@ -3053,9 +3425,21 @@ function QuoteRowsEditor({ quotes, rateTable, onChange, productId, onFeesDraft }
         marginPct: (q.marginPct ?? null) as number | null,
         floorPct: (q.floorPct ?? null) as number | null,
         variableAfter: (q.variableAfter ?? undefined) as RateQuote["variableAfter"],
+        ftvMin: (q.ftvMin ?? null) as number | null,
         ftvMax: (q.ftvMax ?? null) as number | null,
         txn: (q.txn ?? null) as string | null,
         segment: (q.segment ?? null) as string | null,
+        // Phase-1 multi-axis sets — carried through when the draft supplies them;
+        // anything absent stays null (= matches all), never silently constrained
+        txns: (q.txns ?? null) as string[] | null,
+        salaryTransfer: (q.salaryTransfer ?? null) as RateQuote["salaryTransfer"],
+        segments: (q.segments ?? null) as string[] | null,
+        residency: (q.residency ?? null) as string[] | null,
+        employment: (q.employment ?? null) as string[] | null,
+        financeType: (q.financeType ?? null) as string[] | null,
+        loanKind: (q.loanKind ?? null) as string[] | null,
+        emirates: (q.emirates ?? null) as string[] | null,
+        nationalityRule: (q.nationalityRule ?? null) as RateQuote["nationalityRule"],
         note: String(q.note ?? ""),
       }));
       onChange(cleanQuotes);
@@ -3085,7 +3469,7 @@ function QuoteRowsEditor({ quotes, rateTable, onChange, productId, onFeesDraft }
   return (
     <div className="rounded-lg p-3 space-y-2" style={{ background: "var(--tint)" }}>
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[10px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)] flex-1">
+        <span className="text-[10.5px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)] flex-1">
           Pricing quotes · {quotes.length} — these are what the engine calculates with
         </span>
         {rateTable && (
@@ -3122,13 +3506,12 @@ function QuoteRowsEditor({ quotes, rateTable, onChange, productId, onFeesDraft }
               <option value="">Both</option>
             </select>
             <select className="select !w-auto !py-1 text-[11.5px]" value={String(q.termYears ?? 0)}
-              onChange={(e) => update(i, { termYears: Number(e.target.value) })}>
+              onChange={(e) => update(i, { termYears: Number(e.target.value) })}
+              title="Fixed term. UAE sheets publish 1-5y, plus longer terms (ADIB: 7y, 8-10y, 11-15y, 16-20y). Day-1 variable = no fixed term.">
               <option value="0">Day-1 variable</option>
-              <option value="1">1y fixed</option>
-              <option value="2">2y fixed</option>
-              <option value="3">3y fixed</option>
-              <option value="4">4y fixed</option>
-              <option value="5">5y fixed</option>
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20].map((y) => (
+                <option key={y} value={y}>{y}y fixed</option>
+              ))}
             </select>
             <select className="select !w-auto !py-1 text-[11.5px]" value={q.rateType}
               onChange={(e) => update(i, { rateType: e.target.value as RateQuote["rateType"] })}>
@@ -3180,10 +3563,17 @@ function QuoteRowsEditor({ quotes, rateTable, onChange, productId, onFeesDraft }
             <input className="input mono !w-20 !py-1 text-[11.5px]" type="number" placeholder="FTV ≤"
               title="FTV band ceiling — blank = any"
               value={q.ftvMax ?? ""} onChange={(e) => update(i, { ftvMax: e.target.value === "" ? null : Number(e.target.value) })} />
+            <input className="input mono !w-20 !py-1 text-[11.5px]" type="number" placeholder="FTV >"
+              title="FTV band floor — e.g. 60 means this quote only applies above 60% (DIB ≤60 vs >60 bands). Blank = no floor"
+              value={q.ftvMin ?? ""} onChange={(e) => update(i, { ftvMin: e.target.value === "" ? null : Number(e.target.value) })} />
             <select className="select !w-auto !py-1 text-[11.5px]" value={q.txn ?? "any"}
               onChange={(e) => update(i, { txn: e.target.value === "any" ? null : e.target.value })}>
               {TXN_OPTIONS.map((o) => <option key={o} value={o}>{o === "any" ? "any txn" : o}</option>)}
             </select>
+            <QuoteAxesEditor
+              q={q}
+              onChange={(patch) => update(i, patch)}
+            />
             <button className="btn btn-ghost btn-sm !px-2 ml-auto" style={{ color: "var(--coral)" }} onClick={() => remove(i)} title="Remove quote">
               <ITrash size={12} />
             </button>
@@ -3214,6 +3604,86 @@ function QuoteRowsEditor({ quotes, rateTable, onChange, productId, onFeesDraft }
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+function QuoteAxesEditor({ q, onChange }: { q: RateQuote; onChange: (patch: Partial<RateQuote>) => void }) {
+  const [open, setOpen] = useState(false);
+  const constrained =
+    (q.txns?.length ?? 0) + (q.salaryTransfer?.length ?? 0) + (q.segments?.length ?? 0) +
+    (q.residency?.length ?? 0) + (q.employment?.length ?? 0) + (q.financeType?.length ?? 0) +
+    (q.loanKind?.length ?? 0) + (q.emirates?.length ?? 0) +
+    (q.nationalityRule && q.nationalityRule.mode !== "ALL" ? 1 : 0);
+  const toggle = (key: "txns" | "salaryTransfer" | "segments" | "residency" | "employment" | "financeType" | "loanKind" | "emirates", value: string) => {
+    const cur = (q[key] ?? []) as string[];
+    onChange({ [key]: cur.includes(value) ? cur.filter((v) => v !== value) : [...cur, value] } as Partial<RateQuote>);
+  };
+  const chip = (key: "txns" | "salaryTransfer" | "segments" | "residency" | "employment" | "financeType" | "loanKind" | "emirates", value: string) => {
+    const cur = (q[key] ?? []) as string[];
+    const on = cur.includes(value);
+    return (
+      <button key={value} type="button" className="chip transition-all" title={on ? `Covers ${value} — click to remove` : `Restrict to ${value}`}
+        style={on
+          ? { background: "rgba(67,214,155,0.12)", borderColor: "rgba(67,214,155,0.5)", color: "var(--mint)" }
+          : { background: "var(--bg2)", borderColor: "var(--line)", color: "var(--ink-faint)" }}
+        onClick={() => toggle(key, value)}>
+        {value}
+      </button>
+    );
+  };
+  const axis = (label: string, hint: string, children: React.ReactNode) => (
+    <div>
+      <div className="text-[10.5px] uppercase tracking-[0.08em] font-semibold text-[var(--ink-faint)]" title={hint}>{label}</div>
+      <div className="flex flex-wrap gap-1 mt-1">{children}</div>
+    </div>
+  );
+  const setNat = (mode: "ALL" | "ALLOW" | "DENY") => {
+    if (mode === "ALL") onChange({ nationalityRule: null });
+    else onChange({ nationalityRule: { mode, countries: q.nationalityRule?.countries ?? [] } });
+  };
+  return (
+    <div className="w-full">
+      <button type="button" className="btn btn-ghost btn-xs no-print"
+        title="Multi-axis applicability: tick what THIS quote covers. Blank = all. A case must satisfy every constrained axis."
+        onClick={() => setOpen(!open)}>
+        {open ? "▾" : "▸"} applies to{constrained ? ` · ${constrained} set${constrained === 1 ? "" : "s"}` : " · all"}
+      </button>
+      {open && (
+        <div className="rounded-md p-2 mt-1 space-y-2" style={{ background: "var(--bg2)" }}>
+          {axis("Transactions", CANONICAL_TXN.join(", "), CANONICAL_TXN.map((t) => chip("txns", t)))}
+          {axis("Salary transfer", "Blank = both", (["STL", "NSTL"] as const).map((s) => chip("salaryTransfer", s)))}
+          {axis("Residency", "Blank = all residencies", ["UAE National", "Resident Expatriate", "Non-Resident"].map((r) => chip("residency", r)))}
+          {axis("Employment", "Blank = both (split from residency — NR salaried ≠ NR self-employed)", ["Salaried", "Self-Employed"].map((e) => chip("employment", e)))}
+          {axis("Finance type", "Blank = both", ["Residential", "Commercial"].map((f) => chip("financeType", f)))}
+          {axis("Loan kind", "Blank = both", ["Conventional", "Islamic"].map((l) => chip("loanKind", l)))}
+          {axis("Segments", "Bank labels — blank = all", ["GECO", "AUH Developer", "PRB", "Premium", "Standard", "Private", "SZHP", "ETB", "NTB", "Others"].map((s) => chip("segments", s)))}
+          {axis("Emirates", "Blank = all funded", ["Dubai", "Abu Dhabi", "Sharjah", "Ajman", "RAK", "Fujairah", "Umm Al Quwain"].map((e) => chip("emirates", e)))}
+          <div>
+            <div className="text-[10.5px] uppercase tracking-[0.08em] font-semibold text-[var(--ink-faint)]" title="ALL = every passport; ALLOW = only listed; DENY = all except listed">Nationality rule</div>
+            <div className="flex flex-wrap gap-1 mt-1 items-center">
+              <select className="select !w-auto !py-1 text-[11px]" value={q.nationalityRule?.mode ?? "ALL"}
+                onChange={(e) => setNat(e.target.value as "ALL" | "ALLOW" | "DENY")}>
+                <option value="ALL">All passports</option>
+                <option value="ALLOW">Only these</option>
+                <option value="DENY">All except these</option>
+              </select>
+              {q.nationalityRule && q.nationalityRule.mode !== "ALL" && (
+                <input className="input !py-1 text-[11px] flex-1 min-w-[160px]" placeholder="UK, India, Pakistan, … (comma separated)"
+                  value={(q.nationalityRule.countries ?? []).join(", ")}
+                  onChange={(e) => onChange({ nationalityRule: { mode: q.nationalityRule!.mode, countries: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) } })} />
+              )}
+            </div>
+          </div>
+          {constrained > 0 && (
+            <button type="button" className="btn btn-ghost btn-xs no-print" style={{ color: "var(--coral)" }}
+              title="Clear every axis — this quote matches all cases again"
+              onClick={() => onChange({ txns: null, salaryTransfer: null, segments: null, residency: null, employment: null, financeType: null, loanKind: null, emirates: null, nationalityRule: null })}>
+              Clear all axes (match everything)
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -3251,7 +3721,7 @@ function FeesEditor({ fees, onChange }: { fees: BankFees; onChange: (fees: BankF
           <span className="font-disp font-semibold text-[12px] uppercase tracking-[0.08em] text-[var(--ink)]">
             Structured Bank Fees
           </span>
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--mint-tint)] text-[var(--mint)] font-medium">
+          <span className="text-[10.5px] px-1.5 py-0.5 rounded bg-[var(--mint-tint)] text-[var(--mint)] font-medium">
             engine ?
           </span>
         </div>
@@ -3265,7 +3735,7 @@ function FeesEditor({ fees, onChange }: { fees: BankFees; onChange: (fees: BankF
             <div className="text-[11px] font-semibold text-[var(--ink-dim)]">Processing Fee</div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <div>
-                <label className="text-[10px] text-[var(--ink-faint)]">Default rate (%)</label>
+                <label className="text-[10.5px] text-[var(--ink-faint)]">Default rate (%)</label>
                 <input
                   type="number" step="0.01" className="input input-sm mono" placeholder="1.05"
                   value={p.default ?? ""}
@@ -3273,7 +3743,7 @@ function FeesEditor({ fees, onChange }: { fees: BankFees; onChange: (fees: BankF
                 />
               </div>
               <div>
-                <label className="text-[10px] text-[var(--ink-faint)]">Buyout rate (%)</label>
+                <label className="text-[10.5px] text-[var(--ink-faint)]">Buyout rate (%)</label>
                 <input
                   type="number" step="0.01" className="input input-sm mono" placeholder="0.5"
                   value={p.buyout ?? ""}
@@ -3281,7 +3751,7 @@ function FeesEditor({ fees, onChange }: { fees: BankFees; onChange: (fees: BankF
                 />
               </div>
               <div>
-                <label className="text-[10px] text-[var(--ink-faint)]">Min Fee (AED)</label>
+                <label className="text-[10.5px] text-[var(--ink-faint)]">Min Fee (AED)</label>
                 <input
                   type="number" className="input input-sm mono" placeholder="0"
                   value={p.minFee ?? ""}
@@ -3289,7 +3759,7 @@ function FeesEditor({ fees, onChange }: { fees: BankFees; onChange: (fees: BankF
                 />
               </div>
               <div>
-                <label className="text-[10px] text-[var(--ink-faint)]">Max Cap (AED)</label>
+                <label className="text-[10.5px] text-[var(--ink-faint)]">Max Cap (AED)</label>
                 <input
                   type="number" className="input input-sm mono" placeholder="No cap"
                   value={p.maxFee ?? ""}
@@ -3302,6 +3772,39 @@ function FeesEditor({ fees, onChange }: { fees: BankFees; onChange: (fees: BankF
               value={p.note ?? ""}
               onChange={(e) => updateProcessing({ note: e.target.value })}
             />
+            {/* Slabbed schedule — takes precedence row-wise when a slab fits */}
+            <div className="space-y-1.5 pt-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[10.5px] font-semibold text-[var(--ink-dim)]" title="First slab whose ceiling ≥ loan wins. Leave empty for the flat % above.">Slabbed schedule (optional)</span>
+                <button type="button" className="btn btn-ghost btn-xs" onClick={() => updateProcessing({ slabs: [...(p.slabs ?? []), { upTo: null, pct: 0 }] })}>+ slab</button>
+              </div>
+              {(p.slabs ?? []).map((s, si) => (
+                <div key={si} className="flex items-center gap-2 text-[11px]">
+                  <span className="text-[var(--ink-faint)]">loan up to</span>
+                  <input type="number" className="input input-sm mono !w-32" placeholder="∞ (top)" title="Ceiling in AED — blank = open-ended catch-all"
+                    value={s.upTo ?? ""} onChange={(e) => updateProcessing({ slabs: (p.slabs ?? []).map((x, xi) => xi === si ? { ...x, upTo: e.target.value === "" ? null : Number(e.target.value) } : x) })} />
+                  <span className="text-[var(--ink-faint)]">AED →</span>
+                  <input type="number" step="0.01" className="input input-sm mono !w-24" placeholder="%"
+                    value={s.pct ?? ""} onChange={(e) => updateProcessing({ slabs: (p.slabs ?? []).map((x, xi) => xi === si ? { ...x, pct: Number(e.target.value) || 0 } : x) })} />
+                  <span className="text-[var(--ink-faint)]">%</span>
+                  <button type="button" className="btn btn-ghost btn-xs" style={{ color: "var(--coral)" }} title="Remove slab"
+                    onClick={() => updateProcessing({ slabs: (p.slabs ?? []).filter((_, xi) => xi !== si) })}>✕</button>
+                </div>
+              ))}
+            </div>
+            {/* Component split for buyout+equity deals */}
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <div title="Charged on the buyout portion only (rest uses buyout % above)">
+                <label className="text-[10.5px] text-[var(--ink-faint)]">Buyout portion (%)</label>
+                <input type="number" step="0.01" className="input input-sm mono" placeholder="—"
+                  value={p.componentSplit?.buyoutPortion ?? ""} onChange={(e) => updateProcessing({ componentSplit: { ...(p.componentSplit ?? {}), buyoutPortion: e.target.value === "" ? undefined : Number(e.target.value) } })} />
+              </div>
+              <div title="Charged on the cash-out portion only (overrides the 1%-of-equity rule)">
+                <label className="text-[10.5px] text-[var(--ink-faint)]">Equity portion (%)</label>
+                <input type="number" step="0.01" className="input input-sm mono" placeholder="—"
+                  value={p.componentSplit?.equityPortion ?? ""} onChange={(e) => updateProcessing({ componentSplit: { ...(p.componentSplit ?? {}), equityPortion: e.target.value === "" ? undefined : Number(e.target.value) } })} />
+              </div>
+            </div>
           </div>
 
           {/* Pre-approval fee */}
@@ -3309,7 +3812,7 @@ function FeesEditor({ fees, onChange }: { fees: BankFees; onChange: (fees: BankF
             <div className="text-[11px] font-semibold text-[var(--ink-dim)]">Pre-Approval Fee</div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <div>
-                <label className="text-[10px] text-[var(--ink-faint)]">Salaried (AED)</label>
+                <label className="text-[10.5px] text-[var(--ink-faint)]">Salaried (AED)</label>
                 <input
                   type="number" className="input input-sm mono" placeholder="1575"
                   value={pa.fee ?? ""}
@@ -3317,7 +3820,7 @@ function FeesEditor({ fees, onChange }: { fees: BankFees; onChange: (fees: BankF
                 />
               </div>
               <div>
-                <label className="text-[10px] text-[var(--ink-faint)]">STL Fee (AED)</label>
+                <label className="text-[10.5px] text-[var(--ink-faint)]">STL Fee (AED)</label>
                 <input
                   type="number" className="input input-sm mono" placeholder="e.g. 1000"
                   value={pa.feeStl ?? ""}
@@ -3325,7 +3828,7 @@ function FeesEditor({ fees, onChange }: { fees: BankFees; onChange: (fees: BankF
                 />
               </div>
               <div>
-                <label className="text-[10px] text-[var(--ink-faint)]">NSTL Fee (AED)</label>
+                <label className="text-[10.5px] text-[var(--ink-faint)]">NSTL Fee (AED)</label>
                 <input
                   type="number" className="input input-sm mono" placeholder="e.g. 1575"
                   value={pa.feeNstl ?? ""}
@@ -3333,7 +3836,7 @@ function FeesEditor({ fees, onChange }: { fees: BankFees; onChange: (fees: BankF
                 />
               </div>
               <div>
-                <label className="text-[10px] text-[var(--ink-faint)]">Self-Employed (AED)</label>
+                <label className="text-[10.5px] text-[var(--ink-faint)]">Self-Employed (AED)</label>
                 <input
                   type="number" className="input input-sm mono" placeholder="0 = Free"
                   value={pa.feeSelfEmployed ?? ""}
@@ -3354,7 +3857,7 @@ function FeesEditor({ fees, onChange }: { fees: BankFees; onChange: (fees: BankF
               <div className="text-[11px] font-semibold text-[var(--ink-dim)]">Early Settlement</div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-[10px] text-[var(--ink-faint)]">Penalty (%)</label>
+                  <label className="text-[10.5px] text-[var(--ink-faint)]">Penalty (%)</label>
                   <input
                     type="number" step="0.1" className="input input-sm mono" placeholder="1.0"
                     value={es.pct ?? ""}
@@ -3362,7 +3865,7 @@ function FeesEditor({ fees, onChange }: { fees: BankFees; onChange: (fees: BankF
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] text-[var(--ink-faint)]">Cap (AED)</label>
+                  <label className="text-[10.5px] text-[var(--ink-faint)]">Cap (AED)</label>
                   <input
                     type="number" className="input input-sm mono" placeholder="10000"
                     value={es.cap ?? ""}
@@ -3381,7 +3884,7 @@ function FeesEditor({ fees, onChange }: { fees: BankFees; onChange: (fees: BankF
               <div className="text-[11px] font-semibold text-[var(--ink-dim)]">Partial Settlement</div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-[10px] text-[var(--ink-faint)]">Free / year (%)</label>
+                  <label className="text-[10.5px] text-[var(--ink-faint)]">Free / year (%)</label>
                   <input
                     type="number" step="1" className="input input-sm mono" placeholder="25"
                     value={ps.freeYearlyPct ?? ""}
@@ -3389,7 +3892,7 @@ function FeesEditor({ fees, onChange }: { fees: BankFees; onChange: (fees: BankF
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] text-[var(--ink-faint)]">Excess fee (%)</label>
+                  <label className="text-[10.5px] text-[var(--ink-faint)]">Excess fee (%)</label>
                   <input
                     type="number" step="0.1" className="input input-sm mono" placeholder="1.0"
                     value={ps.pct ?? ""}
@@ -3407,7 +3910,7 @@ function FeesEditor({ fees, onChange }: { fees: BankFees; onChange: (fees: BankF
 
           {/* Valuation Note */}
           <div className="p-2.5 rounded-lg bg-[var(--bg2)]">
-            <label className="text-[10px] text-[var(--ink-faint)]">Valuation Fee details</label>
+            <label className="text-[10.5px] text-[var(--ink-faint)]">Valuation Fee details</label>
             <input
               type="text" className="input input-sm text-[11.5px] mt-1" placeholder="e.g. AED 2,500 - AED 3,500 based on property value tier"
               value={v.note ?? ""}
@@ -3446,7 +3949,7 @@ function InsuranceEditor({ insurance, onChange }: { insurance: BankInsurance; on
           <span className="font-disp font-semibold text-[12px] uppercase tracking-[0.08em] text-[var(--ink)]">
             Structured Insurance Rates
           </span>
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--mint-tint)] text-[var(--mint)] font-medium">
+          <span className="text-[10.5px] px-1.5 py-0.5 rounded bg-[var(--mint-tint)] text-[var(--mint)] font-medium">
             engine ?
           </span>
         </div>
@@ -3460,12 +3963,12 @@ function InsuranceEditor({ insurance, onChange }: { insurance: BankInsurance; on
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-semibold text-[var(--ink-dim)]">Life Insurance</span>
               {previewLifeMonthly && (
-                <span className="text-[10px] text-[var(--mint)] mono">AED {previewLifeMonthly}/mo for 1.5M loan</span>
+                <span className="text-[10.5px] text-[var(--mint)] mono">AED {previewLifeMonthly}/mo for 1.5M loan</span>
               )}
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="text-[10px] text-[var(--ink-faint)]">Calculation Basis</label>
+                <label className="text-[10.5px] text-[var(--ink-faint)]">Calculation Basis</label>
                 <select
                   className="select select-sm text-[11px]"
                   value={life.basis}
@@ -3476,7 +3979,7 @@ function InsuranceEditor({ insurance, onChange }: { insurance: BankInsurance; on
                 </select>
               </div>
               <div>
-                <label className="text-[10px] text-[var(--ink-faint)]">Rate (%)</label>
+                <label className="text-[10.5px] text-[var(--ink-faint)]">Rate (%)</label>
                 <input
                   type="number" step="0.001" className="input input-sm mono" placeholder="0.03"
                   value={life.rate || ""}
@@ -3496,11 +3999,11 @@ function InsuranceEditor({ insurance, onChange }: { insurance: BankInsurance; on
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-semibold text-[var(--ink-dim)]">Property Insurance</span>
               {previewPropYearly && (
-                <span className="text-[10px] text-[var(--mint)] mono">AED {previewPropYearly}/yr for 2.0M prop</span>
+                <span className="text-[10.5px] text-[var(--mint)] mono">AED {previewPropYearly}/yr for 2.0M prop</span>
               )}
             </div>
             <div>
-              <label className="text-[10px] text-[var(--ink-faint)]">Annual Rate (% p.a. of property value)</label>
+              <label className="text-[10.5px] text-[var(--ink-faint)]">Annual Rate (% p.a. of property value)</label>
               <input
                 type="number" step="0.001" className="input input-sm mono" placeholder="0.035"
                 value={prop.rate || ""}
@@ -3654,3 +4157,600 @@ function PortalTab() {
     </div>
   );
 }
+
+/* ------------------------------ comm templates (WA / email / call) ------------------------------ */
+
+const COMM_STAGES = ["doc", "pre", "val", "fol", "transfer"] as const;
+const COMM_CHANNELS = ["whatsapp", "email", "call"] as const;
+const COMM_STAGE_LABEL: Record<string, string> = {
+  doc: "Docs", pre: "Pre-Approval", val: "Valuation", fol: "FOL + Booking", transfer: "Transfer",
+};
+
+interface CommDraft {
+  id: number;
+  key: string;
+  channel: (typeof COMM_CHANNELS)[number];
+  stageKey: (typeof COMM_STAGES)[number];
+  bank: string | null;
+  name: string;
+  subject: string;
+  body: string;
+  active: boolean;
+}
+
+function blankComm(): CommDraft {
+  return { id: 0, key: "", channel: "whatsapp", stageKey: "doc", bank: null, name: "", subject: "", body: "", active: true };
+}
+
+function CommTemplatesTab() {
+  const { commTemplates, hydrate, toast } = useHfmcStore();
+  const [editing, setEditing] = useState<CommDraft | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [deleting, setDeleting] = useState<CommTemplate | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const save = async () => {
+    if (!editing) return;
+    if (!editing.key.trim() || !editing.name.trim() || !editing.body.trim()) {
+      toast("error", "Key, name and body are required.");
+      return;
+    }
+    setBusy(true);
+    const body: Record<string, unknown> = {
+      kind: "commtemplate",
+      key: editing.key.trim(),
+      channel: editing.channel,
+      stageKey: editing.stageKey,
+      bank: editing.bank?.trim() || null,
+      name: editing.name.trim(),
+      subject: editing.subject.trim() || null,
+      body: editing.body,
+      vars: [...new Set([...editing.body.matchAll(/\{\{\s*(\w+)\s*\}\}/g)].map((m) => m[1]))],
+      active: editing.active,
+    };
+    const res = creating ? await adminPost(body) : await adminPatch({ ...body, id: editing.id });
+    setBusy(false);
+    if (!res.ok) {
+      toast("error", res.error ?? "Could not save template.");
+      return;
+    }
+    await hydrate();
+    toast("success", creating ? `Template "${editing.name}" added.` : "Template updated.");
+    setEditing(null);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleting) return;
+    setBusy(true);
+    const res = await adminDelete("commtemplate", deleting.id);
+    setBusy(false);
+    if (!res.ok) {
+      toast("error", res.error ?? "Could not delete template.");
+      return;
+    }
+    await hydrate();
+    toast("info", "Template removed — the stage drawer falls back to the seed wording.");
+  };
+
+  return (
+    <div className="card anim-fade-up">
+      <CardHeader
+        title={`Communication templates · ${commTemplates.length}`}
+        sub="WhatsApp / email / call wording used by the Case 360 stage drawers. Placeholders: {{customer}} {{caseNumber}} {{amount}} {{bank}} {{owner}} {{waGroup}}. Unknown keys render as —."
+        action={
+          <button className="btn btn-primary sm:btn-sm" onClick={() => { setEditing(blankComm()); setCreating(true); }}>
+            <IPlus size={14} /> Add template
+          </button>
+        }
+      />
+      {commTemplates.length === 0 ? (
+        <EmptyState icon={<ICheck size={20} />} title="No templates yet" body="Seed wording is used as a fallback. Add templates here to edit wording without a deploy." />
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="tbl min-w-[720px]">
+            <thead>
+              <tr>
+                <th>Key</th><th>Channel</th><th>Stage</th><th>Name</th><th>Status</th><th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...commTemplates].sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id).map((t) => (
+                <tr key={t.id}>
+                  <td className="mono text-[11.5px]">{t.key}</td>
+                  <td><Chip tone={t.channel === "email" ? "sky" : t.channel === "call" ? "amber" : "mint"}>{t.channel}</Chip></td>
+                  <td className="text-[12px]">{COMM_STAGE_LABEL[t.stageKey] ?? t.stageKey}</td>
+                  <td className="text-[12.5px]">{t.name}</td>
+                  <td><Chip tone={t.active ? "mint" : "slate"}>{t.active ? "active" : "off"}</Chip></td>
+                  <td className="text-right whitespace-nowrap">
+                    <button className="btn btn-ghost btn-sm !px-2" title="Edit"
+                      onClick={() => {
+                        setEditing({
+                          id: t.id, key: t.key, channel: t.channel, stageKey: t.stageKey,
+                          bank: t.bank, name: t.name, subject: t.subject ?? "", body: t.body, active: t.active,
+                        });
+                        setCreating(false);
+                      }}>
+                      <IPencil size={13} />
+                    </button>
+                    <button className="btn btn-ghost btn-sm !px-2" title="Delete" style={{ color: "var(--coral)" }} onClick={() => setDeleting(t)}>
+                      <ITrash size={13} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {editing && (
+        <Modal onClose={() => setEditing(null)} title={creating ? "Add template" : `Edit ${editing.name}`}>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="label">Key (unique id)</label>
+                <input className="input mono" placeholder="wa-doc-list" value={editing.key}
+                  onChange={(e) => setEditing({ ...editing, key: e.target.value })} />
+              </div>
+              <div>
+                <label className="label">Name</label>
+                <input className="input" placeholder="Doc list request" value={editing.name}
+                  onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
+              </div>
+              <div>
+                <label className="label">Channel</label>
+                <select className="select" value={editing.channel}
+                  onChange={(e) => setEditing({ ...editing, channel: e.target.value as CommDraft["channel"] })}>
+                  {COMM_CHANNELS.map((ch) => <option key={ch} value={ch}>{ch}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="label">Stage</label>
+                <select className="select" value={editing.stageKey}
+                  onChange={(e) => setEditing({ ...editing, stageKey: e.target.value as CommDraft["stageKey"] })}>
+                  {COMM_STAGES.map((s) => <option key={s} value={s}>{COMM_STAGE_LABEL[s]}</option>)}
+                </select>
+              </div>
+            </div>
+            {editing.channel === "email" && (
+              <div>
+                <label className="label">Subject</label>
+                <input className="input" value={editing.subject}
+                  onChange={(e) => setEditing({ ...editing, subject: e.target.value })} />
+              </div>
+            )}
+            <div>
+              <label className="label">Body</label>
+              <textarea className="textarea" rows={6} value={editing.body}
+                onChange={(e) => setEditing({ ...editing, body: e.target.value })} />
+            </div>
+            <label className="flex items-center gap-2 text-[12.5px]">
+              <input type="checkbox" checked={editing.active}
+                onChange={(e) => setEditing({ ...editing, active: e.target.checked })} />
+              Active
+            </label>
+            <div className="flex gap-2 justify-end">
+              <button className="btn btn-ghost btn-sm" onClick={() => setEditing(null)}>Cancel</button>
+              <button className="btn btn-primary btn-sm" onClick={save} disabled={busy}>
+                <ICheck size={14} /> {busy ? "Saving…" : "Save"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      <ConfirmModal
+        open={!!deleting}
+        onClose={() => setDeleting(null)}
+        onConfirm={confirmDelete}
+        title={`Delete "${deleting?.name ?? ""}"?`}
+        body="The stage drawer will fall back to the seed wording for this key."
+        confirmLabel="Delete"
+      />
+    </div>
+  );
+}
+
+/* ------------------------------ notifications ------------------------------ */
+
+interface NotifState {
+  emailProvider: "disabled" | "resend" | "smtp";
+  emailFromName: string;
+  emailFromAddress: string;
+  resendApiKey: string;
+  smtpHost: string;
+  smtpPort: number;
+  smtpUser: string;
+  smtpPass: string;
+  smtpTls: "starttls" | "ssl" | "none";
+  chatRetentionMode: "forever" | "months" | "manual";
+  chatRetentionMonths: number;
+  notifClientPush: boolean;
+  notifClientWhatsapp: boolean;
+  notifClientEmail: boolean;
+  notifStaffPush: boolean;
+  notifStaffWhatsapp: boolean;
+  notifStaffEmail: boolean;
+  notifAgentPush: boolean;
+  notifAgentWhatsapp: boolean;
+  notifAgentEmail: boolean;
+  notifSoundEnabled: boolean;
+  notifSoundVolume: number;
+  notifStaffOnClientChat: boolean;
+  notifStaffOnAgentChat: boolean;
+  notifStaffOnTaskAssigned: boolean;
+  notifStaffOnTaskOverdue: boolean;
+  notifStaffOnDocUpload: boolean;
+  notifStaffOnStageChange: boolean;
+  notifStaffOnLeadAssigned: boolean;
+  notifClientOnStaffReply: boolean;
+  notifClientOnDocRequest: boolean;
+  notifClientOnStageChange: boolean;
+  notifAgentOnStaffReply: boolean;
+  notifAgentOnStageChange: boolean;
+  notifAgentOnCommission: boolean;
+}
+
+/* Notification-settings helpers — deliberately module-level (not created
+   during render) so React keeps a stable component identity; the previous
+   in-render `Toggle`/`Field` defs shadowed the shared ones and tripped
+   react-hooks/static-components. */
+function NotifToggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label className="flex items-center gap-2 text-[12.5px] cursor-pointer select-none">
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      {label}
+    </label>
+  );
+}
+
+function NotifInput({ label, value, onChange, type = "text", placeholder }: { label: string; value: string | number; onChange: (v: string) => void; type?: string; placeholder?: string }) {
+  return (
+    <div className="space-y-1">
+      <label className="text-[11px] font-medium text-[var(--ink-faint)] uppercase tracking-wider">{label}</label>
+      <input
+        className="input input-sm w-full"
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+      />
+    </div>
+  );
+}
+
+function NotificationsTab() {
+  const { toast } = useHfmcStore();
+  const [cfg, setCfg] = useState<NotifState | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [purging, setPurging] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  // Snapshot of what the server last confirmed — lets us show an explicit
+  // "unsaved changes" flag so ticking a toggle is never mistaken for saving.
+  const [saved, setSaved] = useState<string>("");
+
+  // FIX: the GET route wraps the payload as { settings } — unwrap it here.
+  // The old code set the whole wrapper as config, so every toggle read
+  // `undefined` (always OFF) and saving POSTed the wrapper back.
+  useEffect(() => {
+    fetch("/api/admin/notification-settings")
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`load failed (${r.status})`);
+        return r.json();
+      })
+      .then((d) => {
+        const loaded = d.settings ?? d;
+        setCfg(loaded);
+        setSaved(JSON.stringify(loaded));
+      })
+      .catch(() => setLoadError("Could not load notification settings — check your connection and reopen Settings."));
+  }, []);
+
+  const save = async () => {
+    if (!cfg) return;
+    setBusy(true);
+    try {
+      const res = await fetch("/api/admin/notification-settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(cfg),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as { error?: string };
+        toast("error", err.error || "Could not save.");
+        return;
+      }
+      const data = await res.json().catch(() => null) as { settings?: NotifState } | null;
+      // Re-sync from the server (masks secrets) so toggles reflect saved truth
+      if (data?.settings) {
+        setCfg(data.settings);
+        setSaved(JSON.stringify(data.settings));
+      } else {
+        setSaved(JSON.stringify(cfg));
+      }
+      toast("success", "Notification settings saved.");
+    } catch {
+      toast("error", "Could not save — check your connection.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const purge = async () => {
+    setPurging(true);
+    const res = await fetch("/api/admin/chat-purge", { method: "POST" });
+    setPurging(false);
+    const data = await res.json().catch(() => ({})) as { deleted?: number };
+    if (!res.ok) { toast("error", "Purge failed."); return; }
+    toast("success", `Purged ${data.deleted ?? 0} old messages.`);
+  };
+
+  if (!cfg) {
+    return (
+      <div className="card p-6 text-center text-[13px] text-[var(--ink-dim)]">
+        {loadError ?? "Loading notification settings…"}
+      </div>
+    );
+  }
+
+  const dirty = saved !== JSON.stringify(cfg);
+
+  const patch = (p: Partial<NotifState>) => setCfg({ ...cfg, ...p });
+
+  return (
+    <div className="space-y-4 anim-fade-up">
+      {/* Email provider */}
+      <div className="card p-5 space-y-4">
+        <h3 className="font-disp font-semibold text-[14px] m-0">Email Provider</h3>
+        <div className="flex gap-3 flex-wrap">
+          {(["disabled", "resend", "smtp"] as const).map((v) => (
+            <label key={v} className="flex items-center gap-1.5 text-[12.5px] cursor-pointer">
+              <input type="radio" name="emailProvider" checked={cfg.emailProvider === v} onChange={() => patch({ emailProvider: v })} />
+              {v === "disabled" ? "Disabled" : v === "resend" ? "Resend (API)" : "SMTP"}
+            </label>
+          ))}
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <NotifInput label="From name" value={cfg.emailFromName} onChange={(v) => patch({ emailFromName: v })} />
+          <NotifInput label="From address" value={cfg.emailFromAddress} onChange={(v) => patch({ emailFromAddress: v })} />
+        </div>
+        {cfg.emailProvider === "resend" && (
+          <NotifInput label="Resend API key" value={cfg.resendApiKey} onChange={(v) => patch({ resendApiKey: v })} type="password" placeholder="re_…" />
+        )}
+        {cfg.emailProvider === "smtp" && (
+          <div className="grid grid-cols-2 gap-3">
+            <NotifInput label="Host" value={cfg.smtpHost} onChange={(v) => patch({ smtpHost: v })} />
+            <NotifInput label="Port" value={cfg.smtpPort} onChange={(v) => patch({ smtpPort: parseInt(v) || 587 })} type="number" />
+            <NotifInput label="User" value={cfg.smtpUser} onChange={(v) => patch({ smtpUser: v })} />
+            <NotifInput label="Password" value={cfg.smtpPass} onChange={(v) => patch({ smtpPass: v })} type="password" />
+            <div className="space-y-1">
+              <label className="text-[11px] font-medium text-[var(--ink-faint)] uppercase tracking-wider">TLS</label>
+              <select className="input input-sm w-full" value={cfg.smtpTls} onChange={(e) => patch({ smtpTls: e.target.value as NotifState["smtpTls"] })}>
+                <option value="starttls">STARTTLS</option>
+                <option value="ssl">SSL/TLS</option>
+                <option value="none">None</option>
+              </select>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Global channel toggles per audience */}
+      <div className="card p-5 space-y-4">
+        <h3 className="font-disp font-semibold text-[14px] m-0">Notification Channels</h3>
+        <div className="grid grid-cols-3 gap-4">
+          <div className="space-y-2">
+            <span className="text-[11px] font-semibold text-[var(--ink-faint)] uppercase">Staff</span>
+            <NotifToggle label="Push" checked={cfg.notifStaffPush} onChange={(v) => patch({ notifStaffPush: v })} />
+            <NotifToggle label="WhatsApp" checked={cfg.notifStaffWhatsapp} onChange={(v) => patch({ notifStaffWhatsapp: v })} />
+            <NotifToggle label="Email" checked={cfg.notifStaffEmail} onChange={(v) => patch({ notifStaffEmail: v })} />
+          </div>
+          <div className="space-y-2">
+            <span className="text-[11px] font-semibold text-[var(--ink-faint)] uppercase">Client</span>
+            <NotifToggle label="Push" checked={cfg.notifClientPush} onChange={(v) => patch({ notifClientPush: v })} />
+            <NotifToggle label="WhatsApp" checked={cfg.notifClientWhatsapp} onChange={(v) => patch({ notifClientWhatsapp: v })} />
+            <NotifToggle label="Email" checked={cfg.notifClientEmail} onChange={(v) => patch({ notifClientEmail: v })} />
+          </div>
+          <div className="space-y-2">
+            <span className="text-[11px] font-semibold text-[var(--ink-faint)] uppercase">Agent</span>
+            <NotifToggle label="Push" checked={cfg.notifAgentPush} onChange={(v) => patch({ notifAgentPush: v })} />
+            <NotifToggle label="WhatsApp" checked={cfg.notifAgentWhatsapp} onChange={(v) => patch({ notifAgentWhatsapp: v })} />
+            <NotifToggle label="Email" checked={cfg.notifAgentEmail} onChange={(v) => patch({ notifAgentEmail: v })} />
+          </div>
+        </div>
+      </div>
+
+      {/* Staff event triggers */}
+      <div className="card p-5 space-y-4">
+        <h3 className="font-disp font-semibold text-[14px] m-0">Staff Events</h3>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          <NotifToggle label="Client chat message" checked={cfg.notifStaffOnClientChat} onChange={(v) => patch({ notifStaffOnClientChat: v })} />
+          <NotifToggle label="Agent chat message" checked={cfg.notifStaffOnAgentChat} onChange={(v) => patch({ notifStaffOnAgentChat: v })} />
+          <NotifToggle label="Task assigned" checked={cfg.notifStaffOnTaskAssigned} onChange={(v) => patch({ notifStaffOnTaskAssigned: v })} />
+          <NotifToggle label="Task overdue" checked={cfg.notifStaffOnTaskOverdue} onChange={(v) => patch({ notifStaffOnTaskOverdue: v })} />
+          <NotifToggle label="Document uploaded" checked={cfg.notifStaffOnDocUpload} onChange={(v) => patch({ notifStaffOnDocUpload: v })} />
+          <NotifToggle label="Stage changed" checked={cfg.notifStaffOnStageChange} onChange={(v) => patch({ notifStaffOnStageChange: v })} />
+          <NotifToggle label="Lead assigned" checked={cfg.notifStaffOnLeadAssigned} onChange={(v) => patch({ notifStaffOnLeadAssigned: v })} />
+        </div>
+      </div>
+
+      {/* Client event triggers */}
+      <div className="card p-5 space-y-4">
+        <h3 className="font-disp font-semibold text-[14px] m-0">Client Events</h3>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          <NotifToggle label="Staff reply" checked={cfg.notifClientOnStaffReply} onChange={(v) => patch({ notifClientOnStaffReply: v })} />
+          <NotifToggle label="Doc request" checked={cfg.notifClientOnDocRequest} onChange={(v) => patch({ notifClientOnDocRequest: v })} />
+          <NotifToggle label="Stage change" checked={cfg.notifClientOnStageChange} onChange={(v) => patch({ notifClientOnStageChange: v })} />
+        </div>
+      </div>
+
+      {/* Agent event triggers */}
+      <div className="card p-5 space-y-4">
+        <h3 className="font-disp font-semibold text-[14px] m-0">Agent Events</h3>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          <NotifToggle label="Staff reply" checked={cfg.notifAgentOnStaffReply} onChange={(v) => patch({ notifAgentOnStaffReply: v })} />
+          <NotifToggle label="Stage change" checked={cfg.notifAgentOnStageChange} onChange={(v) => patch({ notifAgentOnStageChange: v })} />
+          <NotifToggle label="Commission update" checked={cfg.notifAgentOnCommission} onChange={(v) => patch({ notifAgentOnCommission: v })} />
+        </div>
+      </div>
+
+      {/* Sound */}
+      <div className="card p-5 space-y-4">
+        <h3 className="font-disp font-semibold text-[14px] m-0">Sound</h3>
+        <NotifToggle label="Enable notification sound" checked={cfg.notifSoundEnabled} onChange={(v) => patch({ notifSoundEnabled: v })} />
+        {cfg.notifSoundEnabled && (
+          <div className="flex items-center gap-3">
+            <span className="text-[11px] text-[var(--ink-faint)]">Volume</span>
+            <input type="range" min={0} max={100} value={cfg.notifSoundVolume} onChange={(e) => patch({ notifSoundVolume: parseInt(e.target.value) })} className="flex-1" />
+            <span className="text-[12px] font-mono w-8 text-right">{cfg.notifSoundVolume}%</span>
+          </div>
+        )}
+      </div>
+
+      {/* Chat retention */}
+      <div className="card p-5 space-y-4">
+        <h3 className="font-disp font-semibold text-[14px] m-0">Chat History Retention</h3>
+        <div className="flex gap-3 flex-wrap">
+          {(["forever", "months", "manual"] as const).map((v) => (
+            <label key={v} className="flex items-center gap-1.5 text-[12.5px] cursor-pointer">
+              <input type="radio" name="retention" checked={cfg.chatRetentionMode === v} onChange={() => patch({ chatRetentionMode: v })} />
+              {v === "forever" ? "Keep forever" : v === "months" ? "Auto-purge" : "Manual only"}
+            </label>
+          ))}
+        </div>
+        {cfg.chatRetentionMode === "months" && (
+          <div className="flex items-center gap-2">
+            <span className="text-[12.5px]">Delete messages older than</span>
+            <input type="number" className="input input-sm w-20" min={1} max={120} value={cfg.chatRetentionMonths} onChange={(e) => patch({ chatRetentionMonths: parseInt(e.target.value) || 12 })} />
+            <span className="text-[12.5px]">months</span>
+          </div>
+        )}
+        <button className="btn btn-ghost btn-sm text-[var(--coral)]" onClick={purge} disabled={purging}>
+          {purging ? "Purging…" : "Purge old messages now"}
+        </button>
+      </div>
+
+      {/* Save — the toggles above only change local state; this writes them.
+          The dirty flag removes the "did my tick save?" ambiguity. */}
+      <div className="flex items-center justify-end gap-3 sticky bottom-2">
+        {dirty && (
+          <span className="text-[12px] mono flex items-center gap-1.5" style={{ color: "var(--amber)" }}>
+            <span className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--amber)" }} />
+            unsaved changes
+          </span>
+        )}
+        <button
+          className={`btn ${dirty ? "btn-primary" : "btn-ghost"}`}
+          onClick={save}
+          disabled={busy || !dirty}
+          title={dirty ? "Write these settings to the server" : "Everything is already saved"}
+        >
+          <ICheck size={14} /> {busy ? "Saving…" : dirty ? "Save notification settings" : "Saved"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------ devices ------------------------------ */
+
+interface DeviceRow {
+  id: number;
+  ownerType: "staff" | "agent";
+  ownerName: string;
+  ownerRole: string;
+  deviceType: string;
+  browser: string;
+  pwaInstalled: boolean;
+  hasPush: boolean;
+  installedAt: string | null;
+  lastSeenAt: string;
+}
+
+function DevicesTab() {
+  const { toast } = useHfmcStore();
+  // `null` = still loading (derived — the effect body never calls setState
+  // synchronously, which keeps react-hooks/set-state-in-effect happy).
+  const [devices, setDevices] = useState<DeviceRow[] | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    // The GET route returns { devices: [...] } (wrapped) — unwrap it. The old
+    // code stored the wrapper object as the array, so `devices.length` was
+    // undefined and the tab always showed "No registered devices".
+    fetch("/api/admin/devices")
+      .then((r) => r.json())
+      .then((d: DeviceRow[] | { devices?: DeviceRow[] }) => {
+        if (cancelled) return;
+        const rows = Array.isArray(d) ? d : (d.devices ?? []);
+        setDevices(Array.isArray(rows) ? rows : []);
+      })
+      .catch(() => { if (!cancelled) setDevices([]); });
+    return () => { cancelled = true; };
+  }, [reloadKey]);
+
+  const revoke = async (id: number) => {
+    const res = await fetch(`/api/admin/devices?id=${id}`, { method: "DELETE" });
+    if (!res.ok) { toast("error", "Could not revoke."); return; }
+    toast("success", "Device subscription revoked.");
+    setReloadKey((k) => k + 1);
+  };
+
+  if (devices === null) return <div className="card p-6 text-center text-[13px] text-[var(--ink-dim)]">Loading devices…</div>;
+
+  if (devices.length === 0) {
+    return (
+      <EmptyState
+        icon={<IShield size={28} />}
+        title="No registered devices"
+        body="When staff or clients install the PWA and enable push notifications, their devices will appear here."
+      />
+    );
+  }
+
+  return (
+    <div className="card overflow-hidden anim-fade-up">
+      <table className="w-full text-[12.5px]">
+        <thead>
+          <tr className="text-left text-[11px] text-[var(--ink-faint)] uppercase tracking-wider border-b border-[var(--border)]">
+            <th className="p-3">Owner</th>
+            <th className="p-3">Type</th>
+            <th className="p-3 hidden sm:table-cell">Browser</th>
+            <th className="p-3 hidden sm:table-cell">Push</th>
+            <th className="p-3 hidden sm:table-cell">Last seen</th>
+            <th className="p-3 w-16"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {devices.map((d) => (
+            <tr key={d.id} className="border-b border-[var(--border)] hover:bg-[var(--hover)]">
+              <td className="p-3 font-medium">
+                {d.ownerName}
+                <span className="block text-[11px] font-normal text-[var(--ink-faint)]">{d.ownerType === "staff" ? d.ownerRole : "Partner"} · {d.pwaInstalled ? "PWA installed" : "browser"}</span>
+              </td>
+              <td className="p-3">
+                <Chip tone="slate">{d.deviceType || "unknown"}</Chip>
+              </td>
+              <td className="p-3 hidden sm:table-cell text-[var(--ink-dim)]">
+                {d.browser || "—"}
+              </td>
+              <td className="p-3 hidden sm:table-cell text-[var(--ink-dim)]">
+                {d.hasPush ? "✓ subscribed" : "—"}
+              </td>
+              <td className="p-3 hidden sm:table-cell text-[var(--ink-dim)]">
+                {new Date(d.lastSeenAt).toLocaleDateString()}
+              </td>
+              <td className="p-3">
+                <button className="btn btn-ghost btn-xs text-[var(--coral)]" onClick={() => revoke(d.id)} title="Revoke push subscription">
+                  <ITrash size={13} />
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+

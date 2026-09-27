@@ -2,12 +2,12 @@
 
 import { useEffect, useState, type ReactElement } from "react";
 import { useAgentStore, type AgentRoute, type AgentCase, type AgentProfile } from "./agent-store";
-import { fmtMoney, ageDays, relTime } from "@/lib/format";
+import { fmtMoney, ageDays, relTime, greetingFor } from "@/lib/format";
 import {
   LogoMark, ICheck, ILogout, IPlus, IHome, IBriefcase, ICalc, IUsers,
   IWhatsapp, IUpload, ITrophy, ITarget, IZap, IShield, IArrowR, IAlert,
 } from "@/components/icons";
-import { ThemeToggle } from "@/components/hfmc/ui";
+import { ThemeToggle, Tabs, KpiValue } from "@/components/hfmc/ui";
 import {
   CBUAE, ltvCap, emiOf, eligibleEmi, maxLoanFor, maxTenorYears, cashToClose, RULES_FOOTNOTE,
   type Residency, type PropertyCount, type TxnType, type Emirate,
@@ -51,14 +51,15 @@ export function AgentDashboard() {
           </button>
         </div>
         {/* desktop pills */}
-        <div className="hidden md:flex max-w-[900px] mx-auto px-4 pb-2 gap-1.5">
-          {TABS.map(({ id, label, Icon }) => (
-            <button key={id} onClick={() => setRoute(id)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-disp font-semibold transition-all"
-              style={route === id ? { background: "var(--amber-tint)", color: "var(--amber)" } : { color: "var(--ink-faint)" }}>
-              <Icon size={14} /> {label}
-            </button>
-          ))}
+        <div className="hidden md:flex max-w-[900px] mx-auto px-4 pb-2.5">
+          <Tabs
+            scroll
+            value={route}
+            onChange={setRoute}
+            options={TABS.map(({ id, label, Icon }) => ({
+              value: id, label, icon: <Icon size={14} />,
+            }))}
+          />
         </div>
       </header>
 
@@ -78,7 +79,7 @@ export function AgentDashboard() {
             className="flex-1 flex flex-col items-center gap-0.5 py-2.5"
             style={{ color: route === id ? "var(--amber)" : "var(--ink-faint)" }}>
             <Icon size={19} />
-            <span className="text-[9px] font-disp font-semibold">{label.split(" ")[0]}</span>
+            <span className="text-[10.5px] font-disp font-semibold leading-tight">{label.split(" ")[0]}</span>
           </button>
         ))}
       </nav>
@@ -91,8 +92,8 @@ export function AgentDashboard() {
 function HomeTab({ goto }: { goto: (r: AgentRoute) => void }) {
   const { me, cases, stats, profile, desk } = useAgentStore();
   const [copied, setCopied] = useState(false);
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  // same helper as the staff dashboard, so partners and staff are greeted identically
+  const greeting = greetingFor(me?.name);
   const firstTime = cases.length === 0;
   const sharePct = profile?.sharePct ?? 20;
   const recent = cases.slice(0, 3);
@@ -107,8 +108,8 @@ function HomeTab({ goto }: { goto: (r: AgentRoute) => void }) {
       <div className="anim-fade-up rounded-2xl p-5 relative overflow-hidden"
         style={{ background: "linear-gradient(135deg, color-mix(in srgb, var(--amber) 16%, var(--raised)), var(--raised))", border: "1px solid color-mix(in srgb, var(--amber) 35%, var(--line))" }}>
         <div className="absolute -right-8 -top-8 w-40 h-40 rounded-full" style={{ background: "radial-gradient(circle, rgba(242,176,76,0.14), transparent 70%)" }} />
-        <p className="text-[12px] text-[var(--ink-dim)] m-0">{greeting},</p>
-        <h1 className="font-disp font-bold text-[24px] tracking-tight m-0 mt-0.5">{me?.name}</h1>
+        <h1 className="font-disp font-bold text-[24px] tracking-tight m-0">{greeting}</h1>
+        <p className="text-[12.5px] text-[var(--ink-dim)] mt-0.5 mb-0">{me?.name}</p>
         <div className="flex flex-wrap items-center gap-2 mt-3">
           <span className="chip !py-1" style={{ background: "rgba(67,214,155,0.12)", borderColor: "var(--mint)", color: "var(--mint)" }}>
             <ITrophy size={12} /> {sharePct}% commission on every closed referral
@@ -139,8 +140,8 @@ function HomeTab({ goto }: { goto: (r: AgentRoute) => void }) {
 
       {/* stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 anim-fade-up">
-        <StatCard label="Active referrals" value={String(stats.activeCount)} sub={`${fmtMoney(stats.totalPipelineValue)} in flight`} color="var(--amber)" />
-        <StatCard label="Booked deals" value={String(stats.bookedCount)} sub={stats.lostCount ? `${stats.lostCount} lost` : "none lost"} color="var(--mint)" />
+        <StatCard label="Active referrals" value={String(stats.activeCount)} count={stats.activeCount} sub={`${fmtMoney(stats.totalPipelineValue)} in flight`} color="var(--amber)" />
+        <StatCard label="Booked deals" value={String(stats.bookedCount)} count={stats.bookedCount} sub={stats.lostCount ? `${stats.lostCount} lost` : "none lost"} color="var(--mint)" />
         <StatCard label="Commission earned" value={fmtMoney(stats.totalCommissionEarned)} sub="from booked deals" color="var(--amber)" highlight />
         <StatCard label="Projected" value={fmtMoney(stats.projectedCommission)} sub="from active deals" color="var(--sky)" />
       </div>
@@ -152,7 +153,7 @@ function HomeTab({ goto }: { goto: (r: AgentRoute) => void }) {
           {(desk?.name || "HF").split(" ").map((w) => w[0]).slice(0, 2).join("")}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-[10px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)]">Your mortgage desk</div>
+          <div className="text-[10.5px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)]">Your mortgage desk</div>
           <div className="text-[14.5px] font-medium leading-tight">{desk?.name || "HFMC Partnership Team"}</div>
           <div className="text-[11px] text-[var(--ink-faint)]">Qualifies your lead within the hour · replies fast on WhatsApp</div>
         </div>
@@ -192,7 +193,7 @@ function HomeTab({ goto }: { goto: (r: AgentRoute) => void }) {
                 </div>
                 <div className="text-right shrink-0">
                   <p className="mono text-[12px] m-0">{fmtMoney(c.loanAmount)}</p>
-                  <p className="text-[10px] text-[var(--ink-faint)] m-0">est. <span className="mono" style={{ color: "var(--mint)" }}>{fmtMoney(c.commission.partnerCut)}</span></p>
+                  <p className="text-[10.5px] text-[var(--ink-faint)] m-0">est. <span className="mono" style={{ color: "var(--mint)" }}>{fmtMoney(c.commission.partnerCut)}</span></p>
                 </div>
               </div>
             ))}
@@ -200,17 +201,23 @@ function HomeTab({ goto }: { goto: (r: AgentRoute) => void }) {
         </div>
       )}
 
-      <p className="text-[10px] text-[var(--ink-faint)] text-center m-0">HFMC Mortgage · UAE · Commission figures are indicative and subject to final bank payout.</p>
+      <p className="text-[10.5px] text-[var(--ink-faint)] text-center m-0">HFMC Mortgage · UAE · Commission figures are indicative and subject to final bank payout.</p>
     </>
   );
 }
 
-function StatCard({ label, value, sub, color, highlight }: { label: string; value: string; sub: string; color: string; highlight?: boolean }) {
+function StatCard({ label, value, sub, color, highlight, count }: { label: string; value: string; sub: string; color: string; highlight?: boolean; count?: number }) {
+  // built on the shared .kpi primitive so this strip shares a baseline with the
+  // dashboard/admin/calculator tiles (was its own 19px/10.5px sizing)
+  // `count` is passed only for the plain-integer tiles; money tiles arrive
+  // pre-formatted (fmtMoney) and can't be counted without re-parsing the string.
   return (
-    <div className="card p-4 rounded-2xl" style={highlight ? { background: "linear-gradient(180deg, var(--amber-tint), var(--surface))" } : undefined}>
-      <div className="text-[9.5px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)]">{label}</div>
-      <div className="font-disp font-bold text-[19px] mt-1 truncate" style={{ color }}>{value}</div>
-      <div className="text-[10.5px] text-[var(--ink-faint)] mt-0.5 truncate">{sub}</div>
+    <div className={"kpi kpi-plain" + (highlight ? " kpi-accent" : "")}>
+      <div className="kpi-label">{label}</div>
+      {count !== undefined
+        ? <KpiValue value={count} style={{ color }} />
+        : <div className="kpi-value" style={{ color }}>{value}</div>}
+      <div className="kpi-sub">{sub}</div>
     </div>
   );
 }
@@ -379,7 +386,7 @@ function LeadsTab({ goto }: { goto: (r: AgentRoute) => void }) {
               </div>
               <div className="text-right shrink-0">
                 <p className="mono text-[12.5px] m-0">{fmtMoney(c.loanAmount)}</p>
-                <p className="text-[10px] text-[var(--ink-faint)] m-0">est. <span className="mono" style={{ color: "var(--mint)" }}>{fmtMoney(c.commission.partnerCut)}</span></p>
+                <p className="text-[10.5px] text-[var(--ink-faint)] m-0">est. <span className="mono" style={{ color: "var(--mint)" }}>{fmtMoney(c.commission.partnerCut)}</span></p>
               </div>
               <span className="text-[var(--ink-faint)] shrink-0"><IChevronish open={open} /></span>
             </button>
@@ -393,9 +400,9 @@ function LeadsTab({ goto }: { goto: (r: AgentRoute) => void }) {
                 </div>
                 {c.statusNote && (
                   <div className="rounded-xl px-3 py-2.5" style={{ background: "var(--tint)" }}>
-                    <div className="text-[9.5px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)] mb-0.5">Latest update</div>
+                    <div className="text-[10.5px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)] mb-0.5">Latest update</div>
                     <p className="text-[12px] text-[var(--ink-dim)] m-0 leading-relaxed whitespace-pre-wrap">{c.statusNote}</p>
-                    <p className="text-[10px] text-[var(--ink-faint)] m-0 mt-1">{relTime(c.updatedAt)}</p>
+                    <p className="text-[10.5px] text-[var(--ink-faint)] m-0 mt-1">{relTime(c.updatedAt)}</p>
                   </div>
                 )}
                 <div className="flex flex-wrap gap-1">
@@ -404,7 +411,7 @@ function LeadsTab({ goto }: { goto: (r: AgentRoute) => void }) {
                     const reached = idx >= 0 && stages.indexOf(s) <= idx;
                     const current = s.label === c.stage;
                     return (
-                      <span key={s.id} className="chip !py-0.5 text-[9.5px]"
+                      <span key={s.id} className="chip !py-0.5 text-[10.5px]"
                         style={current
                           ? { background: "rgba(242,176,76,0.16)", borderColor: "var(--amber)", color: "var(--amber)" }
                           : reached
@@ -436,7 +443,7 @@ function IChevronish({ open }: { open: boolean }) {
 function Field({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (
     <div>
-      <div className="text-[9.5px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)]">{label}</div>
+      <div className="text-[10.5px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)]">{label}</div>
       <div className="text-[12.5px] mt-0.5" style={{ color: highlight ? "var(--mint)" : "var(--ink)", fontWeight: highlight ? 700 : 500 }}>{value}</div>
     </div>
   );
@@ -509,7 +516,7 @@ function Slider({ label, value, min, max, step, onChange, format, hint }: {
       </div>
       <input type="range" className="arange" min={min} max={max} step={step} value={value}
         onChange={(e) => onChange(Number(e.target.value))} />
-      {hint && <p className="text-[10px] text-[var(--ink-faint)] m-0 -mt-1">{hint}</p>}
+      {hint && <p className="text-[10.5px] text-[var(--ink-faint)] m-0 -mt-1">{hint}</p>}
     </div>
   );
 }
@@ -520,17 +527,12 @@ function SegGroup<T extends string>({ label, value, opts, onChange }: {
   return (
     <div>
       <label className="label">{label}</label>
-      <div className="flex flex-wrap gap-1.5">
-        {opts.map((o) => (
-          <button key={o} onClick={() => onChange(o)}
-            className="px-2.5 py-1.5 rounded-lg text-[11.5px] font-disp font-semibold transition-all"
-            style={value === o
-              ? { background: "var(--amber-tint)", color: "var(--amber)", border: "1px solid color-mix(in srgb, var(--amber) 45%, var(--line))" }
-              : { background: "var(--tint)", color: "var(--ink-faint)", border: "1px solid var(--line-soft)" }}>
-            {o}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        className="flex-wrap"
+        value={value}
+        onChange={onChange}
+        options={opts.map((o) => ({ value: o, label: o }))}
+      />
     </div>
   );
 }
@@ -587,7 +589,7 @@ function MortgageCalc() {
             <span className="mono text-[12.5px] font-semibold" style={{ color: "var(--amber)" }}>{age}</span>
           </div>
           <input type="range" className="arange" min={21} max={65} step={1} value={age} onChange={(e) => setAge(Number(e.target.value))} />
-          <p className="text-[10px] text-[var(--ink-faint)] m-0 -mt-1">
+          <p className="text-[10.5px] text-[var(--ink-faint)] m-0 -mt-1">
             Tenure is capped at {CBUAE.maxTenorYears}y and by age at loan maturity ({employment === "Salaried" ? CBUAE.maturityAgeSalaried : CBUAE.maturityAgeSelfEmp} for {employment === "Salaried" ? "salaried" : "self-employed"}).
           </p>
         </div>
@@ -606,7 +608,7 @@ function MortgageCalc() {
         ) : (
           <>
             <div className="card p-5 rounded-2xl anim-fade-up" style={{ background: "linear-gradient(135deg, color-mix(in srgb, var(--amber) 12%, var(--raised)), var(--raised))", borderColor: "color-mix(in srgb, var(--amber) 35%, var(--line))" }}>
-              <div className="text-[10px] uppercase tracking-[0.12em] font-disp font-semibold text-[var(--ink-faint)]">Indicative max finance</div>
+              <div className="text-[10.5px] uppercase tracking-[0.12em] font-disp font-semibold text-[var(--ink-faint)]">Indicative max finance</div>
               <div className="font-disp font-bold text-[26px] mt-0.5" style={{ color: "var(--amber)" }}>{fmtMoney(Math.round(maxLoan))}</div>
               <div className="text-[11.5px] text-[var(--ink-dim)] mt-1">
                 {affordable > 0
@@ -618,7 +620,7 @@ function MortgageCalc() {
             <div className="card p-5 rounded-2xl anim-fade-up space-y-3">
               <div className="flex items-baseline justify-between">
                 <h3 className="font-disp font-semibold text-[13px] m-0">For the {fmtMoney(price)} property</h3>
-                <span className="chip !py-0.5 text-[10px]" style={{ background: "var(--tint)", color: "var(--ink-dim)" }}>{ltv}% LTV</span>
+                <span className="chip !py-0.5 text-[10.5px]" style={{ background: "var(--tint)", color: "var(--ink-dim)" }}>{ltv}% LTV</span>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Down payment" value={fmtMoney(Math.round(cash.downPayment))} />
@@ -627,7 +629,7 @@ function MortgageCalc() {
                 <Field label="Est. cash to close" value={fmtMoney(Math.round(cash.total))} />
               </div>
               <div>
-                <div className="flex justify-between text-[10px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)] mb-1">
+                <div className="flex justify-between text-[10.5px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)] mb-1">
                   <span>DBR used {dbrUsed}% · cap {CBUAE.dbrPct}%</span>
                   <span>{overBudget ? "over" : "within"} limit</span>
                 </div>
@@ -643,7 +645,7 @@ function MortgageCalc() {
               </div>
             </div>
 
-            <p className="text-[10px] text-[var(--ink-faint)] m-0 leading-relaxed">{RULES_FOOTNOTE}</p>
+            <p className="text-[10.5px] text-[var(--ink-faint)] m-0 leading-relaxed">{RULES_FOOTNOTE}</p>
           </>
         )}
       </div>
@@ -683,15 +685,15 @@ function RentVsBuy() {
         <div className="card p-5 rounded-2xl anim-fade-up" style={{ background: "linear-gradient(135deg, color-mix(in srgb, var(--amber) 12%, var(--raised)), var(--raised))", borderColor: "color-mix(in srgb, var(--amber) 35%, var(--line))" }}>
           <div className="flex items-stretch justify-between gap-3 text-center">
             <div className="flex-1">
-              <div className="text-[10px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)]">Buy (EMI)</div>
+              <div className="text-[10.5px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)]">Buy (EMI)</div>
               <div className="font-disp font-bold text-[21px] mt-0.5" style={{ color: "var(--amber)" }}>{fmtMoney(Math.round(emi))}</div>
-              <div className="text-[10px] text-[var(--ink-faint)]">per month · {ltv}% LTV</div>
+              <div className="text-[10.5px] text-[var(--ink-faint)]">per month · {ltv}% LTV</div>
             </div>
             <div className="w-px" style={{ background: "var(--line)" }} />
             <div className="flex-1">
-              <div className="text-[10px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)]">Rent</div>
+              <div className="text-[10.5px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)]">Rent</div>
               <div className="font-disp font-bold text-[21px] mt-0.5">{fmtMoney(rent)}</div>
-              <div className="text-[10px] text-[var(--ink-faint)]">per month · 1–4 cheques</div>
+              <div className="text-[10.5px] text-[var(--ink-faint)]">per month · 1–4 cheques</div>
             </div>
           </div>
           <p className="text-[12px] m-0 mt-3 text-center leading-relaxed" style={{ color: diff > 0 ? "var(--coral)" : "var(--mint)" }}>
@@ -746,7 +748,7 @@ function RatesTable() {
         <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
           {data.eibor.map((e) => (
             <div key={e.tenor} className="rounded-xl px-3 py-2.5 text-center" style={{ background: "var(--tint)", border: "1px solid var(--line-soft)" }}>
-              <div className="text-[9.5px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)]">{e.tenor}</div>
+              <div className="text-[10.5px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)]">{e.tenor}</div>
               <div className="mono text-[14px] font-semibold mt-0.5">{e.ratePct != null ? `${e.ratePct.toFixed(2)}%` : "—"}</div>
             </div>
           ))}
@@ -768,18 +770,18 @@ function RatesTable() {
                 <div className="flex-1 min-w-0 text-[13px] font-medium truncate">{r.bank}</div>
                 <div className="text-right shrink-0 w-24">
                   <div className="mono text-[13px]" style={{ color: "var(--amber)" }}>{r.fixedFrom != null ? `${r.fixedFrom.toFixed(2)}%` : "—"}</div>
-                  <div className="text-[9.5px] text-[var(--ink-faint)] uppercase tracking-wide">fixed from</div>
+                  <div className="text-[10.5px] text-[var(--ink-faint)] uppercase tracking-wide">fixed from</div>
                 </div>
                 <div className="text-right shrink-0 w-24">
                   <div className="mono text-[13px]" style={{ color: "var(--sky)" }}>{r.variableFrom != null ? `${r.variableFrom.toFixed(2)}%` : "—"}</div>
-                  <div className="text-[9.5px] text-[var(--ink-faint)] uppercase tracking-wide">variable from</div>
+                  <div className="text-[10.5px] text-[var(--ink-faint)] uppercase tracking-wide">variable from</div>
                 </div>
               </div>
             ))}
           </div>
         )}
       </div>
-      <p className="text-[10px] text-[var(--ink-faint)] m-0">Indicative &quot;from&quot; rates for client conversations — final pricing depends on the client profile, property and bank policy.</p>
+      <p className="text-[10.5px] text-[var(--ink-faint)] m-0">Indicative &quot;from&quot; rates for client conversations — final pricing depends on the client profile, property and bank policy.</p>
     </div>
   );
 }
@@ -792,7 +794,7 @@ function CommissionTable() {
   return (
     <div className="space-y-4">
       <div className="card p-5 rounded-2xl anim-fade-up" style={{ background: "linear-gradient(135deg, color-mix(in srgb, var(--mint) 12%, var(--raised)), var(--raised))", borderColor: "color-mix(in srgb, var(--mint) 35%, var(--line))" }}>
-        <div className="text-[10px] uppercase tracking-[0.12em] font-disp font-semibold text-[var(--ink-faint)]">Your referral rate</div>
+        <div className="text-[10.5px] uppercase tracking-[0.12em] font-disp font-semibold text-[var(--ink-faint)]">Your referral rate</div>
         <div className="font-disp font-bold text-[24px] mt-0.5" style={{ color: "var(--mint)" }}>{sharePct}% of HFMC&apos;s commission</div>
         <div className="text-[11.5px] text-[var(--ink-dim)] mt-1">on every referred deal that books — paid within 24 hours of the payout clearing.</div>
       </div>
@@ -894,7 +896,7 @@ function ProfileTab() {
           {p.expertise && <div className="text-[11px] mt-0.5" style={{ color: "var(--amber)" }}>{p.expertise}</div>}
         </div>
       </div>
-      <p className="text-[10px] text-[var(--ink-faint)] text-center m-0 -mt-2">Upload profile picture · minimum 96×96px, max 256×256px (auto-resized)</p>
+      <p className="text-[10.5px] text-[var(--ink-faint)] text-center m-0 -mt-2">Upload profile picture · minimum 96×96px, max 256×256px (auto-resized)</p>
 
       {/* basic information */}
       <ProfileCard title="Basic information">
@@ -911,7 +913,7 @@ function ProfileTab() {
 
       {/* IBAN verification */}
       <ProfileCard title="IBAN verification" right={
-        <span className="chip !py-0.5 text-[10px]" style={p.ibanVerified
+        <span className="chip !py-0.5 text-[10.5px]" style={p.ibanVerified
           ? { background: "rgba(67,214,155,0.12)", borderColor: "var(--mint)", color: "var(--mint)" }
           : { background: "rgba(242,176,76,0.12)", borderColor: "var(--amber)", color: "var(--amber)" }}>
           {p.ibanVerified ? "verified ✓" : p.iban ? "under review" : "not submitted"}
@@ -924,7 +926,7 @@ function ProfileTab() {
 
       {/* broker licence */}
       <ProfileCard title="Update broker licence" right={
-        <span className="chip !py-0.5 text-[10px]" style={p.licenseVerified
+        <span className="chip !py-0.5 text-[10.5px]" style={p.licenseVerified
           ? { background: "rgba(67,214,155,0.12)", borderColor: "var(--mint)", color: "var(--mint)" }
           : { background: "rgba(242,176,76,0.12)", borderColor: "var(--amber)", color: "var(--amber)" }}>
           {p.licenseVerified ? "verified ✓" : p.licenseNo ? "under review" : "not submitted"}
@@ -984,7 +986,7 @@ function ProfileTab() {
       <button className="btn btn-ghost w-full justify-center" style={{ color: "var(--coral)" }} onClick={logout}>
         <ILogout size={15} /> Log out
       </button>
-      <p className="text-[10px] text-[var(--ink-faint)] text-center m-0">HFMC Mortgage · UAE · {me.kind} portal</p>
+      <p className="text-[10.5px] text-[var(--ink-faint)] text-center m-0">HFMC Mortgage · UAE · {me.kind} portal</p>
     </div>
   );
 }

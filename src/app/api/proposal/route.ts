@@ -112,6 +112,16 @@ export async function POST(req: NextRequest) {
       emirate, feeTxn,
       goldenVisa: !!prof.primary.goldenVisa,
       islamicOnly: !!prof.primary.islamicOnly,
+      // FINAL PROPERTY CLASSIFICATION — printed on the proposal so the bank sees the
+      // same six canonical dimensions the CRM stores (UNKNOWN = "to verify")
+      propertyTypeCanonical: (c as unknown as { propertyTypeCanonical?: string }).propertyTypeCanonical ?? "UNKNOWN",
+      commercialSubtype: (c as unknown as { commercialSubtype?: string | null }).commercialSubtype ?? null,
+      propertyStage: (c as unknown as { propertyStage?: string }).propertyStage ?? "UNKNOWN",
+      constructionStatus: (c as unknown as { constructionStatus?: string }).constructionStatus ?? "UNKNOWN",
+      partyRelationship: (c as unknown as { partyRelationship?: string }).partyRelationship ?? "UNKNOWN",
+      existingFinance: (c as unknown as { existingFinance?: string }).existingFinance ?? "UNKNOWN",
+      transactionPurpose: (c as unknown as { transactionPurpose?: string }).transactionPurpose ?? "UNKNOWN",
+      propertyLocation: c.propertyLocation ?? null,
     },
     input,
     eibor: eiborRows.map((e) => ({ tenor: e.tenor, ratePct: e.ratePct })),
@@ -135,7 +145,7 @@ export async function POST(req: NextRequest) {
         : null;
       const bank = (prod as unknown as { bank?: { posPoints?: string; negPoints?: string } })?.bank;
       return { ...r, logoUrl: logoFor(r.bankName), commission: mode === "internal" ? commission[r.bankProductId] ?? null : null,
-        bankCosts: { processingFeePct: procPct, processingFee, lifeMonthly, propertyYearly },
+        bankCosts: { processingFeePct: procPct, processingFee, lifeMonthly, propertyYearly, valuationNote: r.fees?.valuationNote ?? fees?.valuation?.note ?? null },
         dbrIntro: pct(r.introEmi), dbrFollowOn: pct(r.followOnEmi), dbrStress: pct(r.stressEmi),
         earlySettlement, partialSettlement,
         posPoints: mode === "internal" ? bank?.posPoints ?? null : null,

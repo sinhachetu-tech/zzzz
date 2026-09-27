@@ -102,18 +102,20 @@ export interface RoleFlags {
   viewRevenue: boolean;
   editEibor: boolean; // may update the daily EIBOR benchmark table (granted per designation)
   manageDocs: boolean; // may upload/verify/reject/waive/delete/compress vault documents
+  clientChat: boolean; // may reply to client & agent chats
 }
 
-const SUPER_FLAGS: RoleFlags = { scope: "all", issueTasks: true, admin: true, super: true, viewRevenue: true, editEibor: true, manageDocs: true };
+const SUPER_FLAGS: RoleFlags = { scope: "all", issueTasks: true, admin: true, super: true, viewRevenue: true, editEibor: true, manageDocs: true, clientChat: true };
 
 export async function flagsFor(user: SessionUser): Promise<RoleFlags> {
   if (user.role === "Super Admin") return SUPER_FLAGS;
   const d = await db.designation.findUnique({ where: { name: user.role } });
-  if (!d) return { scope: "own", issueTasks: false, admin: false, super: false, viewRevenue: false, editEibor: false, manageDocs: true };
+  if (!d) return { scope: "own", issueTasks: false, admin: false, super: false, viewRevenue: false, editEibor: false, manageDocs: true, clientChat: true };
   return {
     scope: d.scope as RoleFlags["scope"], issueTasks: d.issueTasks, admin: d.admin, super: d.super,
     viewRevenue: d.viewRevenue, editEibor: (d as unknown as { editEibor?: boolean }).editEibor ?? false,
     manageDocs: (d as unknown as { manageDocs?: boolean }).manageDocs ?? true,
+    clientChat: (d as unknown as { clientChat?: boolean }).clientChat ?? true,
   };
 }
 

@@ -3,7 +3,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { currentUser, flagsFor } from "@/lib/auth";
-import { serBank, serPartner, serStage, serMaster, serUser, serChannel, serDocRule, serFeeRule } from "@/lib/ser";
+import { serBank, serPartner, serStage, serMaster, serUser, serChannel, serDocRule, serFeeRule, serCommTemplate, serPromotion } from "@/lib/ser";
 
 async function guard() {
   const me = await currentUser();
@@ -35,6 +35,8 @@ export async function GET(req: NextRequest) {
   if (kind === "sla") return NextResponse.json({ items: await db.slaRule.findMany({ orderBy: { id: "asc" } }) });
   if (kind === "docrules") return NextResponse.json({ items: (await db.docRule.findMany({ orderBy: { id: "asc" } })).map(serDocRule) });
   if (kind === "feerules") return NextResponse.json({ items: (await db.feeRule.findMany({ orderBy: [{ emirate: "asc" }, { sortOrder: "asc" }] })).map(serFeeRule) });
+  if (kind === "commtemplates") return NextResponse.json({ items: (await db.commTemplate.findMany({ orderBy: [{ sortOrder: "asc" }, { id: "asc" }] })).map(serCommTemplate) });
+  if (kind === "promotions") return NextResponse.json({ items: (await db.promotion.findMany({ orderBy: [{ validFrom: "desc" }, { id: "asc" }] })).map(serPromotion) });
   return NextResponse.json({ error: "kind required" }, { status: 400 });
 }
 
@@ -101,7 +103,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ item: serUser(item) });
     }
     if (kind === "designation") {
-      const item = await db.designation.create({ data: { name: body.name, scope: body.scope ?? "own", issueTasks: !!body.issueTasks, admin: !!body.admin, super: !!body.super, viewRevenue: !!body.viewRevenue, builtIn: false } });
+      const item = await db.designation.create({ data: { name: body.name, scope: body.scope ?? "own", issueTasks: !!body.issueTasks, admin: !!body.admin, super: !!body.super, viewRevenue: !!body.viewRevenue, manageDocs: body.manageDocs !== undefined ? !!body.manageDocs : true, clientChat: body.clientChat !== undefined ? !!body.clientChat : true, builtIn: false } });
       return NextResponse.json({ item });
     }
     if (kind === "sla") {
@@ -138,6 +140,41 @@ export async function POST(req: NextRequest) {
         },
       });
       return NextResponse.json({ item: serFeeRule(item) });
+    }
+    if (kind === "commtemplate") {
+      const max = await db.commTemplate.aggregate({ _max: { sortOrder: true } });
+      const item = await db.commTemplate.create({
+        data: {
+          key: body.key, channel: body.channel ?? "whatsapp", stageKey: body.stageKey ?? "doc",
+          bank: body.bank ?? null, name: body.name, subject: body.subject ?? null,
+          body: body.body, vars: JSON.stringify(body.vars ?? []),
+          sortOrder: body.sortOrder ?? (max._max.sortOrder ?? 0) + 10, active: body.active ?? true,
+        },
+      });
+      return NextResponse.json({ item: serCommTemplate(item) });
+    }
+    if (kind === "promotion") {
+      if (!body.name || !body.validFrom || !body.validTo) {
+        return NextResponse.json({ error: "name, validFrom, validTo are required" }, { status: 400 });
+      }
+      if (String(body.validTo) < String(body.validFrom)) {
+        return NextResponse.json({ error: "validTo must be on/after validFrom" }, { status: 400 });
+      }
+      const item = await db.promotion.create({
+        data: {
+          bankProductId: Number(body.bankProductId),
+          name: body.name, description: body.description ?? "",
+          rateOptionTermYears: body.rateOptionTermYears == null || body.rateOptionTermYears === "" ? null : Number(body.rateOptionTermYears),
+          rateDiscountBps: body.rateDiscountBps == null || body.rateDiscountBps === "" ? null : Number(body.rateDiscountBps),
+          processingFeeOverridePct: body.processingFeeOverridePct == null || body.processingFeeOverridePct === "" ? null : Number(body.processingFeeOverridePct),
+          valuationFeeWaived: !!body.valuationFeeWaived,
+          validFrom: String(body.validFrom).slice(0, 10),
+          validTo: String(body.validTo).slice(0, 10),
+          active: body.active ?? true,
+          createdBy: g.me.name,
+        },
+      });
+      return NextResponse.json({ item: serPromotion(item) });
     }
     return NextResponse.json({ error: "unknown kind" }, { status: 400 });
   } catch (e) {
@@ -211,7 +248,10 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ item: serUser(item) });
     }
     if (kind === "designation") {
-      const item = await db.designation.update({ where: { id: numId }, data: { name: body.name, scope: body.scope, issueTasks: !!body.issueTasks, admin: !!body.admin, super: !!body.super, viewRevenue: !!body.viewRevenue } });
+      const data: Record<string, unknown> = { name: body.name, scope: body.scope, issueTasks: !!body.issueTasks, admin: !!body.admin, super: !!body.super, viewRevenue: !!body.viewRevenue };
+      if (body.manageDocs !== undefined) data.manageDocs = !!body.manageDocs;
+      if (body.clientChat !== undefined) data.clientChat = !!body.clientChat;
+      const item = await db.designation.update({ where: { id: numId }, data });
       return NextResponse.json({ item });
     }
     if (kind === "sla") {
@@ -268,6 +308,34 @@ export async function PATCH(req: NextRequest) {
       });
       return NextResponse.json({ item: serFeeRule(item) });
     }
+    if (kind === "commtemplate") {
+      const item = await db.commTemplate.update({
+        where: { id: numId },
+        data: {
+          key: body.key, channel: body.channel, stageKey: body.stageKey,
+          bank: body.bank ?? null, name: body.name, subject: body.subject ?? null,
+          body: body.body, vars: JSON.stringify(body.vars ?? []),
+          sortOrder: body.sortOrder, active: body.active,
+        },
+      });
+      return NextResponse.json({ item: serCommTemplate(item) });
+    }
+    if (kind === "promotion") {
+      const data: Record<string, unknown> = {};
+      for (const f of ["name", "description", "validFrom", "validTo", "active"] as const) {
+        if (body[f] !== undefined) data[f] = f === "validFrom" || f === "validTo" ? String(body[f]).slice(0, 10) : body[f];
+      }
+      for (const f of ["bankProductId", "rateOptionTermYears", "rateDiscountBps", "processingFeeOverridePct"] as const) {
+        if (body[f] === undefined) continue;
+        data[f] = body[f] == null || body[f] === "" ? null : Number(body[f]);
+      }
+      if (body.valuationFeeWaived !== undefined) data.valuationFeeWaived = !!body.valuationFeeWaived;
+      if (data.validFrom && data.validTo && String(data.validTo) < String(data.validFrom)) {
+        return NextResponse.json({ error: "validTo must be on/after validFrom" }, { status: 400 });
+      }
+      const item = await db.promotion.update({ where: { id: numId }, data });
+      return NextResponse.json({ item: serPromotion(item) });
+    }
     return NextResponse.json({ error: "unknown kind" }, { status: 400 });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "update failed" }, { status: 400 });
@@ -294,6 +362,8 @@ export async function DELETE(req: NextRequest) {
     else if (kind === "bankproduct") await db.bankProduct.delete({ where: { id: numId } });
     else if (kind === "docrule") await db.docRule.delete({ where: { id: numId } });
     else if (kind === "feerule") await db.feeRule.delete({ where: { id: numId } });
+    else if (kind === "commtemplate") await db.commTemplate.delete({ where: { id: numId } });
+    else if (kind === "promotion") await db.promotion.delete({ where: { id: numId } });
     else return NextResponse.json({ error: "unknown kind" }, { status: 400 });
     return NextResponse.json({ ok: true });
   } catch (e) {

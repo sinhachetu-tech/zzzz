@@ -9,7 +9,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useHfmcStore } from "@/lib/client-store";
 import type { CaseStatus, LoanCase } from "@/lib/types";
 import { ageDays, caseStatusOf, fmtMoney } from "@/lib/format";
-import { Avatar, Chip, EmptyState, StatusChip } from "@/components/hfmc/ui";
+import { Avatar, Chip, EmptyState, StatusChip, Tabs } from "@/components/hfmc/ui";
 import { BankChips, CaseStateChip, SourceChip } from "@/components/hfmc/bits";
 import { IBriefcase, IInbox } from "@/components/icons";
 
@@ -137,15 +137,13 @@ export default function Cases() {
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2 p-3 border-b" style={{ borderColor: "var(--line-soft)" }}>
-          <div className="flex rounded-lg overflow-hidden border w-full sm:w-auto" style={{ borderColor: "var(--line)" }}>
-            {STATE_TABS.map((t) => (
-              <button key={t} className="px-3 py-1.5 text-[12px] font-disp font-semibold transition-colors flex-1 sm:flex-initial whitespace-nowrap"
-                style={stateTab === t ? { background: "rgba(242,176,76,0.15)", color: "var(--amber)" } : { color: "var(--ink-faint)", background: "transparent" }}
-                onClick={() => setStateTab(t)}>
-                {t} <span className="mono font-normal opacity-70">{counts[t]}</span>
-              </button>
-            ))}
-          </div>
+          <Tabs
+            scroll
+            className="w-full sm:w-auto"
+            value={stateTab}
+            onChange={setStateTab}
+            options={STATE_TABS.map((t) => ({ value: t, label: t, count: counts[t] }))}
+          />
           <input className="input w-full sm:!w-[190px]" placeholder="Search case / customer…" value={search} onChange={(e) => setSearch(e.target.value)} />
           <select className="select w-full sm:!w-[150px]" value={stage} onChange={(e) => setStage(e.target.value)}>
             <option value="All">All stages</option>
@@ -269,7 +267,7 @@ export default function Cases() {
                     <span className="text-[13px] font-semibold truncate">{c.customer}</span>
                     {c.onHold && <span className="chip shrink-0" style={{ color: "var(--amber)", background: "rgba(242,176,76,0.12)", borderColor: "rgba(242,176,76,0.4)", padding: "1px 6px", fontSize: "9px" }}>HOLD</span>}
                   </span>
-                  <span className="block mono text-[10px] text-[var(--ink-faint)] mt-0.5">{c.caseNumber} · {fmtMoney(c.loanAmount)} · {c.stage} · {ageDays(c.createdAt)}d</span>
+                  <span className="block mono text-[10.5px] text-[var(--ink-faint)] mt-0.5">{c.caseNumber} · {fmtMoney(c.loanAmount)} · {c.stage} · {ageDays(c.createdAt)}d</span>
                 </span>
                 {c.caseStatus === "Active" ? <StatusChip status={st} /> : <CaseStateChip state={c.caseStatus} />}
               </button>

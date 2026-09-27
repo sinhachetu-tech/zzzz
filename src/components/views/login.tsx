@@ -82,7 +82,7 @@ export default function Login() {
           <LogoMark size={38} />
           <div>
             <div className="font-disp font-bold text-[20px] tracking-[0.04em] leading-none">HFMC</div>
-            <div className="text-[10px] uppercase tracking-[0.22em] text-[var(--ink-faint)] mt-1">Mortgage Case Tracker · UAE</div>
+            <div className="text-[10.5px] uppercase tracking-[0.22em] text-[var(--ink-faint)] mt-1">Mortgage Case Tracker · UAE</div>
           </div>
         </div>
         <p className="text-[12px] uppercase tracking-[0.16em] text-[var(--amber)] font-disp font-semibold mb-3 flex items-center gap-2">
@@ -111,7 +111,7 @@ export default function Login() {
             <LogoMark size={30} />
             <div>
               <div className="font-disp font-bold text-[15px] tracking-[0.04em] leading-none">HFMC</div>
-              <div className="text-[9px] uppercase tracking-[0.18em] text-[var(--ink-faint)] mt-0.5">Mortgage Case Tracker · UAE</div>
+              <div className="text-[10.5px] uppercase tracking-[0.18em] text-[var(--ink-faint)] mt-0.5">Mortgage Case Tracker · UAE</div>
             </div>
           </div>
           <h1 className="font-disp font-bold text-[26px] tracking-tight mt-0 mb-1">Sign in</h1>

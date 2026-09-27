@@ -20,20 +20,34 @@ export type CanonicalTxn = (typeof CANONICAL_TXN)[number];
 export const TXN_ALIASES: Record<string, CanonicalTxn> = {
   "fresh": "Primary Purchase", "direct": "Primary Purchase", "new purchase": "Primary Purchase",
   "primary": "Primary Purchase", "handover from developer": "Primary Handover", "handover": "Primary Handover",
+  "final payment": "Primary Handover",
   "secondary": "Resale", "second hand": "Resale",
   "under construction": "Off-Plan", "offplan": "Off-Plan", "off plan": "Off-Plan",
   "buy-out": "Buyout", "buy out": "Buyout", "balance transfer": "Buyout",
-  "equity": "Equity Release", "cash out": "Equity Release", "cashout": "Equity Release", "refinance": "Equity Release",
-  "land purchase": "Land", "plot": "Land",
-  "self const": "Self-Construction", "self-construction": "Self-Construction",
+  "equity": "Equity Release", "cash out": "Equity Release", "cashout": "Equity Release", "refinance": "Equity Release", "top up": "Equity Release", "topup": "Equity Release",
+  "land purchase": "Land", "plot": "Land", "land fin": "Land",
+  "self const": "Self-Construction", "self-construction": "Self-Construction", "building finance": "Self-Construction", "bldg fin": "Self-Construction",
   "loan against property": "LAP", "mortgage loan against property": "LAP",
 };
 
 export function canonicalTxn(text: string): CanonicalTxn | null {
-  const t = text.toLowerCase().trim();
-  if (TXN_ALIASES[t]) return TXN_ALIASES[t];
-  for (const [alias, canon] of Object.entries(TXN_ALIASES)) if (t.includes(alias)) return canon;
-  for (const c of CANONICAL_TXN) if (t.includes(c.toLowerCase())) return c;
+  const raw = text.toLowerCase().trim();
+  if (TXN_ALIASES[raw]) return TXN_ALIASES[raw];
+  // hyphens/underscores are word glue ("Off-Plan" == "off plan"); single-word
+  // aliases match whole words only so fragments ("stl") can never alias.
+  const t = raw.replace(/[-_]+/g, " ");
+  const words = new Set(t.replace(/[0-9]+/g, " ").split(/[^a-z]+/).filter(Boolean));
+  for (const [alias, canon] of Object.entries(TXN_ALIASES)) {
+    const flat = alias.replace(/[-_]+/g, " ");
+    const parts = flat.split(/[^a-z]+/).filter(Boolean);
+    if (parts.length === 1) {
+      if (words.has(parts[0])) return canon;
+    } else if (t.includes(flat)) return canon;
+  }
+  for (const c of CANONICAL_TXN) {
+    const cl = c.toLowerCase().replace(/[-_]+/g, " ");
+    if (cl.includes(" ") ? t.includes(cl) : words.has(cl)) return c;
+  }
   return null;
 }
 
@@ -45,6 +59,93 @@ export const PRODUCT_KINDS = ["Conventional", "Islamic"] as const;
 export const EMPLOYMENT_SEGMENTS = ["Salaried", "Self-Employed", "Salaried or Self-Employed"] as const;
 export const RESIDENCY_SEGMENTS = ["Resident", "Non-Resident"] as const;
 export const FINANCE_TYPES = ["Residential", "Commercial"] as const;
+
+/* ---------- Phase 1: multi-axis applicability (sets, not scalars) ---------- */
+
+/** A quote field set to null/[]/"any" matches every case. Otherwise the case
+ *  value must be IN the set. This gives "few, some, or all" for free. */
+export type ApplicabilitySet = string[] | null | undefined;
+
+export function setMatches(set: ApplicabilitySet, value: string | null | undefined): boolean {
+  if (set == null || set.length === 0) return true;
+  if (set.length === 1 && set[0].toLowerCase() === "any") return true;
+  // A wildcard request ("any", e.g. the calculator's relaxed-rescue path) matches
+  // any declared set — it means "show me priced options regardless of this axis".
+  if (value != null && value.toLowerCase().trim() === "any") return true;
+  if (value == null || value === "") return false;
+  const v = value.toLowerCase().trim();
+  return set.some((s) => String(s).toLowerCase().trim() === v);
+}
+
+/** Nationality gating: ALL = every passport, ALLOW = only listed, DENY = all except listed. */
+export interface NationalityRule {
+  mode: "ALL" | "ALLOW" | "DENY";
+  countries: string[];
+}
+
+export function nationalityAllowed(rule: NationalityRule | null | undefined, nationality: string | null | undefined): boolean {
+  if (rule == null || rule.mode === "ALL" || rule.countries.length === 0) return true;
+  if (!nationality) return true; // unknown passport never blocks — surfaces as TO_VERIFY downstream
+  const hit = rule.countries.some((c) => c.toLowerCase().trim() === nationality.toLowerCase().trim());
+  return rule.mode === "ALLOW" ? hit : !hit;
+}
+
+/** Bank segment synonyms → display label. Grows as more banks are imported. */
+export const SEGMENT_ALIASES: Record<string, string> = {
+  "geco": "GECO",
+  "auh developer": "AUH Developer", "abu dhabi developer": "AUH Developer", "auh": "AUH Developer",
+  "prb": "PRB", "private": "Private", "premier": "Premier", "advance": "Advance",
+  "szhp": "SZHP", "sheikh zayed": "SZHP",
+  "etb": "ETB", "ntb": "NTB",
+  "others": "Others", "all other segment": "Others", "all others": "Others",
+  "standard": "Standard", "premium": "Premium",
+};
+
+export function canonicalSegment(text: string): string | null {
+  const t = text.toLowerCase();
+  for (const [alias, canon] of Object.entries(SEGMENT_ALIASES)) if (t.includes(alias)) return canon;
+  return null;
+}
+
+/** FINAL PROPERTY CLASSIFICATION PLAN — canonical enums (additive, UNKNOWN-safe). */
+export const PROPERTY_TYPES = ["RESIDENTIAL", "COMMERCIAL", "UNKNOWN"] as const;
+export const COMMERCIAL_SUBTYPES = [
+  "OFFICE", "RETAIL_SHOP", "WAREHOUSE", "INDUSTRIAL", "HOTEL_HOSPITALITY",
+  "MIXED_USE", "LAND_PLOT", "OTHER_COMMERCIAL", "UNKNOWN",
+] as const;
+export const PROPERTY_STAGES = ["OFF_PLAN", "HANDOVER", "COMPLETED", "UNKNOWN"] as const;
+export const CONSTRUCTION_STATUSES = ["NOT_STARTED", "UNDER_CONSTRUCTION", "COMPLETED", "UNKNOWN"] as const;
+export const PARTY_RELATIONSHIPS = ["DEVELOPER", "EXISTING_OWNER", "SELF", "UNKNOWN"] as const;
+export const EXISTING_FINANCE = ["NONE", "MORTGAGE", "UNKNOWN"] as const;
+export const TRANSACTION_PURPOSES = ["PURCHASE", "REFINANCE", "EQUITY_RELEASE", "REFINANCE_AND_EQUITY"] as const;
+
+/** "2 & 3 Years" / "8-10 Years" / "16-20 Years" → [2,3] / [8,9,10] / [16..20].
+ *  Returns null when no year range is found (caller keeps the contextual default). */
+export function expandFixedYearLabel(label: string): number[] | null {
+  const t = label.replace(/&/g, "-").replace(/to/gi, "-");
+  // range: "8-10 years", "8 - 10 yrs", "16-20 years"
+  const range = t.match(/(\d{1,2})\s*-\s*(\d{1,2})\s*(?:years?|yrs?)/i);
+  if (range) {
+    const a = parseInt(range[1], 10), b = parseInt(range[2], 10);
+    if (a >= 1 && b <= 30 && b >= a) {
+      const out: number[] = [];
+      for (let y = a; y <= b; y++) out.push(y);
+      return out;
+    }
+  }
+  // conjunction: "2 & 3 years", "2, 3 years"
+  const conj = t.match(/(\d{1,2})\s*[,/&+]\s*(\d{1,2})\s*(?:years?|yrs?)/i);
+  if (conj) {
+    const a = parseInt(conj[1], 10), b = parseInt(conj[2], 10);
+    if (a >= 1 && b >= 1 && a <= 30 && b <= 30) return [a, b];
+  }
+  const single = t.match(/(\d{1,2})\s*(?:years?|yrs?)/i);
+  if (single) {
+    const y = parseInt(single[1], 10);
+    if (y >= 1 && y <= 30) return [y];
+  }
+  return null;
+}
 
 /* ---------- typed parsers for the Excel's free text ---------- */
 

@@ -15,8 +15,10 @@
   --line-soft: #e8edf3;
   --ink: #0f172a;
   --ink-dim: #475569;
-  /* AA-tuned (was #8296ab → 2.84:1): 4.72:1 on --bg across all 400+ faint usages */
-  --ink-faint: #5f7085;
+  /* AA-tuned (was #8296ab → 2.84:1): 4.72:1 on --bg across all 400+ faint usages.
+     Nudged to #55677c (5.5:1) because the type-floor pass enlarged these labels —
+     bigger type reads *softer*, so it needs more contrast, not less. */
+  --ink-faint: #55677c;
   --amber: #b45309;
   --amber-deep: #92400e;
   --amber-ink: #fff8ec;
@@ -31,11 +33,30 @@
   --amber-tint: rgba(180, 83, 9, 0.09);
   --amber-line: rgba(180, 83, 9, 0.28);
   --neutral: rgba(15, 23, 42, 0.16);
-  --shadow: 0 1px 2px rgba(15, 23, 42, 0.05), 0 10px 28px -18px rgba(15, 23, 42, 0.18);
+  /* deepened from 0 10px 28px -18px: at 4% luminance between --bg and --surface
+     the old shadow was invisible, so light-mode cards read as flat outlined
+     boxes while dark mode (which has a 1px top edge) read as layered. */
+  --shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 12px 32px -20px rgba(15, 23, 42, 0.22);
   --font-disp: "Space Grotesk", "Geist", "IBM Plex Sans", sans-serif;
   --font-body: "Geist", "IBM Plex Sans", sans-serif;
   --font-mono: "IBM Plex Mono", "Geist Mono", monospace;
   --radius: 0.625rem;
+  /* radius scale — the one ladder every rounded box should pick from
+     (was: 5/8/10/16px + ad-hoc 3px, i.e. six radii in one app) */
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-xl: 16px;
+  /* spacing scale — 4px base. Views were freehanding space-y-1.5/2/2.5/3/4/5
+     and gap-1.5/2/2.5/3/4 per file, which read as "uniformly tight" rather
+     than as a rhythm. Pick from the ladder. */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
   color-scheme: light;
 }
 
@@ -86,7 +107,13 @@
   --color-ring: var(--ring);
 }
 
-[data-theme="dark"] {
+/* The left rail stays dark in BOTH themes (brand identity), so it needs the dark
+   palette even when data-theme="light". It used to be a 24-line copy-paste of this
+   block — 20 tokens to sync by hand, one silent drift away. Instead .side-dark is
+   a second selector on this SAME rule, so the rail can never disagree with dark
+   mode. Only --shadow is overridden below (no drop shadow on a fixed dark rail). */
+[data-theme="dark"],
+.side-dark {
   --bg: #0b171d;
   --bg2: #0e1d24;
   /* +1 step of lift so surfaces separate from the page without the black halo */
@@ -96,8 +123,9 @@
   --line-soft: #18313b;
   --ink: #e8f1ef;
   --ink-dim: #9cb3b1;
-  /* AA-tuned (was #617e7c → 4.14 bg / 3.64 card): 6.98 bg / 6.13 card */
-  --ink-faint: #8aa6a3;
+  /* AA-tuned (was #617e7c → 4.14 bg / 3.64 card): 6.98 bg / 6.13 card.
+     Lightened to #9ab6b3 (8.4:1) to offset the softer read of larger small-type. */
+  --ink-faint: #9ab6b3;
   --amber: #f2b04c;
   --amber-deep: #d99427;
   --amber-ink: #231a08;
@@ -118,34 +146,17 @@
   color-scheme: dark;
 }
 
+/* rail-only override: no drop shadow on a fixed dark panel */
+[data-theme="dark"] .side-dark,
 .side-dark {
-  --bg2: #0e1d24;
-  --surface: #14262f;
-  --raised: #1a323c;
-  --line: #2a4c58;
-  --line-soft: #18313b;
-  --ink: #e8f1ef;
-  --ink-dim: #9cb3b1;
-  --ink-faint: #8aa6a3;
-  --amber: #f2b04c;
-  --amber-deep: #d99427;
-  --mint: #43d69b;
-  --coral: #f27363;
-  --sky: #57c2ea;
-  --slate: #8ca6b0;
-  --mint-ink: #062317;
-  --hover: rgba(232, 241, 239, 0.065);
-  --tint: rgba(232, 241, 239, 0.04);
-  --track: rgba(232, 241, 239, 0.07);
-  --amber-tint: rgba(242, 176, 76, 0.09);
-  --amber-line: rgba(242, 176, 76, 0.28);
-  --neutral: rgba(232, 241, 239, 0.25);
   --shadow: none;
-  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
 html, body { height: 100%; }
+/* stop iOS Safari/WebView inflating our carefully-sized small type in the
+   installed PWA — it was re-scaling the 10-11px labels on rotate/zoom */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 
 body {
   margin: 0;
@@ -160,6 +171,15 @@ body {
 
 .font-disp { font-family: var(--font-disp); }
 .mono { font-family: var(--font-mono); }
+
+/* ---------- tabular numerals ----------
+   This app is columns of money, rates and dates. Proportional digits make those
+   columns visibly wobble as a value changes and stop digits lining up down a
+   column. Force fixed-width figures on every numeric context. */
+.mono, .tbl td, .tbl th, .kpi-value, .num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
 
 ::selection { background: rgba(242, 176, 76, 0.3); }
 
@@ -224,6 +244,9 @@ body {
   }
   [data-theme="dark"] .card-hover:hover { border-color: var(--line); box-shadow: none; }
 }
+/* a focusable card is a control, so it earns the same ring as a button —
+   without this, keyboard users get no affordance at all on card grids */
+.card-hover:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
 
 .rowlink { transition: background 0.13s ease; }
 /* hover only on capable pointers — on touch it sticks to the last-tapped row */
@@ -254,16 +277,28 @@ body {
 [data-theme="dark"] .btn-primary { color: #231a08; }
 /* Tier 3 (controls): hover is a colour/border/shadow change, touch-safe. */
 @media (hover: hover) and (pointer: fine) {
-  .btn-primary:hover { background: var(--amber-deep); box-shadow: 0 6px 20px -8px rgba(180, 83, 9, 0.45); }
-  [data-theme="dark"] .btn-primary:hover { background: #ffca70; box-shadow: 0 6px 20px -8px rgba(242, 176, 76, 0.55); }
+  .btn-primary:hover { background: var(--amber-deep); box-shadow: 0 6px 20px -8px rgba(180, 83, 9, 0.45); transform: translateY(-1px); }
+  [data-theme="dark"] .btn-primary:hover { background: #ffca70; box-shadow: 0 6px 20px -8px rgba(242, 176, 76, 0.55); transform: translateY(-1px); }
   .btn-ghost:hover { color: var(--ink); border-color: var(--ink-faint); background: var(--hover); }
   .btn-mint:hover { filter: brightness(1.08); box-shadow: 0 6px 20px -8px rgba(4, 120, 87, 0.45); }
   .btn-danger:hover { background: rgba(217, 45, 32, 0.16); }
   [data-theme="dark"] .btn-danger:hover { background: rgba(242, 115, 99, 0.22); }
 }
 [data-theme="dark"] .btn-danger { background: rgba(242, 115, 99, 0.12); border-color: rgba(242, 115, 99, 0.35); }
-.btn-sm { padding: 5px 10px; font-size: 12px; border-radius: 7px; }
+.btn-sm { padding: 5px 10px; font-size: 12px; border-radius: var(--r-sm); }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; box-shadow: none; }
+
+/* ---------- touch targets (coarse pointers only) ----------
+   .btn = 32px and .chip = 19px tall, which is fine for a mouse-first desktop
+   tool but far under the 44px iOS / 24px WCAG-2.5.8 minimums. Grow them ONLY
+   where there's no mouse, so desktop density (and table fit) is untouched. */
+@media (pointer: coarse) {
+  .btn { padding: 11px 16px; }
+  .btn-sm { padding: 8px 12px; }
+  .chip { padding: 7px 11px; }
+  .nav-item { padding: 12px; }
+  .input, .select, .textarea { padding: 11px 12px; }
+}
 
 .input, .select, .textarea {
   width: 100%;
@@ -273,7 +308,7 @@ body {
   color: var(--ink);
   font-family: var(--font-body);
   font-size: 13.5px;
-  padding: 8px 11px;
+  padding: 9px 12px; /* was 8px 11px — fields were the tightest boxes in the app */
   outline: none;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
@@ -300,12 +335,12 @@ body {
 .label {
   display: block;
   font-family: var(--font-disp);
-  font-size: 11px;
+  font-size: 11.5px;
   font-weight: 600;
   letter-spacing: 0.07em; /* was 0.09em — calmer tracking, still reads as a label */
   text-transform: uppercase;
   color: var(--ink-faint);
-  margin-bottom: 5px;
+  margin-bottom: 6px; /* was 5px — the label was crowding the field below it */
 }
 input[type="date"]::-webkit-calendar-picker-indicator, input[type="time"]::-webkit-calendar-picker-indicator { opacity: 0.55; cursor: pointer; }
 [data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator, [data-theme="dark"] input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(0.7) sepia(0.2); }
@@ -396,7 +431,286 @@ input[type="date"]::-webkit-calendar-picker-indicator, input[type="time"]::-webk
   border-color: var(--amber-line);
 }
 
-/* shared keyboard ring — invisible to mouse/touch users, visible to keyboard ones */
+/* visually hidden but announced by screen readers (Tailwind's sr-only isn't
+   available in this build's utilities, and a11y text shouldn't rely on that) */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* ---------- top progress bar ----------
+   The store has carried a `loading` flag since the single-payload hydrate, but
+   nothing ever read it: a re-hydrate after a mutation was invisible, so the UI
+   looked frozen. This is a 2px amber bar pinned under the header — quiet enough
+   to ignore, impossible to miss when something is actually in flight. */
+.progress-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 2px;
+  width: 100%;
+  transform-origin: left center;
+  background: linear-gradient(90deg, transparent, var(--amber), transparent);
+  background-size: 200% 100%;
+  animation: progressSweep 1.1s linear infinite;
+  z-index: 60;
+  pointer-events: none;
+}
+@keyframes progressSweep {
+  0% { transform: scaleX(0); opacity: 1; }
+  60% { transform: scaleX(1); opacity: 1; }
+  100% { transform: scaleX(1); opacity: 0; }
+}
+
+/* ---------- print ----------
+   Report tables were printing with the app's dark tokens (white-on-white) and
+   with a repeating header that only appeared on page 1. Force the light palette
+   onto the page, drop the chrome, and repeat table headers per page. */
+@media print {
+  /* re-declare the light palette for print only — tokens are CSS variables, so
+     this overrides dark mode without touching the live theme */
+  :root, [data-theme="dark"], .side-dark {
+    --bg: #ffffff; --bg2: #ffffff;
+    --surface: #ffffff; --raised: #ffffff;
+    --line: #cbd5e1; --line-soft: #e2e8f0;
+    --ink: #0f172a; --ink-dim: #475569; --ink-faint: #55677c;
+    --tint: #f8fafc; --hover: #f1f5f9; --track: #e2e8f0;
+    --shadow: none;
+    color-scheme: light;
+  }
+  html, body { background: #fff !important; }
+  .app-bg { display: none !important; }
+  /* chrome that makes no sense on paper */
+  .side-shell, .bottom-nav, .fixed-bottom, .modal-scrim, .tabs, .toaster,
+  .case-stickybar, [data-safe-area-bottom], [data-safe-area-bottom-fixed] {
+    display: none !important;
+  }
+  .card { border: 1px solid #cbd5e1; box-shadow: none !important; break-inside: avoid; }
+  /* every page of a long table gets its header row back */
+  .tbl thead { display: table-header-group; }
+  .tbl tr { break-inside: avoid; }
+  .tbl th { background: #f8fafc !important; color: #0f172a !important; }
+  /* the AI prose block is the one thing worth never splitting mid-sentence */
+  .prose-ai { break-inside: avoid; }
+  a[href]::after { content: ""; }  /* no URL spam after every link */
+}
+
+/* ---------- long-scroll rendering budget ----------
+   The cases worklist and report tables render a lot of rows. `content-visibility:
+   auto` lets the browser skip layout+paint for off-screen rows, which is the
+   one real win available for long lists. `contain-intrinsic-size` supplies a
+   placeholder size so the scrollbar doesn't jump as rows are measured.
+   Risk (checked in the browser): it can affect find-in-page and sticky <th>, so
+   thead gets `contain-intrinsic-size` too and the cases table was verified
+   before this landed. */
+.tbl tbody tr { content-visibility: auto; contain-intrinsic-size: auto 43px; }
+.tbl thead { contain-intrinsic-size: auto 37px; }
+/* the card list that replaces the table below `sm` — same treatment */
+.card-row-vc { content-visibility: auto; contain-intrinsic-size: auto 96px; }
+
+/* ---------- items that animate continuously get will-change ----------
+   ONLY these two run an unbounded loop (the progress sweep and the skeleton
+   shimmer). Promoting anything else would trade frames for memory and can make
+   the WebView slower — broad will-change is a known anti-pattern. */
+.progress-bar { will-change: transform, opacity; }
+.skeleton { will-change: background-position; }
+
+/* ---------- KPI tile ----------
+   The label/value/sub box was hand-rolled ~10 times (agent dashboard, admin
+   data-quality, calculator DBR tiles, ...) at a slightly different size each,
+   so KPI strips across views shared no common baseline. One primitive now. */
+.kpi {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  background: var(--tint);
+  border: 1px solid var(--line-soft);
+  /* NO `min-width: 0` here on purpose. This rule is declared after Tailwind's
+     utilities, so at equal specificity (0,1,0) it would beat any `min-w-*` a
+     caller puts on the tile — which is exactly what broke the dashboard KPI
+     strip (min-w-[150px] was silently cancelled and 7 tiles collapsed to
+     ~40px slivers on a 390px screen). Where a tile must shrink for ellipsis,
+     the TEXT elements below carry min-width: 0 instead. */
+}
+.kpi-label {
+  font-family: var(--font-disp);
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--ink-faint);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kpi-value {
+  font-family: var(--font-disp);
+  font-weight: 700;
+  font-size: 17px;
+  line-height: 1.15;
+  margin-top: 4px;
+  /* long AED figures must ellipsis rather than push the tile wider */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kpi-sub {
+  font-size: 10.5px;
+  color: var(--ink-faint);
+  margin-top: 3px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* a tile that carries meaning (a breach count, a breach chip) */
+.kpi-accent { background: var(--amber-tint); border-color: var(--amber-line); }
+.kpi-plain { background: var(--surface); }
+
+/* ---------- modal scrim + overlay panel ----------
+   8+ hand-rolled scrims had drifted apart: rgba(4,12,15,.45/.72/.74/.8) and
+   blur(3px)/blur(4px)/none. One scrim + one panel, so every dialog in the app
+   is the same dialog. Also gives the reserved deep overlay shadow a real
+   consumer (the token comment above claimed .modal-pop, which never existed). */
+.modal-scrim {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(4, 12, 15, 0.74);
+  backdrop-filter: blur(4px);
+  animation: fadeIn 0.18s ease both;
+  z-index: 70;
+}
+.modal-pop {
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.55);
+  animation: scaleIn 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+/* light-mode overlay keeps the same lift, tuned for a near-white scrim */
+:root .modal-pop { box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 24px 60px -24px rgba(15, 23, 42, 0.28); }
+
+/* a clickable table row is a real control, so it needs the same ring as .btn —
+   without it, keyboard users lose their row when tabbing a long table */
+.tbl tbody tr:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
+
+/* sticky headers (.case-stickybar, .tbl th) would otherwise cover the target of
+   an in-page jump, so offset the scroll landing zone by the header height */
+:target, [id] { scroll-margin-top: 72px; }
+
+/* ---------- theme cross-fade ----------
+   Without this, surfaces/borders snap while body bg cross-fades, so toggling
+   light/dark looks like a flicker rather than a fade. Gated on reduced-motion
+   (see the kill-switch above) and on the browser supporting it. */
+@media (prefers-reduced-motion: no-preference) {
+  ::view-transition-old(root), ::view-transition-new(root) {
+    animation-duration: 0.25s;
+    animation-timing-function: ease;
+  }
+}
+
+/* ---------- tabs / segmented control ----------
+   ONE primitive for every tab strip. Previously the same role was hand-rolled
+   five times (client + agent pills, admin Seg, DocActionRow, profile editor)
+   in three different looks, all with a faint 0.09-alpha active fill — which is
+   why the app read as "busy": the active tab never separated from its
+   neighbours. The active item is now a solid raised pill + amber underline. */
+.tabs {
+  display: flex;
+  align-items: center;
+  width: max-content;  /* don't stretch to fill a flex parent (Seg lives in overflow-x-auto) */
+  max-width: 100%;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--r-lg);
+  background: var(--tint);
+  border: 1px solid var(--line-soft);
+}
+.tabs-item {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 13px;
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  font-family: var(--font-disp);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-faint);
+  background: transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  .tabs-item:hover { color: var(--ink); background: var(--hover); }
+}
+.tabs-item.active {
+  color: var(--ink);
+  background: var(--raised);
+  border-color: var(--line);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+[data-theme="dark"] .tabs-item.active { box-shadow: none; }
+.tabs-item.active::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 2px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--amber);
+}
+/* The sliding highlight: ONE absolutely-positioned span that framer-motion
+   travels between tabs via layoutId. `.tabs-item.active` still paints its own
+   raised background + amber underline, so if the JS is slow, disabled, or
+   reduced-motion is on, the strip still looks correct — the pill is an upgrade
+   over a working baseline, never the only affordance. */
+.tabs-pill {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--r-md);
+  background: var(--raised);
+  border: 1px solid var(--line);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  pointer-events: none;
+  z-index: -1;
+}
+[data-theme="dark"] .tabs-pill { box-shadow: none; }
+
+/* flush variant — sits on a card/borderless strip, no track behind it */
+.tabs-flush { background: transparent; border: none; padding: 0; gap: 4px; }
+.tabs-flush .tabs-item.active { background: var(--amber-tint); border-color: var(--amber-line); }
+.tabs-flush .tabs-item.active::after { left: 8px; right: 8px; bottom: 1px; }
+/* a tab strip that must not wrap (headers, inline toolbars) */
+.tabs-scroll { overflow-x: auto; scrollbar-width: none; }
+.tabs-scroll::-webkit-scrollbar { display: none; }
+
+@media (pointer: coarse) {
+  .tabs-item { padding: 11px 14px; }
+}
+
+/* shared keyboard ring — invisible to mouse/touch users, visible for keyboard */
 button:focus-visible, a:focus-visible, [role="button"]:focus-visible, [tabindex]:focus-visible {
   outline: 2px solid var(--amber);
   outline-offset: 2px;
@@ -446,6 +760,59 @@ button:focus-visible, a:focus-visible, [role="button"]:focus-visible, [tabindex]
 .anim-shake { animation: shake 0.5s ease; }
 .dot-live { width: 7px; height: 7px; border-radius: 50%; background: var(--mint); animation: pulseDotMint 2.2s ease-out infinite; }
 .dot-overdue { width: 7px; height: 7px; border-radius: 50%; background: var(--coral); animation: pulseDot 1.8s ease-out infinite; }
+/* The middle of the three SLA tiers was the only one that never animated, which
+   flattened it: scanning a list you saw two things moving and one frozen, so
+   "At Risk" read as calmer than "On Track". A slow, WIDE amber breathe (3s, no
+   tight expanding ring) slots it between the mint 2.2s and the coral 1.8s —
+   calm -> slow -> urgent. */
+@keyframes pulseDotAmber {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(180, 83, 9, 0.35); }
+  60% { box-shadow: 0 0 0 5px rgba(180, 83, 9, 0); }
+}
+.dot-at-risk { width: 7px; height: 7px; border-radius: 50%; background: var(--amber); animation: pulseDotAmber 3s ease-out infinite; }
+
+/* ---------- milestone moment ----------
+   A one-shot acknowledgement when a case reaches a milestone the client has
+   been working towards. Deliberately quiet: a single soft glow + a tinted
+   banner, NOT confetti — this is a regulated broker's client portal, and the
+   house already reserves confetti for an actual deal close (calculator).
+
+   It fires on VIEW, once, and only for the newest milestone, so reloading the
+   page doesn't replay it as a "you did it again!" nag. */
+@keyframes milestoneGlow {
+  0% { box-shadow: 0 0 0 0 rgba(67, 214, 155, 0.45); }
+  70% { box-shadow: 0 0 0 14px rgba(67, 214, 155, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(67, 214, 155, 0); }
+}
+.milestone {
+  animation: milestoneGlow 1.6s ease-out 1 both;
+  border-left: 3px solid var(--mint) !important;
+}
+
+/* the seal tick that pops in behind the milestone label */
+@keyframes milestonePop {
+  0% { transform: scale(0.4); opacity: 0; }
+  60% { transform: scale(1.12); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.milestone-seal { animation: milestonePop 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+/* ---------- EIBOR: flash only the tenors that actually changed ----------
+   The save loop already knows which tenors moved (it skips the unchanged);
+   this just shows it. Direction-coded: mint = rates fell (good for the
+   borrower), coral = rates rose. Runs ONCE on mount, never as a loop, so it
+   can't nag. */
+@keyframes rateFlashDown {
+  0% { background: var(--mint-tint, rgba(4, 120, 87, 0.16)); border-color: var(--mint); }
+  100% { background: var(--bg2); border-color: var(--line); }
+}
+@keyframes rateFlashUp {
+  0% { background: rgba(217, 45, 32, 0.14); border-color: var(--coral); }
+  100% { background: var(--bg2); border-color: var(--line); }
+}
+.flash-down { animation: rateFlashDown 1.6s ease-out both; }
+.flash-up { animation: rateFlashUp 1.6s ease-out both; }
+
 .blink { animation: tickerPulse 1.4s ease infinite; }
 .flow-line { stroke-dasharray: 5 8; animation: flowDash 1.6s linear infinite; }
 

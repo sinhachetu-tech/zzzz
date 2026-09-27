@@ -60,8 +60,51 @@ export interface PropertyDetails {
   loanAmount: number;
   downPayment: number;
   transactionType: string;
+  /** Legacy display value — kept so old rows still render. New classification
+   *  lives in the canonical* fields below; never infer stage from this alone. */
   propertyType: "Ready" | "Off-Plan";
   propertyLocation?: string;
+  // FINAL PROPERTY CLASSIFICATION PLAN — additive, UNKNOWN-safe. Null/absent =
+  // "not yet classified" (treated as UNKNOWN downstream, never guessed).
+  canonicalPropertyType?: "RESIDENTIAL" | "COMMERCIAL" | "UNKNOWN" | null;
+  canonicalCommercialSubtype?: "OFFICE" | "RETAIL_SHOP" | "WAREHOUSE" | "INDUSTRIAL" | "HOTEL_HOSPITALITY" | "MIXED_USE" | "LAND_PLOT" | "OTHER_COMMERCIAL" | "UNKNOWN" | null;
+  canonicalPropertyStage?: "OFF_PLAN" | "HANDOVER" | "COMPLETED" | "UNKNOWN" | null;
+  canonicalConstructionStatus?: "NOT_STARTED" | "UNDER_CONSTRUCTION" | "COMPLETED" | "UNKNOWN" | null;
+  canonicalPartyRelationship?: "DEVELOPER" | "EXISTING_OWNER" | "SELF" | "UNKNOWN" | null;
+  canonicalExistingFinance?: "NONE" | "MORTGAGE" | "UNKNOWN" | null;
+  canonicalTransactionPurpose?: "PURCHASE" | "REFINANCE" | "EQUITY_RELEASE" | "REFINANCE_AND_EQUITY" | null;
+}
+
+/** Backfill legacy display values to canonical dims. Ambiguous → UNKNOWN.
+ *  Never equates Off-plan with Under construction, nor Handover with Completed. */
+export function backfillCanonicalProperty(p: {
+  propertyType?: string | null;
+  transactionType?: string | null;
+}): Pick<PropertyDetails,
+  "canonicalPropertyType" | "canonicalCommercialSubtype" | "canonicalPropertyStage" | "canonicalConstructionStatus"
+  | "canonicalPartyRelationship" | "canonicalExistingFinance" | "canonicalTransactionPurpose"> {
+  const pt = (p.propertyType ?? "").toLowerCase();
+  const txn = (p.transactionType ?? "").toLowerCase();
+  const isOffPlan = pt.includes("off");
+  const isBuyout = txn.includes("buyout");
+  const isEquity = txn.includes("equity") || txn.includes("cashout") || txn.includes("top up");
+  return {
+    canonicalPropertyType: "UNKNOWN",
+    canonicalCommercialSubtype: null, // only set when type is COMMERCIAL
+    canonicalPropertyStage: isOffPlan ? "OFF_PLAN" : pt.includes("ready") || txn.includes("resale") ? "COMPLETED" : "UNKNOWN",
+    canonicalConstructionStatus: "UNKNOWN", // never inferred from stage
+    canonicalPartyRelationship: txn.includes("developer") || txn.includes("primary") || txn.includes("handover") ? "DEVELOPER"
+      : isBuyout || txn.includes("resale") ? "EXISTING_OWNER" : "UNKNOWN",
+    canonicalExistingFinance: isBuyout ? "MORTGAGE" : "UNKNOWN",
+    canonicalTransactionPurpose: isBuyout && isEquity ? "REFINANCE_AND_EQUITY"
+      : isBuyout ? "REFINANCE" : isEquity ? "EQUITY_RELEASE" : "PURCHASE",
+  };
+}
+
+/** Guard: commercial subtype must be NULL for residential properties. */
+export function sanitizeCanonicalProperty(p: PropertyDetails): PropertyDetails {
+  if (p.canonicalPropertyType === "RESIDENTIAL") return { ...p, canonicalCommercialSubtype: null };
+  return p;
 }
 
 export interface CaseProfile {
@@ -110,6 +153,14 @@ export function defaultCaseProfile(c?: {
   transactionType?: string;
   propertyLocation?: string | null;
   coApplicantName?: string | null;
+  // canonical classification (LoanCase columns) — used when profileJson has none
+  propertyTypeCanonical?: string | null;
+  commercialSubtype?: string | null;
+  propertyStage?: string | null;
+  constructionStatus?: string | null;
+  partyRelationship?: string | null;
+  existingFinance?: string | null;
+  transactionPurpose?: string | null;
 }): CaseProfile {
   const primaryRes = (c?.residency === "UAE National" || c?.residency === "Non-Resident")
     ? c.residency
@@ -117,6 +168,7 @@ export function defaultCaseProfile(c?: {
   const primaryEmp = c?.employmentProfile === "Self-Employed"
     ? "Self-Employed"
     : "Salaried";
+  const derived = backfillCanonicalProperty({ propertyType: c?.propertyType, transactionType: c?.transactionType });
 
   return {
     primary: {
@@ -138,6 +190,13 @@ export function defaultCaseProfile(c?: {
       transactionType: c?.transactionType ?? "Resale",
       propertyType: (c?.propertyType === "Off-Plan") ? "Off-Plan" : "Ready",
       propertyLocation: c?.propertyLocation ?? "Dubai",
+      canonicalPropertyType: (c?.propertyTypeCanonical as PropertyDetails["canonicalPropertyType"]) ?? derived.canonicalPropertyType,
+      canonicalCommercialSubtype: (c?.commercialSubtype as PropertyDetails["canonicalCommercialSubtype"]) ?? null,
+      canonicalPropertyStage: (c?.propertyStage as PropertyDetails["canonicalPropertyStage"]) ?? derived.canonicalPropertyStage,
+      canonicalConstructionStatus: (c?.constructionStatus as PropertyDetails["canonicalConstructionStatus"]) ?? "UNKNOWN",
+      canonicalPartyRelationship: (c?.partyRelationship as PropertyDetails["canonicalPartyRelationship"]) ?? derived.canonicalPartyRelationship,
+      canonicalExistingFinance: (c?.existingFinance as PropertyDetails["canonicalExistingFinance"]) ?? derived.canonicalExistingFinance,
+      canonicalTransactionPurpose: (c?.transactionPurpose as PropertyDetails["canonicalTransactionPurpose"]) ?? derived.canonicalTransactionPurpose,
     },
     secondParty: {
       role: c?.coApplicantName ? "co_applicant" : "none",
@@ -189,6 +248,24 @@ export function parseCaseProfile(json?: string | null, fallbackCase?: Parameters
         transactionType: String(p.property?.transactionType ?? fallbackCase?.transactionType ?? "Resale"),
         propertyType: p.property?.propertyType === "Off-Plan" ? "Off-Plan" : "Ready",
         propertyLocation: p.property?.propertyLocation ?? "Dubai",
+        // canonical dims: profileJson wins → case-row columns → conservative backfill
+        canonicalPropertyType: p.property?.canonicalPropertyType ?? fallbackCase?.propertyTypeCanonical ?? backfillCanonicalProperty({
+          propertyType: p.property?.propertyType, transactionType: p.property?.transactionType,
+        }).canonicalPropertyType ?? "UNKNOWN",
+        canonicalCommercialSubtype: p.property?.canonicalCommercialSubtype ?? fallbackCase?.commercialSubtype ?? null,
+        canonicalPropertyStage: p.property?.canonicalPropertyStage ?? fallbackCase?.propertyStage ?? backfillCanonicalProperty({
+          propertyType: p.property?.propertyType, transactionType: p.property?.transactionType,
+        }).canonicalPropertyStage ?? "UNKNOWN",
+        canonicalConstructionStatus: p.property?.canonicalConstructionStatus ?? fallbackCase?.constructionStatus ?? "UNKNOWN",
+        canonicalPartyRelationship: p.property?.canonicalPartyRelationship ?? fallbackCase?.partyRelationship ?? backfillCanonicalProperty({
+          propertyType: p.property?.propertyType, transactionType: p.property?.transactionType,
+        }).canonicalPartyRelationship ?? "UNKNOWN",
+        canonicalExistingFinance: p.property?.canonicalExistingFinance ?? fallbackCase?.existingFinance ?? backfillCanonicalProperty({
+          propertyType: p.property?.propertyType, transactionType: p.property?.transactionType,
+        }).canonicalExistingFinance ?? "UNKNOWN",
+        canonicalTransactionPurpose: p.property?.canonicalTransactionPurpose ?? fallbackCase?.transactionPurpose ?? backfillCanonicalProperty({
+          propertyType: p.property?.propertyType, transactionType: p.property?.transactionType,
+        }).canonicalTransactionPurpose ?? "PURCHASE",
       },
       secondParty: {
         role: (p.secondParty?.role === "co_borrower" || p.secondParty?.role === "co_applicant") ? p.secondParty.role : "none",

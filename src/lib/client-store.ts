@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import type {
-  Activity, BankItem, BankProduct, BulletinItem, CaseDocument, CasePartner, CaseSource, ChannelItem, ClientDto, Designation, DocRule,
+  Activity, BankItem, BankProduct, BulletinItem, CaseDocument, CasePartner, CaseSource, ChannelItem, ClientDto, CommTemplate, Designation, DocRule,
   CaseUpdate, EmailLog, FeeRule, Proposal, Instruction, LoanCase, MasterItem, PartnerItem, SlaRule, StageItem, StageTransitionDto, Task, UnmatchedEmail, User,
 } from "./types";
 import type { RoleFlags } from "./domain";
@@ -32,6 +32,7 @@ interface StateSnapshot {
   partners: PartnerItem[];
   channels: ChannelItem[];
   slaRules: SlaRule[];
+  commTemplates: CommTemplate[];
   instructions: Instruction[];
   bulletin: BulletinItem[];
   escalations: number;
@@ -46,6 +47,7 @@ interface StateSnapshot {
   unmatchedEmails: UnmatchedEmail[];
   emails: EmailLog[];
   clients: ClientDto[];
+  promotions: import("./types").Promotion[]; // Tier-4 promo overlay — applied on top of base pricing
 }
 
 interface ToastMsg {
@@ -129,6 +131,17 @@ interface HfmcState extends StateSnapshot {
   compressDoc: (id: number, force?: boolean) => Promise<void>;
   // pick which stored version downloads/previews use
   selectDocVersion: (id: number, version: "original" | "compressed") => Promise<void>;
+  // merge multiple documents into a single PDF
+  mergeDocs: (docIds: number[], outputName?: string) => Promise<{ id: number; fileName: string; fileSize: number } | null>;
+  // convert image document to PDF with optional crop
+  convertToPdf: (id: number, crop?: { x: number; y: number; width: number; height: number }, outputName?: string) => Promise<void>;
+  // create a ZIP of selected documents for email attachment
+  downloadZip: (docIds: number[], zipName?: string, useCompressed?: boolean) => Promise<{ downloadUrl: string; zipName: string } | null>;
+  // Microsoft Graph (Outlook) integration
+  graphConnect: () => Promise<string>; // returns auth URL
+  graphDisconnect: () => Promise<void>;
+  graphStatus: () => Promise<{ connected: boolean; email?: string }>;
+  graphSendMail: (input: { to: string[]; cc?: string[]; bcc?: string[]; subject: string; bodyHtml: string; bodyText?: string; docIds?: number[]; caseId?: number; saveToSentItems?: boolean }) => Promise<{ success: boolean; attachmentsSent: number }>;
 
   // email review queue
   linkEmail: (unmatchedId: number, caseId: number) => Promise<void>;
@@ -145,8 +158,8 @@ interface HfmcState extends StateSnapshot {
 const empty: StateSnapshot = {
   me: null, flags: null, users: [], designations: [], cases: [], visibleCaseIds: [], tasks: [],
   visibleTaskIds: [], activities: [], stages: [], whyPending: [], waitingFor: [], banks: [],
-  partners: [], channels: [], slaRules: [], instructions: [], bulletin: [], caseUpdates: [], caseProposals: [],
-  escalations: 0, docRules: [], feeRules: [], eibor: [], stageTransitions: [], caseDocuments: [], bankProducts: [], unmatchedEmails: [], emails: [], clients: [],
+  partners: [], channels: [], slaRules: [], commTemplates: [], instructions: [], bulletin: [], caseUpdates: [], caseProposals: [],
+  escalations: 0, docRules: [], feeRules: [], eibor: [], stageTransitions: [], caseDocuments: [], bankProducts: [], unmatchedEmails: [], emails: [], clients: [], promotions: [],
 };
 
 let toastSeq = 1;
@@ -401,6 +414,68 @@ export const useHfmcStore = create<HfmcState>((set, get) => ({
     }
     get().toast("success", version === "compressed" ? "Downloads now use the compressed copy." : "Downloads now use the original.");
     get().hydrate().catch(() => {}); // fire-and-forget — UI must not wait on the full-state reload
+  },
+  mergeDocs: async (docIds, outputName) => {
+    const res = await fetch("/api/documents/merge", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ docIds, outputName }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      get().toast("error", data.error || "Could not merge documents.");
+      return null;
+    }
+    get().toast("success", data.message || `Merged ${docIds.length} documents.`);
+    get().hydrate().catch(() => {});
+    return { id: data.id, fileName: data.fileName, fileSize: data.fileSize };
+  },
+  convertToPdf: async (id, crop, outputName) => {
+    const res = await fetch(`/api/documents/${id}/convert-to-pdf`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ crop, outputName }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      get().toast("error", data.error || "Could not convert to PDF.");
+      return;
+    }
+    get().toast("success", `Converted to PDF${data.savedPct ? ` — ${data.savedPct}% smaller` : ""}.`);
+    get().hydrate().catch(() => {});
+  },
+  downloadZip: async (docIds, zipName, useCompressed) => {
+    const res = await fetch("/api/documents/download-zip", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ docIds, zipName, useCompressed }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      get().toast("error", data.error || "Could not create ZIP.");
+      return null;
+    }
+    get().toast("success", `ZIP ready — ${data.fileCount} files.`);
+    return { downloadUrl: data.downloadUrl, zipName: data.zipName };
+  },
+  graphConnect: async () => {
+    const res = await fetch("/api/graph/auth/connect");
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "Failed to start Outlook connection");
+    return data.authUrl;
+  },
+  graphDisconnect: async () => {
+    const res = await fetch("/api/graph/auth/disconnect", { method: "POST" });
+    if (!res.ok) throw new Error("Failed to disconnect Outlook");
+    get().hydrate().catch(() => {});
+  },
+  graphStatus: async () => {
+    const res = await fetch("/api/graph/auth/status");
+    const data = await res.json().catch(() => ({ connected: false }));
+    return { connected: data.connected, email: data.email };
+  },
+  graphSendMail: async (input) => {
+    const res = await fetch("/api/graph/send", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "Failed to send email");
+    get().toast("success", `Email sent${data.attachmentsSent ? ` with ${data.attachmentsSent} attachments` : ""}`);
+    return { success: true, attachmentsSent: data.attachmentsSent };
   },
 
   linkEmail: async (unmatchedId, caseId) => {

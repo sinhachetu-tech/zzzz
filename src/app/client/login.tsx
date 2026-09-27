@@ -32,7 +32,7 @@ export function ClientLogin() {
             <LogoMark size={34} />
             <div>
               <div className="font-disp font-bold text-[18px] tracking-[0.04em] leading-none" style={{ color: "var(--amber)" }}>HFMC</div>
-              <div className="text-[9px] uppercase tracking-[0.18em] mt-0.5" style={{ color: "var(--ink-faint)" }}>Client Portal</div>
+              <div className="text-[10.5px] uppercase tracking-[0.18em] mt-0.5" style={{ color: "var(--ink-faint)" }}>Client Portal</div>
             </div>
           </div>
         </div>

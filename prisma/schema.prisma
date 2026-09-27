@@ -19,6 +19,11 @@ model User {
   team      String
   active    Boolean  @default(true)
   phone     String?  // WhatsApp / direct line — shown to clients (advisor card) and agents (desk card)
+  // Microsoft Graph (delegated) tokens for send-mail-as-user
+  graphAccessToken      String?
+  graphRefreshToken     String?
+  graphTokenExpiresAt   DateTime?
+  graphConnectedAt      DateTime?
   createdAt DateTime @default(now())
 
   ownedCases      LoanCase[]      @relation("CaseOwner")
@@ -40,6 +45,8 @@ model User {
   vrmCases         LoanCase[] @relation("CaseVrm")
   caseUpdateAuthors CaseUpdate[] @relation("CaseUpdateAuthor")
   proposals Proposal[] @relation("ProposalAuthor")
+  sentChatMessages ChatMessage[]
+  devices          UserDevice[]
 }
 
 model Designation {
@@ -52,6 +59,7 @@ model Designation {
   viewRevenue Boolean @default(false) // commission rates & earnings are restricted
   editEibor Boolean  @default(false) // may update the daily EIBOR benchmark table
   manageDocs Boolean @default(true)  // may upload/verify/reject/waive/delete/compress vault documents
+  clientChat Boolean @default(true)  // may reply to client & agent chats
   builtIn  Boolean  @default(false)
 }
 
@@ -123,9 +131,24 @@ model LoanCase {
   updatedAt   DateTime @updatedAt
 
   // --- Document Vault profile vectors — drive the conditional checklist ---
-  employmentProfile String @default("Salaried") // Salaried | Self-Employed | Non-Resident
-  propertyType      String @default("Ready")    // Ready | Off-Plan
+  employmentProfile String @default("Salaried") // Salaried | Self-Employed | Non-Resident (legacy display)
+  propertyType      String @default("Ready")    // Ready | Off-Plan (legacy display only)
   residency         String @default("Resident Expatriate") // UAE National | Resident Expatriate | Non-Resident
+
+  // --- FINAL PROPERTY CLASSIFICATION (canonical dims, additive, UNKNOWN-safe) ---
+  // Stored separately from case stage/status: property stage describes the
+  // PROPERTY; case stage describes the mortgage application. Ambiguous legacy
+  // rows are backfilled to UNKNOWN/TO_VERIFY — never guessed. See
+  // src/lib/case-profile.ts backfillCanonicalProperty for the mapping rules
+  // (Off-plan NEVER implies Under-construction; Handover NEVER implies
+  // construction Completed).
+  propertyTypeCanonical  String  @default("UNKNOWN") // RESIDENTIAL | COMMERCIAL | UNKNOWN
+  commercialSubtype      String?                     // OFFICE | RETAIL_SHOP | ... | UNKNOWN; NULL iff not COMMERCIAL
+  propertyStage          String  @default("UNKNOWN") // OFF_PLAN | HANDOVER | COMPLETED | UNKNOWN
+  constructionStatus     String  @default("UNKNOWN") // NOT_STARTED | UNDER_CONSTRUCTION | COMPLETED | UNKNOWN
+  partyRelationship      String  @default("UNKNOWN") // DEVELOPER | EXISTING_OWNER | SELF | UNKNOWN
+  existingFinance        String  @default("UNKNOWN") // NONE | MORTGAGE | UNKNOWN
+  transactionPurpose     String  @default("UNKNOWN") // PURCHASE | REFINANCE | EQUITY_RELEASE | REFINANCE_AND_EQUITY | UNKNOWN
 
   // --- MIS operational fields (feed the client portal + daily updates) ---
   statusNote       String  @default("") // daily free-text status narrative shown to the client
@@ -155,6 +178,21 @@ model LoanCase {
   folTenure Int?
   folRoi    Float?
 
+  // --- Stage timeline (Case 360 drawer captures these directly; the stage
+  // ticks read FIELDS first and only fall back to daily-note sniffing).
+  // RULE: folConversionDate must be set before folSignedDate — the drawer
+  // locks 4.4 signing until 4.1 conversion + 4.2 verification are on file.
+  valuationInitiatedDate String? // stage 3 — valuation request sent to the bank
+  inspectionDate         String? // stage 3 — inspection coordinated
+  valuationReportDate    String? // stage 3 — report received (positive)
+  folConversionDate      String? // stage 4 step 4.1 — conversion sent to banker
+  folSignedDate          String? // stage 4 step 4.4 — client signed (never before conversion)
+  ddaActive              Boolean @default(false) // stage 4 step 4.5 — DDA activated
+  liabilityLetterDate    String? // stage 5 — liability letter received (resale w/ mortgage)
+  settlementDate         String? // stage 5 — settlement/MC executed with the bank
+  transferDate           String? // stage 5 — transfer appointment day
+  titleDeedDate          String? // stage 5 — new Title Deed issued / QC done
+
   // --- Client master links (repeat business across engagements) ---
   clientId            Int? // primary applicant → Client
   secondPartyClientId Int? // co-borrower / co-applicant → their own Client row
@@ -179,6 +217,9 @@ model LoanCase {
   vaultDocuments   CaseDocument[]
   caseUpdates      CaseUpdate[]
   proposals        Proposal[]
+  notificationOverrides String? // JSON override: { push?: boolean, whatsapp?: boolean, email?: boolean }
+  chatMessages     ChatMessage[]
+  devices          UserDevice[]
   client           Client?  @relation("PrimaryClient", fields: [clientId], references: [id])
   secondPartyClient Client? @relation("SecondPartyClient", fields: [secondPartyClientId], references: [id])
 }
@@ -377,6 +418,30 @@ model BankProduct {
   updatedAt    DateTime @updatedAt
 
   bank BankItem @relation(fields: [bankId], references: [id], onDelete: Cascade)
+  promotions Promotion[]
+}
+
+// Tier-4 override layer — festival bonanzas / fee waivers / rate cuts.
+// NEVER overwrites base pricing: the engine applies an ACTIVE promo
+// (validFrom <= today <= validTo, active=true) ON TOP of the resolved quote
+// and it self-expires by date — no admin action needed to revert.
+model Promotion {
+  id                    Int      @id @default(autoincrement())
+  bankProductId         Int
+  name                  String
+  description           String   @default("")
+  rateOptionTermYears   Int?     // null = every rate option; else only that fixed term
+  rateDiscountBps       Int?     // e.g. -25 reduces the intro rate by 0.25%
+  processingFeeOverridePct Float? // null = keep base fee; 0 = waive entirely
+  valuationFeeWaived    Boolean  @default(false)
+  validFrom             String   // ISO date, inclusive
+  validTo               String   // ISO date, inclusive
+  active                Boolean  @default(true)
+  createdBy             String   @default("")
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @default(now()) @updatedAt
+
+  bankProduct BankProduct @relation(fields: [bankProductId], references: [id], onDelete: Cascade)
 }
 
 // Current EIBOR benchmark rates — variable/stress formulas reference these live,
@@ -637,8 +702,29 @@ model CaseDocument {
   compressedSize  Int?
   selectedVersion String   @default("original") // which version downloads/ZIP use: "original" | "compressed"
   driveFileId     String?  // Google Drive mirror file id (optional integration)
+  displayName     String?  // user-facing inline renamed title (falls back to title/fileName)
+  source          String   @default("vault") // vault | chat
 
   case LoanCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+}
+
+// WhatsApp / email / call templates used by the Case 360 stage drawer.
+// Wording lives here (admin-editable) while the stage files only reference a
+// template key — so messaging changes never touch stage logic. Placeholders
+// use {{customer}} {{caseNumber}} {{amount}} {{bank}} {{owner}} … and unknown
+// keys render as "—" (see src/lib/workflow/comms/render.ts).
+model CommTemplate {
+  id        Int     @id @default(autoincrement())
+  key       String  @unique // wa-group-invite, em-val-request, call-fol-client-script …
+  channel   String  @default("whatsapp") // whatsapp | email | call
+  stageKey  String  @default("doc")      // doc | pre | val | fol | transfer
+  bank      String? // null = every bank
+  name      String
+  subject   String? // email only
+  body      String
+  vars      String  @default("[]") // JSON array of placeholder names used in body
+  sortOrder Int     @default(0)
+  active    Boolean @default(true)
 }
 
 // SOP §6.9 — Government & bank transfer fee matrices (Dubai / Abu Dhabi).
@@ -657,3 +743,48 @@ model FeeRule {
 
   @@index([emirate, txnType])
 }
+
+// Live real-time chat messages between Staff ↔ Client and Staff ↔ Agent
+model ChatMessage {
+  id              Int       @id @default(autoincrement())
+  caseId          Int
+  senderId        Int?      // Nullable: null if sent by external client/agent
+  senderType      String    // STAFF | CLIENT | AGENT
+  senderName      String    // e.g. "Ahmed Al-Mansouri (HFMC)", "Lakshmi Nair"
+  threadType      String    @default("CLIENT") // CLIENT (Client ↔ Staff) | AGENT (Agent ↔ Staff)
+  text            String?
+  attachmentKey   String?   // R2 object key
+  attachmentName  String?   // Display name of attachment
+  attachmentSize  Int?      // Size in bytes
+  mimeType        String?   // MIME type
+  sentAt          DateTime  @default(now())
+  readByStaff     Boolean   @default(false)
+  readByExternal  Boolean   @default(false)
+
+  case   LoanCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  sender User?    @relation(fields: [senderId], references: [id])
+
+  @@index([caseId, threadType, sentAt])
+}
+
+// Track registered user devices, PWA install state, and Web Push (VAPID) subscriptions
+model UserDevice {
+  id           Int       @id @default(autoincrement())
+  userId       Int?      // Populated for Staff / Agent user
+  caseId       Int?      // Populated for Client (scoped to their case)
+  deviceType   String    // 'mobile' | 'desktop' | 'tablet'
+  pwaInstalled Boolean   @default(false)
+  installedAt  DateTime?
+  pushEndpoint String?   @unique
+  pushP256dh   String?
+  pushAuth     String?
+  lastSeenAt   DateTime  @default(now())
+  userAgent    String?
+
+  user User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  case LoanCase? @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([caseId])
+}
+

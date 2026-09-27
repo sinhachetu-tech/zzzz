@@ -132,14 +132,9 @@ export function ConfirmModal({
   if (!open) return null;
   const cls = tone === "mint" ? "btn-mint" : tone === "primary" ? "btn-primary" : "btn-danger";
   return (
-    <div
-      className="fixed inset-0 z-[80] flex items-center justify-center p-4 anim-fade-in"
-      style={{ background: "rgba(4, 12, 15, 0.72)", backdropFilter: "blur(3px)" }}
-      onClick={onClose}
-    >
+    <div className="modal-scrim" onClick={onClose}>
       <div
-        className="card anim-scale-in w-full max-w-[420px] p-5"
-        style={{ background: "var(--raised)", boxShadow: "0 30px 80px -20px rgba(0,0,0,0.7)" }}
+        className="modal-pop w-full max-w-[420px] p-5"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3 mb-2">

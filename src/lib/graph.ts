@@ -118,3 +118,178 @@ export async function markRead(messageId: string): Promise<void> {
 export function senderOf(m: GraphMessage): string {
   return m.from?.emailAddress?.address ?? "unknown@unknown";
 }
+
+/* ==================== DELEGATED SEND MAIL (per-user Outlook) ==================== */
+
+export interface GraphUserToken {
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number; // epoch ms
+  userId: number;    // your CRM user ID
+  email: string;     // user's UPN/email
+}
+
+export interface SendMailInput {
+  to: string[];
+  cc?: string[];
+  bcc?: string[];
+  subject: string;
+  bodyHtml: string;
+  bodyText?: string;
+  attachments?: SendMailAttachment[];
+  saveToSentItems?: boolean;
+}
+
+export interface SendMailAttachment {
+  name: string;
+  contentType: string;
+  contentBytes: string; // base64
+}
+
+/** Check if delegated Graph is configured (client ID + secret + redirect URI) */
+export function isGraphDelegatedConfigured(): boolean {
+  return !!(process.env.GRAPH_CLIENT_ID && process.env.GRAPH_CLIENT_SECRET && process.env.GRAPH_REDIRECT_URI);
+}
+
+/** Get Microsoft login URL for delegated auth (auth code flow + PKCE) */
+export function getGraphAuthUrl(state: string, pkceChallenge: string): string {
+  const params = new URLSearchParams({
+    client_id: process.env.GRAPH_CLIENT_ID!,
+    response_type: "code",
+    redirect_uri: process.env.GRAPH_REDIRECT_URI!,
+    response_mode: "query",
+    scope: "https://graph.microsoft.com/Mail.Send offline_access User.Read",
+    state,
+    code_challenge: pkceChallenge,
+    code_challenge_method: "S256",
+    prompt: "select_account",
+  });
+  return `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?${params.toString()}`;
+}
+
+/** Exchange auth code for tokens (with PKCE verifier) */
+export async function exchangeGraphCode(code: string, pkceVerifier: string): Promise<{ accessToken: string; refreshToken: string; expiresIn: number; idToken?: string }> {
+  const body = new URLSearchParams({
+    client_id: process.env.GRAPH_CLIENT_ID!,
+    client_secret: process.env.GRAPH_CLIENT_SECRET!,
+    code,
+    redirect_uri: process.env.GRAPH_REDIRECT_URI!,
+    grant_type: "authorization_code",
+    code_verifier: pkceVerifier,
+  });
+  const res = await fetch("https://login.microsoftonline.com/common/oauth2/v2.0/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body,
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Graph token exchange failed (${res.status}): ${err}`);
+  }
+  return res.json();
+}
+
+/** Refresh access token using refresh token */
+export async function refreshGraphToken(refreshToken: string): Promise<{ accessToken: string; refreshToken: string; expiresIn: number }> {
+  const body = new URLSearchParams({
+    client_id: process.env.GRAPH_CLIENT_ID!,
+    client_secret: process.env.GRAPH_CLIENT_SECRET!,
+    refresh_token: refreshToken,
+    grant_type: "refresh_token",
+    scope: "https://graph.microsoft.com/Mail.Send offline_access User.Read",
+  });
+  const res = await fetch("https://login.microsoftonline.com/common/oauth2/v2.0/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body,
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Graph token refresh failed (${res.status}): ${err}`);
+  }
+  return res.json();
+}
+
+/** Get user profile from Graph (to confirm email/UPN) */
+export async function getGraphUserProfile(accessToken: string): Promise<{ id: string; mail: string; userPrincipalName: string; displayName: string }> {
+  const res = await fetch("https://graph.microsoft.com/v1.0/me?$select=id,mail,userPrincipalName,displayName", {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Graph user profile failed (${res.status}): ${err}`);
+  }
+  return res.json();
+}
+
+/** Send mail via Graph with attachments (base64) */
+export async function sendMailGraph(accessToken: string, input: SendMailInput): Promise<void> {
+  const message: Record<string, unknown> = {
+    subject: input.subject,
+    body: {
+      contentType: "HTML",
+      content: input.bodyHtml,
+    },
+    toRecipients: input.to.map((addr) => ({ emailAddress: { address: addr } })),
+    ccRecipients: input.cc?.map((addr) => ({ emailAddress: { address: addr } })) ?? [],
+    bccRecipients: input.bcc?.map((addr) => ({ emailAddress: { address: addr } })) ?? [],
+    attachments: input.attachments?.map((a) => ({
+      "@odata.type": "#microsoft.graph.fileAttachment",
+      name: a.name,
+      contentType: a.contentType,
+      contentBytes: a.contentBytes,
+    })) ?? [],
+  };
+
+  const res = await fetch("https://graph.microsoft.com/v1.0/me/sendMail", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ message, saveToSentItems: input.saveToSentItems ?? true }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Graph sendMail failed (${res.status}): ${err}`);
+  }
+}
+
+/** Helper: fetch file from R2 and return base64 */
+export async function getFileBase64FromR2(storageKey: string): Promise<{ base64: string; contentType: string } | null> {
+  const { r2Configured, r2Get } = await import("./r2");
+  if (!r2Configured()) return null;
+  try {
+    const got = await r2Get(storageKey);
+    const base64 = Buffer.from(got.body).toString("base64");
+    return { base64, contentType: got.contentType || "application/octet-stream" };
+  } catch {
+    return null;
+  }
+}
+
+/* ==================== PKCE helpers (server-side only) ==================== */
+
+const pkceStore = new Map<string, { verifier: string; userId: number; expiresAt: number }>();
+
+/** Generate PKCE challenge/verifier pair */
+export function generatePKCE(): { verifier: string; challenge: string } {
+  const verifier = crypto.getRandomValues(new Uint8Array(32));
+  const verifierB64 = Buffer.from(verifier).toString("base64url");
+  const cryptoMod = require("crypto");
+  const challenge = cryptoMod.createHash("sha256").update(verifierB64).digest("base64url");
+  return { verifier: verifierB64, challenge };
+}
+
+/** Store PKCE verifier with state for callback */
+export function storePKCE(state: string, verifier: string, userId: number) {
+  pkceStore.set(state, { verifier, userId, expiresAt: Date.now() + 10 * 60 * 1000 }); // 10 min
+}
+
+/** Get and consume stored PKCE verifier */
+export function consumePKCE(state: string) {
+  const entry = pkceStore.get(state);
+  if (entry) pkceStore.delete(state);
+  return entry;
+}

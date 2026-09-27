@@ -181,7 +181,7 @@ function LiabRowEditor({
           <NumIn value={row.monthlyEmi} onChange={(n) => onChange({ monthlyEmi: n })} step={100} />
         </div>
         <div className="text-right">
-          <div className="text-[10px] uppercase tracking-[0.08em] text-[var(--ink-faint)] font-disp font-semibold">Assessed</div>
+          <div className="text-[10.5px] uppercase tracking-[0.08em] text-[var(--ink-faint)] font-disp font-semibold">Assessed</div>
           <div className="mono text-[13px]" style={{ color: "var(--coral)" }}>{fmtAED(liabilityEmi(row))}</div>
         </div>
         <button className="text-[var(--ink-faint)] hover:text-[var(--coral)] transition-colors justify-self-center" title="Remove liability" onClick={onRemove}>
@@ -565,7 +565,7 @@ function DocReaderPanel({ onApply }: { onApply: (data: ExtractedData) => void })
 function Field({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-md px-2.5 py-1.5" style={{ background: "var(--tint)" }}>
-      <div className="text-[9.5px] uppercase tracking-[0.1em] text-[var(--ink-faint)] font-disp font-semibold">{label}</div>
+      <div className="text-[10.5px] uppercase tracking-[0.1em] text-[var(--ink-faint)] font-disp font-semibold">{label}</div>
       <div className="mono text-[12px] truncate" title={value}>{value}</div>
     </div>
   );
@@ -688,12 +688,12 @@ function MpbfHeadline({ r, input }: { r: MortgageResult; input: MortgageInput })
               return (
                 <div key={s.label} className="flex flex-col items-center">
                   <Dial value={s.val ?? 0} cap={cap} display={s.val != null ? `${s.val}%` : "—"} label={s.label} size={124} />
-                  <span className="mono text-[10px] text-[var(--ink-faint)] -mt-0.5">{s.rate.toFixed(2)}% · {fmtAED(emi)}/mo · {s.note}</span>
+                  <span className="mono text-[10.5px] text-[var(--ink-faint)] -mt-0.5">{s.rate.toFixed(2)}% · {fmtAED(emi)}/mo · {s.note}</span>
                 </div>
               );
             })}
           </div>
-          <p className="text-[10px] text-[var(--ink-faint)] m-0 mt-1 text-center">
+          <p className="text-[10.5px] text-[var(--ink-faint)] m-0 mt-1 text-center">
             {'DBR = (EMI + existing obligations) / eligible monthly income. "—" means no income entered yet.'}
           </p>
           </>
@@ -1624,7 +1624,7 @@ export default function Calculator() {
                   { label: `DBR 3 · stress ${r.roi.r3.toFixed(2)}%`, emi: r.emi3, val: r.dbr3 },
                 ].map(({ label, emi, val }, i) => (
                   <div key={label} className="rounded-lg px-3 py-2" style={{ background: i === 2 ? "var(--amber-tint)" : "var(--bg2)", border: i === 2 ? "1px solid var(--amber)" : "1px solid var(--line)" }}>
-                    <div className="text-[10px] font-disp font-semibold" style={{ color: i === 2 ? "var(--amber)" : "var(--ink-faint)" }}>{label}</div>
+                    <div className="text-[10.5px] font-disp font-semibold" style={{ color: i === 2 ? "var(--amber)" : "var(--ink-faint)" }}>{label}</div>
                     <div className="mono text-[15px] font-bold mt-0.5" style={{ color: i === 2 ? "var(--amber)" : undefined }}>{val}%</div>
                     <div className="text-[10.5px] text-[var(--ink-faint)] mono">EMI {fmtAED(Math.round(emi))}</div>
                   </div>
@@ -1688,7 +1688,7 @@ export default function Calculator() {
             <div className="flex items-center justify-between px-4 pt-3.5 pb-2.5" style={{ borderBottom: "2px solid var(--amber)" }}>
               <div>
                 <div className="font-disp font-bold text-[14px]">Eligibility working{input.name ? ` · ${input.name}` : ""}</div>
-                <div className="text-[10px] uppercase tracking-[0.14em] text-[var(--ink-faint)]">HFMC · indicative, not a bank approval</div>
+                <div className="text-[10.5px] uppercase tracking-[0.14em] text-[var(--ink-faint)]">HFMC · indicative, not a bank approval</div>
               </div>
               <div className="text-right mono text-[11px] text-[var(--ink-faint)]">
                 {dealEmirate} · {dealTxn}
@@ -1698,15 +1698,15 @@ export default function Calculator() {
             <div className="px-4 py-3 space-y-2.5">
               <div className="grid grid-cols-3 gap-2 text-center">
                 <div className="rounded-lg px-2 py-1.5" style={{ background: "var(--tint)" }}>
-                  <div className="text-[9px] uppercase tracking-[0.1em] text-[var(--ink-faint)] font-disp font-semibold">Property value</div>
+                  <div className="text-[10.5px] uppercase tracking-[0.1em] text-[var(--ink-faint)] font-disp font-semibold">Property value</div>
                   <div className="mono text-[13px] font-semibold">{fmtAED(input.propertyValue)}</div>
                 </div>
                 <div className="rounded-lg px-2 py-1.5" style={{ background: "var(--amber-tint)" }}>
-                  <div className="text-[9px] uppercase tracking-[0.1em] font-disp font-semibold" style={{ color: "var(--amber)" }}>Finance sought</div>
+                  <div className="text-[10.5px] uppercase tracking-[0.1em] font-disp font-semibold" style={{ color: "var(--amber)" }}>Finance sought</div>
                   <div className="mono text-[13px] font-bold" style={{ color: "var(--amber)" }}>{fmtAED(input.requested)}</div>
                 </div>
                 <div className="rounded-lg px-2 py-1.5" style={{ background: "var(--tint)" }}>
-                  <div className="text-[9px] uppercase tracking-[0.1em] text-[var(--ink-faint)] font-disp font-semibold">Eligible income</div>
+                  <div className="text-[10.5px] uppercase tracking-[0.1em] text-[var(--ink-faint)] font-disp font-semibold">Eligible income</div>
                   <div className="mono text-[13px] font-semibold">{fmtAED(r.eligibleIncome)}/mo</div>
                 </div>
               </div>
@@ -1720,7 +1720,7 @@ export default function Calculator() {
               <table className="w-full text-[11.5px]">
                 <thead>
                   <tr className="text-[var(--ink-faint)] text-left">
-                    <th className="py-1 font-disp text-[10px] uppercase tracking-[0.08em]">Stage</th>
+                    <th className="py-1 font-disp text-[10.5px] uppercase tracking-[0.08em]">Stage</th>
                     <th>Rate</th><th>EMI</th><th>DBR</th>
                   </tr>
                 </thead>
@@ -1732,7 +1732,7 @@ export default function Calculator() {
                       { label: "3 · Stress-qualified", rate: r.roi.r3, emi: r.emi3, dbr: r.dbr3, note: "qualifying — never payable" },
                     ] as const).map(({ label, rate, emi, dbr, note }, i) => (
                       <tr key={label} style={{ borderTop: "1px dashed var(--line)" }}>
-                        <td className="py-1.5">{label}<span className="text-[10px] text-[var(--ink-faint)]"> · {note}</span></td>
+                        <td className="py-1.5">{label}<span className="text-[10.5px] text-[var(--ink-faint)]"> · {note}</span></td>
                         <td className="mono text-center">{rate.toFixed(2)}%</td>
                         <td className="mono text-center">{fmtAED(Math.round(emi))}</td>
                         <td className="mono text-center font-semibold" style={{ color: i === 2 ? "var(--amber)" : undefined }}>{dbr}%</td>

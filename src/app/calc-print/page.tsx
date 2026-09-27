@@ -126,7 +126,7 @@ function Doc({ snap, autoPrint }: { snap: Snap; autoPrint: boolean }) {
               <LogoMark size={34} />
               <div>
                 <div className="font-disp font-bold text-[16px] leading-tight">HFMC Home Finance</div>
-                <div className="text-[9.5px] uppercase tracking-[0.16em] text-[var(--ink-faint)]">Mortgage eligibility assessment · CBUAE-style · UAE</div>
+                <div className="text-[10.5px] uppercase tracking-[0.16em] text-[var(--ink-faint)]">Mortgage eligibility assessment · CBUAE-style · UAE</div>
               </div>
             </div>
             <div className="text-right">
@@ -235,7 +235,7 @@ function Doc({ snap, autoPrint }: { snap: Snap; autoPrint: boolean }) {
             <div className="calc-head">
               <div>
                 <div className="font-disp font-bold text-[14px]">Amortisation · What-if · Basis</div>
-                <div className="text-[9.5px] uppercase tracking-[0.16em] text-[var(--ink-faint)]">HFMC eligibility working</div>
+                <div className="text-[10.5px] uppercase tracking-[0.16em] text-[var(--ink-faint)]">HFMC eligibility working</div>
               </div>
               <div className="text-right">
                 <div className="mono text-[12px]" style={{ color: "var(--amber)" }}>{snap.stamp}</div>
@@ -487,12 +487,86 @@ const PRINT_DOC_CSS = `
 .calc-sign { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 16px; font-size: 11.5px; }
 .calc-sign span { display: block; font-size: 10px; color: var(--ink-faint); margin-top: 2px; }
 .calc-foot { text-align: center; font-size: 9.5px; color: var(--ink-faint); margin-top: 16px; padding-top: 8px; border-top: 1px solid var(--line-soft); }
+
+/* ---- PRINT QUALITY OVERRIDES ---- */
 @media print {
+  /* High-res output for crisp text and graphics */
+  @page { resolution: 300dpi; }
+
+  /* Hide screen-only toolbar */
   .calc-print-toolbar { display: none !important; }
+
+  /* Full-width, no gaps between sheets */
   .calc-print-wrap { max-width: none; padding: 0; gap: 0; display: block; }
+
+  /* Clean sheet styling */
   .calc-sheet { border: none; border-radius: 0; box-shadow: none; padding: 0 0 18px; background: white !important; color: black; }
   .calc-sheet + .calc-sheet { page-break-before: always; }
-  .calc-verdict, .calc-tbl, .calc-tbl tr { break-inside: avoid; }
-  body { background: white !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  /* Prevent awkward breaks */
+  .calc-verdict, .calc-tbl, .calc-tbl tr, .calc-kv, .calc-kv-row { break-inside: avoid; }
+  .calc-tbl th, .calc-tbl td { orphans: 3; widows: 3; }
+
+  /* B&W base with blue accents — forces high contrast for sharpness */
+  body { background: white !important; color: black !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  /* Font rendering optimization */
+  * { text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+
+  /* Crisp SVG/logo rendering */
+  svg, img { image-rendering: -webkit-optimize-contrast; image-rendering: crisp-edges; }
+  .calc-head svg { width: 42px !important; height: 42px !important; }
+
+  /* Headers — blue for branding, black for text */
+  .calc-head { border-bottom-color: #1e40af !important; }
+  .calc-head .font-disp { color: #1e40af !important; }
+
+  /* Section titles — blue */
+  .calc-sec { color: #1e40af !important; border-bottom: 1px solid #1e40af; padding-bottom: 4px; margin-bottom: 12px; }
+
+  /* Key-value table — black text, subtle grey borders */
+  .calc-kv { border-color: #d1d5db !important; }
+  .calc-kv-row + .calc-kv-row { border-top-color: #e5e7eb !important; }
+  .calc-k { background: #f3f4f6 !important; color: #374151 !important; }
+  .calc-v { color: #111827 !important; }
+
+  /* Verdict box — blue border, black text */
+  .calc-verdict { border-color: #1e40af !important; background: white !important; }
+  .calc-verdict-row { color: #111827 !important; }
+  .calc-verdict-row.dim { color: #4b5563 !important; }
+  .calc-verdict-sub { color: #1e40af !important; }
+
+  /* DBR chips — subtle grey, black text */
+  .calc-dbrs span { background: #f3f4f6 !important; border-color: #d1d5db !important; color: #374151 !important; }
+  .calc-dbrs strong { color: #111827 !important; }
+
+  /* Tables — larger fonts, solid borders, black/blue */
+  .calc-tbl { font-size: 12px !important; color: #111827 !important; }
+  .calc-tbl th { font-size: 11px !important; color: #1e40af !important; border-bottom: 1px solid #1e40af !important; padding: 6px 8px !important; }
+  .calc-tbl td { border-top: 1px solid #e5e7eb !important; padding: 6px 8px !important; }
+  .calc-tbl th.num, .calc-tbl td.num { font-family: var(--font-mono); color: #111827 !important; }
+  .calc-tbl tr.hl td { background: #eff6ff !important; color: #1e40af !important; font-weight: 700; }
+
+  /* Mini headings — blue */
+  .calc-minihead { color: #1e40af !important; }
+
+  /* Notes — subtle blue tint */
+  .calc-note { background: #eff6ff !important; border-color: #1e40af !important; color: #1e40af !important; }
+
+  /* Muted text — dark grey */
+  .calc-muted { color: #4b5563 !important; }
+
+  /* Lists — black */
+  .calc-list { color: #374151 !important; }
+
+  /* Signature lines — black */
+  .calc-sign { color: #111827 !important; }
+  .calc-sign span { color: #6b7280 !important; }
+
+  /* Footer — blue */
+  .calc-foot { color: #1e40af !important; border-top-color: #d1d5db !important; }
+
+  /* Divider — subtle grey */
+  .calc-div { border-top-color: #e5e7eb !important; }
 }
 `;

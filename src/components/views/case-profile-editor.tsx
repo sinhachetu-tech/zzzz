@@ -5,7 +5,7 @@
    the strict distinction between Co-Borrower (Financial - Pooled) vs
    Co-Applicant (Non-Financial - Title Only). */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useHfmcStore } from "@/lib/client-store";
 import type { LoanCase } from "@/lib/types";
 import {
@@ -18,8 +18,11 @@ import {
 import { Chip } from "@/components/hfmc/ui";
 import { ICheck, IUsers, ICalc } from "@/components/icons";
 
+export type ProfileSubTab = "primary" | "property" | "joint";
+
 interface Props {
   c: LoanCase;
+  initialTab?: ProfileSubTab;
   onSaved?: (p: CaseProfile) => void;
 }
 
@@ -48,7 +51,7 @@ function fmtAed(n: number | null) {
   return n == null ? "—" : "AED " + Math.round(n).toLocaleString("en-US");
 }
 
-export function CaseProfileEditor({ c, onSaved }: Props) {
+export function CaseProfileEditor({ c, initialTab, onSaved }: Props) {
   const { updateCase, toast } = useHfmcStore();
   const [profile, setProfile] = useState<CaseProfile>(() =>
     parseCaseProfile(c.profileJson, {
@@ -61,9 +64,24 @@ export function CaseProfileEditor({ c, onSaved }: Props) {
       transactionType: c.transactionType,
       propertyLocation: c.propertyLocation,
       coApplicantName: c.coApplicantName,
+      // canonical classification lives on the case row too — preload it so the
+      // 5 questions show what was already answered (profileJson still wins)
+      propertyTypeCanonical: c.propertyTypeCanonical,
+      commercialSubtype: c.commercialSubtype,
+      propertyStage: c.propertyStage,
+      constructionStatus: c.constructionStatus,
+      partyRelationship: c.partyRelationship,
+      existingFinance: c.existingFinance,
+      transactionPurpose: c.transactionPurpose,
     })
   );
-  const [activeTab, setActiveTab] = useState<"primary" | "property" | "joint">("primary");
+  const [activeTab, setActiveTab] = useState<ProfileSubTab>(() => initialTab ?? "primary");
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
   const [saving, setSaving] = useState(false);
   const [quick, setQuick] = useState<{
     busy: boolean;
@@ -113,6 +131,14 @@ export function CaseProfileEditor({ c, onSaved }: Props) {
   // one persistence path shared by "Save profile" and the quick proposal generator
   const persistProfile = async (): Promise<boolean> => {
     try {
+      // canonical dims → case row (validated server-side); transaction purpose is
+      // derived from the user's explicit Transaction Type pick (not guessed) and
+      // stored SEPARATELY from the property dims per the classification plan.
+      const txn = prop.transactionType.toLowerCase();
+      const purpose = txn.includes("buyout") && txn.includes("equity") ? "REFINANCE_AND_EQUITY"
+        : txn.includes("buyout") ? "REFINANCE"
+        : txn.includes("equity") ? "EQUITY_RELEASE"
+        : "PURCHASE";
       await updateCase(c.id, {
         profileJson: JSON.stringify(profile),
         customer: p.fullName.trim() || c.customer,
@@ -124,6 +150,13 @@ export function CaseProfileEditor({ c, onSaved }: Props) {
         transactionType: prop.transactionType,
         propertyLocation: prop.propertyLocation || null,
         coApplicantName: s.role !== "none" && s.fullName.trim() ? s.fullName.trim() : null,
+        propertyTypeCanonical: prop.canonicalPropertyType ?? "UNKNOWN",
+        commercialSubtype: (prop.canonicalPropertyType ?? "UNKNOWN") === "COMMERCIAL" ? (prop.canonicalCommercialSubtype ?? "UNKNOWN") : null,
+        propertyStage: prop.canonicalPropertyStage ?? "UNKNOWN",
+        constructionStatus: prop.canonicalConstructionStatus ?? "UNKNOWN",
+        partyRelationship: prop.canonicalPartyRelationship ?? "UNKNOWN",
+        existingFinance: prop.canonicalExistingFinance ?? "UNKNOWN",
+        transactionPurpose: purpose,
       });
       return true;
     } catch (e) {
@@ -228,7 +261,7 @@ export function CaseProfileEditor({ c, onSaved }: Props) {
             const cur = activeTab === t;
             return (
               <button key={t} onClick={() => setActiveTab(t)} className="flex-1 flex items-center gap-1.5 group">
-                <span className="w-5 h-5 rounded-full flex items-center justify-center mono text-[10px] font-semibold shrink-0"
+                <span className="w-5 h-5 rounded-full flex items-center justify-center mono text-[10.5px] font-semibold shrink-0"
                   style={cur ? { background: "var(--amber)", color: "#fff" } : done ? { background: "var(--mint)", color: "#fff" } : { background: "var(--track)", color: "var(--ink-faint)" }}>
                   {done ? <ICheck size={11} /> : i + 1}
                 </span>
@@ -428,7 +461,7 @@ export function CaseProfileEditor({ c, onSaved }: Props) {
                       Open proposal ({Object.values(quick.selected).filter(Boolean).length} banks) →
                     </button>
                   )}
-                  <p className="text-[10px] text-[var(--ink-faint)] m-0">
+                  <p className="text-[10.5px] text-[var(--ink-faint)] m-0">
                     Opens the print-ready proposal — save it to the case as a draft, then move it to &quot;sent&quot; once shared with the client.
                   </p>
                 </div>
@@ -486,15 +519,132 @@ export function CaseProfileEditor({ c, onSaved }: Props) {
                 </select>
               </div>
               <div>
-                <label className="label">Property Type</label>
-                <select className="select" value={prop.propertyType} onChange={(e) => updateProperty({ propertyType: e.target.value as CaseProfile["property"]["propertyType"] })}>
-                  <option value="Ready">Ready / Completed Property</option>
-                  <option value="Off-Plan">Off-Plan / Under Construction</option>
-                </select>
-              </div>
-              <div>
                 <label className="label">Property Location / Emirate</label>
                 <input className="input" placeholder="e.g. Dubai, Abu Dhabi, Sharjah" value={prop.propertyLocation ?? ""} onChange={(e) => updateProperty({ propertyLocation: e.target.value })} />
+              </div>
+            </div>
+
+            {/* FINAL PROPERTY CLASSIFICATION — plain-language questions writing
+                canonical backend dims. Stage and construction are SEPARATE fields:
+                an answer only fills the field it directly names; anything unstated
+                stays UNKNOWN (never guessed). See prisma/schema.prisma. */}
+            <div className="rounded-lg p-3.5 space-y-3" style={{ background: "var(--surface)", border: "1px solid var(--line-soft)" }}>
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--ink-faint)]">
+                Property classification
+              </div>
+
+              {/* Q1 — property type */}
+              <div>
+                <label className="label">What type of property is this?</label>
+                <select
+                  className="select"
+                  value={prop.canonicalPropertyType ?? "UNKNOWN"}
+                  onChange={(e) => {
+                    const v = e.target.value as NonNullable<CaseProfile["property"]["canonicalPropertyType"]>;
+                    // subtype must be NULL unless COMMERCIAL — enforced here + server-side
+                    updateProperty(v === "COMMERCIAL"
+                      ? { canonicalPropertyType: v, canonicalCommercialSubtype: prop.canonicalCommercialSubtype ?? "UNKNOWN" }
+                      : { canonicalPropertyType: v, canonicalCommercialSubtype: null });
+                  }}
+                >
+                  <option value="RESIDENTIAL">Residential</option>
+                  <option value="COMMERCIAL">Commercial</option>
+                  <option value="UNKNOWN">Not sure / To Verify</option>
+                </select>
+              </div>
+
+              {/* Q2 — conditional: ONLY when Commercial */}
+              {(prop.canonicalPropertyType ?? "UNKNOWN") === "COMMERCIAL" && (
+                <div>
+                  <label className="label">What type of commercial property is this?</label>
+                  <select
+                    className="select"
+                    value={prop.canonicalCommercialSubtype ?? "UNKNOWN"}
+                    onChange={(e) => updateProperty({ canonicalCommercialSubtype: e.target.value as NonNullable<CaseProfile["property"]["canonicalCommercialSubtype"]> })}
+                  >
+                    <option value="OFFICE">Office</option>
+                    <option value="RETAIL_SHOP">Retail / Shop</option>
+                    <option value="WAREHOUSE">Warehouse</option>
+                    <option value="INDUSTRIAL">Industrial</option>
+                    <option value="HOTEL_HOSPITALITY">Hotel / Hospitality</option>
+                    <option value="MIXED_USE">Mixed-use</option>
+                    <option value="LAND_PLOT">Land / Plot</option>
+                    <option value="OTHER_COMMERCIAL">Other Commercial</option>
+                    <option value="UNKNOWN">Not sure / To Verify</option>
+                  </select>
+                </div>
+              )}
+
+              {/* Q3 — current status: one human answer, TWO backend fields written
+                  conservatively (Off-plan never implies Under-construction;
+                  Handover never implies construction Completed). */}
+              <div>
+                <label className="label">What is the current status of the property?</label>
+                {(() => {
+                  const stage = prop.canonicalPropertyStage ?? "UNKNOWN";
+                  const cons = prop.canonicalConstructionStatus ?? "UNKNOWN";
+                  // reverse-map the paired fields to one select value for display
+                  const current =
+                    stage === "OFF_PLAN" && cons === "UNKNOWN" ? "OFF_PLAN"
+                    : stage === "UNKNOWN" && cons === "UNDER_CONSTRUCTION" ? "UNDER_CONSTRUCTION"
+                    : stage === "HANDOVER" && cons === "UNKNOWN" ? "HANDOVER"
+                    : stage === "COMPLETED" && cons === "COMPLETED" ? "READY"
+                    : "UNKNOWN";
+                  return (
+                    <select
+                      className="select"
+                      value={current}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v === "OFF_PLAN") updateProperty({ canonicalPropertyStage: "OFF_PLAN", canonicalConstructionStatus: "UNKNOWN", propertyType: "Off-Plan" });
+                        else if (v === "UNDER_CONSTRUCTION") updateProperty({ canonicalPropertyStage: "UNKNOWN", canonicalConstructionStatus: "UNDER_CONSTRUCTION", propertyType: "Off-Plan" });
+                        else if (v === "HANDOVER") updateProperty({ canonicalPropertyStage: "HANDOVER", canonicalConstructionStatus: "UNKNOWN" });
+                        else if (v === "READY") updateProperty({ canonicalPropertyStage: "COMPLETED", canonicalConstructionStatus: "COMPLETED", propertyType: "Ready" });
+                        else updateProperty({ canonicalPropertyStage: "UNKNOWN", canonicalConstructionStatus: "UNKNOWN" });
+                      }}
+                    >
+                      <option value="OFF_PLAN">Off-plan</option>
+                      <option value="UNDER_CONSTRUCTION">Under construction</option>
+                      <option value="HANDOVER">At handover</option>
+                      <option value="READY">Ready / completed</option>
+                      <option value="UNKNOWN">Not sure / To Verify</option>
+                    </select>
+                  );
+                })()}
+                <p className="text-[10.5px] text-[var(--ink-faint)] m-0 mt-1">
+                  Off-plan and under-construction are tracked separately — answer only what you know.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Q4 — party relationship (separate from transaction purpose) */}
+                <div>
+                  <label className="label">Who is the customer dealing with for this property?</label>
+                  <select
+                    className="select"
+                    value={prop.canonicalPartyRelationship ?? "UNKNOWN"}
+                    onChange={(e) => updateProperty({ canonicalPartyRelationship: e.target.value as NonNullable<CaseProfile["property"]["canonicalPartyRelationship"]> })}
+                  >
+                    <option value="DEVELOPER">Developer</option>
+                    <option value="EXISTING_OWNER">Existing property owner / seller</option>
+                    <option value="SELF">Customer already owns the property</option>
+                    <option value="UNKNOWN">Not sure / To Verify</option>
+                  </select>
+                </div>
+
+                {/* Q5 — existing finance (never decides the bank's transaction classification alone) */}
+                <div>
+                  <label className="label">Is there an existing mortgage on this property?</label>
+                  <select
+                    className="select"
+                    value={prop.canonicalExistingFinance ?? "UNKNOWN"}
+                    onChange={(e) => updateProperty({ canonicalExistingFinance: e.target.value as NonNullable<CaseProfile["property"]["canonicalExistingFinance"]> })}
+                  >
+                    <option value="NONE">No</option>
+                    <option value="MORTGAGE">Yes</option>
+                    <option value="UNKNOWN">Not sure / To Verify</option>
+                  </select>
+                </div>
               </div>
             </div>
           </div>

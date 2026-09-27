@@ -141,17 +141,17 @@ function ProjectedRevenue({ visCases, userById, banks }: {
       </div>
       <div className="grid grid-cols-3 gap-3 p-4 pb-0">
         <div className="rounded-lg px-3 py-2.5" style={{ background: "var(--tint)" }}>
-          <div className="text-[10px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)]">Booked (actual)</div>
+          <div className="text-[10.5px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)]">Booked (actual)</div>
           <div className="font-disp font-bold text-[20px] mono" style={{ color: "var(--mint)" }}>{fmtMoney(bookedNet)}</div>
           <div className="text-[10.5px] text-[var(--ink-faint)]">{booked.length} disbursed file{booked.length === 1 ? "" : "s"}</div>
         </div>
         <div className="rounded-lg px-3 py-2.5" style={{ background: "var(--amber-tint)" }}>
-          <div className="text-[10px] uppercase tracking-[0.1em] font-disp font-semibold" style={{ color: "var(--amber)" }}>Pipeline (best case)</div>
+          <div className="text-[10.5px] uppercase tracking-[0.1em] font-disp font-semibold" style={{ color: "var(--amber)" }}>Pipeline (best case)</div>
           <div className="font-disp font-bold text-[20px] mono" style={{ color: "var(--amber)" }}>{fmtMoney(pipelineBest)}</div>
           <div className="text-[10.5px] text-[var(--ink-faint)]">{rows.length} open engagement{rows.length === 1 ? "" : "s"} — max per engagement</div>
         </div>
         <div className="rounded-lg px-3 py-2.5" style={{ background: "var(--tint)" }}>
-          <div className="text-[10px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)]">Avoided double-count</div>
+          <div className="text-[10.5px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)]">Avoided double-count</div>
           <div className="font-disp font-bold text-[20px] mono">{fmtMoney(phantom)}</div>
           <div className="text-[10.5px] text-[var(--ink-faint)]">phantom revenue from multi-bank duplicates, excluded</div>
         </div>
@@ -180,7 +180,7 @@ function ProjectedRevenue({ visCases, userById, banks }: {
                     ))}
                   </div>
                 </td>
-                <td className="mono font-semibold" style={{ color: "var(--amber)" }}>{fmtMoney(r.best.net)}{r.split ? <span className="text-[10px] text-[var(--ink-faint)] font-normal"> (of {r.banks.length} banks)</span> : null}</td>
+                <td className="mono font-semibold" style={{ color: "var(--amber)" }}>{fmtMoney(r.best.net)}{r.split ? <span className="text-[10.5px] text-[var(--ink-faint)] font-normal"> (of {r.banks.length} banks)</span> : null}</td>
               </tr>
             ))}
             {rows.length === 0 && <tr><td colSpan={5} className="py-3 text-[var(--ink-faint)]">No open cases — projected pipeline is empty.</td></tr>}
@@ -762,7 +762,7 @@ export default function Reports() {
                 <button key={b.m} className="flex-1 flex flex-col items-center gap-1 min-w-0" title={`${b.label}: ${volUnit === "value" ? fmtMoney(v) : v} — ${b.bookCount} booked · ${b.pipeCount} new`}
                   onClick={() => setVolMonth(on ? null : b.m)}>
                   <span className="w-full rounded-t-md transition-all" style={{ height: h, background: on ? "var(--amber)" : v > 0 ? "var(--amber)" : "var(--track)", opacity: on ? 1 : v > 0 ? 0.85 : 1 }} />
-                  <span className="text-[9px] mono" style={{ color: on ? "var(--amber)" : "var(--ink-faint)" }}>{b.label}</span>
+                  <span className="text-[10.5px] mono" style={{ color: on ? "var(--amber)" : "var(--ink-faint)" }}>{b.label}</span>
                 </button>
               );
             })}
