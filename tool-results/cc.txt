@@ -1,0 +1,7 @@
+  134: !c.customer.toLowerCase().includes(q) &&
+  208: <input className="input w-full sm:!w-[190px]" placeholder="Search case / customer…" value={search} onChange={(e) => setSearch(e.target.value)} />
+  252: <th>Customer</th>
+  296: <span className="truncate" style={{ maxWidth: 200 }}>{c.customer}</span>
+  371: // first question on a phone; the customer name is right there.
+  373: return b ? <BankLogo bank={b} size={30} /> : <Avatar name={c.customer} size={30} />;
+  377: <span className="text-[13px] font-semibold truncate">{c.customer}</span>

@@ -1,0 +1,97 @@
+﻿
+  src\components\views\reports.tsx:170:        
+  they keep their columns and pan sideways on 
+a phone rather than becoming
+  src\components\views\reports.tsx:171:        
+  cards — cards would destroy the column 
+alignment that makes a report
+> src\components\views\reports.tsx:172:        
+  readable. `.rf-scroll .rf-scroll-x` replaces 
+a bare `overflow-x-auto`:
+  src\components\views\reports.tsx:173:        
+  same behaviour plus `overscroll-behavior: 
+contain` (panning can't drag
+  src\components\views\reports.tsx:174:        
+  the page) and the edge-fade that makes the 
+pan discoverable. */}
+  src\components\views\reports.tsx:720:        
+    <EmptyState icon={<IUsers size={20} />} 
+title="No files in view" body="Backup coverage 
+appears here once cases are visible to you." />
+  src\components\views\reports.tsx:721:        
+  ) : (
+> src\components\views\reports.tsx:722:        
+    <div className="overflow-x-auto -mx-1 
+px-1" style={{ maxHeight: 340, overflowY: 
+"auto" }}>
+  src\components\views\reports.tsx:723:        
+      <table className="tbl min-w-[720px]">
+  src\components\views\reports.tsx:724:        
+        <thead>
+  src\components\views\reports.tsx:876:        
+    <p className="text-[12.5px] 
+text-[var(--ink-faint)] m-0">No bank activity 
+yet.</p>
+  src\components\views\reports.tsx:877:        
+  ) : (
+> src\components\views\reports.tsx:878:        
+    <div className="overflow-x-auto">
+  src\components\views\reports.tsx:879:        
+      <table className="tbl min-w-[640px]">
+  src\components\views\reports.tsx:880:        
+        <thead>
+  src\components\views\reports.tsx:923:        
+    <p className="text-[12.5px] 
+text-[var(--ink-faint)] m-0">No cases assigned 
+yet.</p>
+  src\components\views\reports.tsx:924:        
+  ) : (
+> src\components\views\reports.tsx:925:        
+    <div className="overflow-x-auto">
+  src\components\views\reports.tsx:926:        
+      <table className="tbl min-w-[640px]">
+  src\components\views\reports.tsx:927:        
+        <thead>
+  src\components\views\reports.tsx:1066:       
+       </span>
+  src\components\views\reports.tsx:1067:       
+     </div>
+> src\components\views\reports.tsx:1068:       
+     <div className="flex-1 min-w-[180px] flex 
+flex-col items-end overflow-x-auto">
+  src\components\views\reports.tsx:1069:       
+       <Spark points={trend} 
+color={TONE_HEX.amber} width={260} height={56} 
+/>
+  src\components\views\reports.tsx:1070:       
+       <span className="text-[10.5px] 
+text-[var(--ink-faint)] mt-1">today →</span>
+  src\components\views\reports.tsx:1153:       
+     </p>
+  src\components\views\reports.tsx:1154:       
+   ) : (
+> src\components\views\reports.tsx:1155:       
+     <div className="overflow-x-auto">
+  src\components\views\reports.tsx:1156:       
+       <table className="tbl min-w-[520px]">
+  src\components\views\reports.tsx:1157:       
+         <thead>
+  src\components\views\reports.tsx:1217:       
+     <p className="text-[12.5px] 
+text-[var(--ink-faint)] m-0">No teams on 
+file.</p>
+  src\components\views\reports.tsx:1218:       
+   ) : (
+> src\components\views\reports.tsx:1219:       
+     <div className="overflow-x-auto">
+  src\components\views\reports.tsx:1220:       
+       <table className="tbl min-w-[520px]">
+  src\components\views\reports.tsx:1221:       
+         <thead><tr><th>Team</th><th 
+className="text-right">Live</th><th 
+className="text-right">Overdue</th><th 
+className="text-right">Booked</th><th 
+className="text-right">Booked 
+volume</th></tr></thead>
+
+

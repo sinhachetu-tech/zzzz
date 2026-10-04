@@ -1,0 +1,2 @@
+=== npx eslint src/components/views/admin/departments.tsx src/components/views/admin.tsx src/app/api/admin/route.ts src/app/api/service-lines/route.ts : PASS (exit 0) ===
+(no output)

@@ -1,0 +1,1 @@
+  467: id: p.id, bankId: p.bankId, bankName: (p as unknown as { bank?: { name?: string } }).bank?.name ?? "", name: p.name, sheet: p.sheet, employment: p.employment,

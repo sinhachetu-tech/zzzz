@@ -281,7 +281,7 @@ function AddPartyModal({ c, busy, onClose, onSubmit }: {
               placeholder="Full name"
             />
             {creating && (
-              <div className="grid grid-cols-2 gap-2 mt-2">
+              <div className="rf-form-grid-sm mt-2">
                 <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone" />
                 <input className="input mono" value={eidNo} onChange={(e) => setEidNo(e.target.value)} placeholder="Emirates ID" />
               </div>

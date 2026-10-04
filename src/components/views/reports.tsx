@@ -146,7 +146,10 @@ function ProjectedRevenue({ visCases, userById, banks }: {
           each bank case shows its own expected commission · totals count every engagement only once
         </span>
       </div>
-      <div className="grid grid-cols-3 gap-3 p-4 pb-0">
+      {/* Unprefixed `grid-cols-3` gave these money tiles ~110px each on a phone, which
+          truncated AED figures. `.rf-form-grid` is 1-up on a phone, 2-up on a
+          tablet, 3-up on desktop — and it needs no breakpoint classes here. */}
+      <div className="rf-form-grid gap-3 p-4 pb-0">
         <div className="rounded-lg px-3 py-2.5" style={{ background: "var(--tint)" }}>
           <div className="text-[10.5px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)]">Booked (actual)</div>
           <div className="font-disp font-bold text-[20px] mono" style={{ color: "var(--mint)" }}>{fmtMoney(bookedNet)}</div>
@@ -163,7 +166,13 @@ function ProjectedRevenue({ visCases, userById, banks }: {
           <div className="text-[10.5px] text-[var(--ink-faint)]">phantom revenue from multi-bank duplicates, excluded</div>
         </div>
       </div>
-      <div className="overflow-x-auto p-4 pt-3">
+      {/* All report tables are genuinely tabular (money, dates, counts per bank), so
+          they keep their columns and pan sideways on a phone rather than becoming
+          cards — cards would destroy the column alignment that makes a report
+          readable. `.rf-scroll .rf-scroll-x` replaces a bare `overflow-x-auto`:
+          same behaviour plus `overscroll-behavior: contain` (panning can't drag
+          the page) and the edge-fade that makes the pan discoverable. */}
+      <div className="rf-scroll rf-scroll-x p-4 pt-3">
         <table className="w-full text-[12px]">
           <thead>
             <tr className="text-[var(--ink-faint)] text-left">
@@ -280,7 +289,7 @@ function DailyMisReport({ visCases, userById, toast }: {
       {rows.length === 0 ? (
         <p className="text-[12.5px] text-[var(--ink-faint)] m-0">No cases in scope.</p>
       ) : (
-        <div className="overflow-x-auto max-h-[420px] overflow-y-auto">
+        <div className="rf-scroll rf-scroll-x max-h-[420px] overflow-y-auto">
           <table className="tbl min-w-[760px]">
             <thead>
               <tr><th>Case</th><th>Customer</th><th>Team</th><th>Stage</th><th>Updates</th><th>Last update</th><th>On hold</th></tr>
@@ -710,7 +719,7 @@ export default function Reports() {
           {backupRows.length === 0 ? (
             <EmptyState icon={<IUsers size={20} />} title="No files in view" body="Backup coverage appears here once cases are visible to you." />
           ) : (
-            <div className="overflow-x-auto -mx-1 px-1" style={{ maxHeight: 340, overflowY: "auto" }}>
+            <div className="rf-scroll rf-scroll-x -mx-1 px-1" style={{ maxHeight: 340, overflowY: "auto" }}>
               <table className="tbl min-w-[720px]">
                 <thead>
                   <tr>
@@ -866,7 +875,7 @@ export default function Reports() {
           {bankRows.length === 0 ? (
             <p className="text-[12.5px] text-[var(--ink-faint)] m-0">No bank activity yet.</p>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="rf-scroll rf-scroll-x">
               <table className="tbl min-w-[640px]">
                 <thead>
                   <tr>
@@ -913,7 +922,7 @@ export default function Reports() {
           {owners.length === 0 ? (
             <p className="text-[12.5px] text-[var(--ink-faint)] m-0">No cases assigned yet.</p>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="rf-scroll rf-scroll-x">
               <table className="tbl min-w-[640px]">
                 <thead>
                   <tr>
@@ -1049,19 +1058,22 @@ export default function Reports() {
             </span>
           }
         >
-          <div className="flex flex-wrap items-end gap-4">
+          {/* `items-end` + a `flex-1 min-w-[180px]` chart kept the spark right-aligned and
+              narrow on a phone, wasting most of the card. Full-width and
+              left-aligned below `sm`, identical to before from `sm` up. */}
+          <div className="flex flex-wrap items-start sm:items-end gap-4">
             <div className="flex flex-col">
               <span className="text-[10.5px] uppercase tracking-[0.1em] text-[var(--ink-faint)] font-disp font-semibold">14-day total</span>
               <span className="font-disp font-bold text-[30px] leading-tight" style={{ color: "var(--amber)" }}>
                 <CountUp target={trendTotal} />
               </span>
             </div>
-            <div className="flex-1 min-w-[180px] flex flex-col items-end overflow-x-auto">
+            <div className="w-full sm:flex-1 sm:min-w-[180px] flex flex-col sm:items-end overflow-x-auto">
               <Spark points={trend} color={TONE_HEX.amber} width={260} height={56} />
               <span className="text-[10.5px] text-[var(--ink-faint)] mt-1">today →</span>
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-3 mt-3 pt-2.5" style={{ borderTop: "1px dashed var(--line)" }}>
+          <div className="rf-form-grid-sm gap-3 mt-3 pt-2.5" style={{ borderTop: "1px dashed var(--line)" }}>
             <MiniStat label="Peak day" value={trend.length ? `${Math.max(...trend)}` : "0"} tone="amber" />
             <MiniStat label="Today" value={trend.length ? `${trend[trend.length - 1]}` : "0"} tone="mint" />
             <MiniStat label="Avg / day" value={trend.length ? (trendTotal / trend.length).toFixed(1) : "0"} tone="sky" />
@@ -1143,7 +1155,7 @@ export default function Reports() {
               and this fills in — closing the losers is automatic when you record a win.
             </p>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="rf-scroll rf-scroll-x">
               <table className="tbl min-w-[520px]">
                 <thead>
                   <tr>
@@ -1207,7 +1219,7 @@ export default function Reports() {
           {teamPulse.length === 0 ? (
             <p className="text-[12.5px] text-[var(--ink-faint)] m-0">No teams on file.</p>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="rf-scroll rf-scroll-x">
               <table className="tbl min-w-[520px]">
                 <thead><tr><th>Team</th><th className="text-right">Live</th><th className="text-right">Overdue</th><th className="text-right">Booked</th><th className="text-right">Booked volume</th></tr></thead>
                 <tbody>
@@ -1278,7 +1290,7 @@ function HeadCommand() {
           Morning brief
         </button>
       </div>
-      <div className="grid grid-cols-3 gap-2.5 mt-3">
+      <div className="rf-form-grid-sm gap-2.5 mt-3">
         <MiniStat label="SLA breached" value={String(esc.length)} tone="coral" />
         <MiniStat label="No action 7d+" value={String(noAction.length)} tone="amber" />
         <MiniStat label="Stale leads" value={String(stale.length)} tone="amber" />

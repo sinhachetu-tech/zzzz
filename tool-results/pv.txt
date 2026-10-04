@@ -1,0 +1,4 @@
+  154: if (body.banks !== undefined) {
+  168: const incoming = body.banks;
+  257: if (body.bankRm !== undefined) data.bankRm = body.bankRm;
+  333: for (const [k, v] of Object.entries(body)) {

@@ -1,0 +1,11 @@
+   53: ## 1. The original problem
+   97: ## 2. Target model
+  122: ## 3. Phase log — what shipped
+  198: ## 3b. Phase 4 — the real `Lead` table (SHIPPED)
+  237: ## 4. Open threads / things to remember
+  263: ## 5. Remaining phases
+  283: ## 8. FINAL PLAN — Phases A–E (agreed after Phase 5)
+  382: ## 9. ⭐ THE NEXT BIG THING — departments, read-across, and the shared vault
+  508: ## 10. ⭐ REVISED DESIGN — departments, offices, and one shared vault
+  633: ## 6. Key numbers to sanity-check
+  640: ## 7. Decisions the user made (do not relitigate)

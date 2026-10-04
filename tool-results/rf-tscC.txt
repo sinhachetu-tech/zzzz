@@ -1,0 +1,11 @@
+﻿src/components/views/proposals.tsx(84,14): error TS1005: ')' expected.
+src/components/views/proposals.tsx(84,65): error TS1382: Unexpected token. Did you mean `{'>'}` or `&gt;`?
+src/components/views/proposals.tsx(116,5): error TS1128: Declaration or statement expected.
+src/components/views/proposals.tsx(117,3): error TS1109: Expression expected.
+src/components/views/proposals.tsx(118,1): error TS1128: Declaration or statement expected.
+src/components/views/tasks.tsx(227,16): error TS1005: ')' expected.
+src/components/views/tasks.tsx(227,91): error TS1382: Unexpected token. Did you mean `{'>'}` or `&gt;`?
+src/components/views/tasks.tsx(337,10): error TS1381: Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+src/components/views/tasks.tsx(340,7): error TS1005: ')' expected.
+src/components/views/tasks.tsx(341,5): error TS1128: Declaration or statement expected.
+src/components/views/tasks.tsx(342,3): error TS1109: Expression expected.

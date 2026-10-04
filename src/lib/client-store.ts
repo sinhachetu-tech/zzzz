@@ -110,6 +110,13 @@ interface HfmcState extends StateSnapshot {
     transactionType?: string; propertyLocation?: string | null; coApplicantName?: string | null; bankRm?: string | null; statusNote?: string;
     bankRms?: Record<string, string>; partnerRm?: string | null;
     employmentProfile?: string; propertyType?: string; residency?: string;
+    /** Phase C — the department + offering, decided AT INTAKE. Omitting serviceLineId
+     *  falls back to MORTGAGE server-side, so existing callers keep working. */
+    serviceLineId?: number | null;
+    productId?: number | null;
+    /** Phase C — an already-known person. When omitted the server runs the client
+     *  merge ladder (EID → phone+name → never phone alone) and links or creates. */
+    clientId?: number | null;
   }) => Promise<LoanCase>;
   updateCase: (id: number, patch: Record<string, unknown>) => Promise<void>;
 

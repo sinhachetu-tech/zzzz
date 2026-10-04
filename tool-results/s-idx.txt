@@ -1,0 +1,6 @@
+PASS Client_fullName_idx
+PASS LoanCase_customer_idx
+PASS LoanCase_serviceLineId_updatedAt_idx
+indexes present: 3/3
+LoanCase customer prefix search uses index: false
+data intact: cases=41 clients=52

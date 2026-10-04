@@ -91,6 +91,15 @@ export async function POST(req: NextRequest) {
       }
     }
     const { id, code, ...rest } = s;
+    // Phase F: who runs this department. Informational only — it does not grant access.
+    // Validated against a real user id so a typo cannot store a dangling head.
+    let headUserId: number | null = existing.headUserId ?? null;
+    if (rest.headUserId !== undefined) {
+      headUserId = rest.headUserId ? Number(rest.headUserId) : null;
+      if (headUserId !== null && !(await db.user.findUnique({ where: { id: headUserId }, select: { id: true } }))) {
+        return NextResponse.json({ error: "headUserId is not a valid user" }, { status: 400 });
+      }
+    }
     const updated = await db.serviceLine.update({
       where: { id: Number(id) },
       data: {
@@ -100,6 +109,7 @@ export async function POST(req: NextRequest) {
         active: rest.active !== false,
         bankRaced: rest.bankRaced === true,
         sortOrder: Number(rest.sortOrder) || 0,
+        headUserId,
       },
     });
     return NextResponse.json({ serviceLine: serServiceLine(updated) });

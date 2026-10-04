@@ -21,7 +21,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useHfmcStore } from "@/lib/client-store";
 import { fmtDate, fmtMoney } from "@/lib/format";
-import { Avatar, Chip, EmptyState } from "@/components/hfmc/ui";
+import { Avatar, Chip, EmptyState, ResponsiveList } from "@/components/hfmc/ui";
 import { ContactLine, resolveContact } from "@/components/case/ContactBits";
 import { IUsers } from "@/components/icons";
 
@@ -45,7 +45,14 @@ export default function Clients() {
   // clicking a co-borrower's name would look like it did nothing.
   const focusId = route.name === "clients" ? route.clientId : undefined;
   const focusName = focusId ? clients.find((c) => c.id === focusId)?.fullName : undefined;
+  // Adjusting state when a PROP changes is one of the cases React documents as a
+  // legitimate effect. `search` is genuine user state (typing must keep working), so it
+  // cannot be derived from focusName without making the box read-only.
+  // Pre-existing since the Phase B deep link; the rule only started firing when this
+  // file was first linted. The directive sits on the setSearch line because that is
+  // where the rule anchors, not on the useEffect line.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (focusName) setSearch(focusName);
   }, [focusName]);
 
@@ -121,6 +128,22 @@ export default function Clients() {
   const repeatCount = rows.filter((r) => r.engagements.length > 1).length;
   const noContact = rows.filter((r) => !r.contact.phone && !r.contact.email).length;
 
+  /* Pagination — same reasoning as the worklist (views/cases.tsx). This list rendered
+   * EVERY client, so React re-rendered the whole table on each keystroke. The client
+   * master grows fastest of all the lists — one row per human, not per engagement — so
+   * this is the first list that will actually feel it.
+   *
+   * safePage CLAMPS rather than resets on filter change: a search that narrows 400
+   * clients to 5 must not leave you on page 8 of a 1-page result (an empty table that
+   * reads as "search is broken"). An effect that only called setPage would trip
+   * react-hooks/set-state-in-effect for no benefit.
+   */
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 50;
+  const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const safePage = Math.min(page, pages);
+  const paged = rows.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+
   const stats = [
     { label: "Clients on file", value: String(rows.length) },
     { label: "Repeat clients", value: String(repeatCount) },
@@ -140,9 +163,9 @@ export default function Clients() {
             edit their details from inside a case.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="rf-toolbar items-center gap-2">
           <input
-            className="input w-full sm:!w-[220px]"
+            className="input"
             placeholder="Name / phone / email / EID…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -178,9 +201,9 @@ export default function Clients() {
           />
         </div>
       ) : (
-        <>
-          {/* Desktop table */}
-          <div className="card overflow-x-auto hidden md:block" style={{ maxHeight: "62vh" }}>
+        <ResponsiveList
+          table={(
+            <div className="card">
             <table className="tbl min-w-[900px]">
               <thead>
                 <tr>
@@ -193,7 +216,7 @@ export default function Clients() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map(({ client, engagements, volume, lastAt, contact }) => (
+                {paged.map(({ client, engagements, volume, lastAt, contact }) => (
                   <tr key={client.id}>
                     <td>
                       <div className="flex items-center gap-2">
@@ -242,10 +265,12 @@ export default function Clients() {
                 ))}
               </tbody>
             </table>
-          </div>
-          {/* Mobile cards — the Clients tab is mostly read on a phone */}
-          <div className="md:hidden space-y-2">
-            {rows.map(({ client, engagements, volume, lastAt, contact }) => (
+            </div>
+          )}
+          cards={(
+            /* Mobile cards — the Clients tab is mostly read on a phone */
+            <div className="space-y-2">
+            {paged.map(({ client, engagements, volume, lastAt, contact }) => (
               <div key={client.id} className="card p-3.5 anim-fade-up">
                 <div className="flex items-start gap-2.5">
                   <Avatar name={client.fullName} size={34} />
@@ -283,8 +308,22 @@ export default function Clients() {
                 </div>
               </div>
             ))}
-          </div>
-        </>
+            </div>
+          )}
+        />
+      )}
+
+      {/* Pager — hidden until there is more than one page, so a short client list looks
+          exactly as it did before. Only appears BELOW the list, not in the header, so
+          the existing "N clients" summary stays where it is. */}
+      {pages > 1 && (
+        <div className="flex items-center justify-center gap-2">
+          <button className="btn btn-ghost btn-sm" disabled={safePage <= 1} onClick={() => setPage(safePage - 1)}>Previous</button>
+          <span className="text-[12px] text-[var(--ink-faint)]">
+            Page {safePage} of {pages} · {rows.length} client{rows.length === 1 ? "" : "s"}
+          </span>
+          <button className="btn btn-ghost btn-sm" disabled={safePage >= pages} onClick={() => setPage(safePage + 1)}>Next</button>
+        </div>
       )}
     </div>
   );

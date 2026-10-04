@@ -1,0 +1,20 @@
+  125: export function resolveStress(
+  204: export const LAW_NORMS: LawNorms = {
+  213: export function withVat(amount: number, vatPct: number = LAW_NORMS.vatPct): number {
+  239: export function staleness(
+  294: export function resolveField<T extends Record<string, unknown>, K extends keyof T & string>(
+  402: export const VOLATILITY = {
+  417: export function cardField(
+  446: export function applyCardField(
+  476: export function floorViolation(
+  498: export function currentCardValue(q: RateQuote, field: string): number | null {
+  506: export function bulkNextValue(q: RateQuote, field: string, mode: "set" | "shift", value: number | null): number | null {
+  545: export const UAE_NORMS: UaeNorms = {
+  579: export const EMPTY_FLOOR: PricingFloor = {};
+  598: export function applyFloor(q: RateQuote, floor: PricingFloor = EMPTY_FLOOR): FloorResult {
+  665: export function quoteSpecificity(q: RateQuote): number {
+  689: export function quoteMatches(q: RateQuote, req: QuoteMatchInput): boolean {
+  721: export function resolveQuote(pricing: ProductPricing | null, req: QuoteMatchInput): RateQuote | null {
+  770: export function assessmentRate(q: RateQuote, eibor: EiborCurve, stressBufferPct: number | null = 0): number | null {
+  775: export function parsePricing(json: string | null | undefined): ProductPricing | null {
+  802: export function rateSchedule(q: RateQuote, eibor: EiborCurve, stressBufferPct: number | null = 0): RateSchedule {

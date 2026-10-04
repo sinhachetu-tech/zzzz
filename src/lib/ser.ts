@@ -61,6 +61,13 @@ type PrismaCase = {
   fileSubmittedDate?: string | null;
   bankRate?: number | null;
   bankTenor?: number | null;
+  /** Phase 7 — which rate card priced this case. Accepts "" / null to clear. */
+  bankProductId?: number | null | "";
+  bookedBankProductId?: number | null | "";
+  /** Present only when the row was loaded WITH the relation included. Optional so
+   *  the plain-row callers keep working; the id alone still carries the truth. */
+  bankProduct?: PrismaBankProduct | null;
+  bookedBankProduct?: PrismaBankProduct | null;
   // --- Pre-approval stage capture ---
   preApprovalDate?: string | null;
   preApprovalAmount?: number | null;
@@ -314,6 +321,15 @@ export function serCaseWith(c: PrismaCase, extra?: Partial<LoanCase>): LoanCase 
     fileSubmittedDate: c.fileSubmittedDate ?? null,
     bankRate: c.bankRate ?? null,
     bankTenor: c.bankTenor ?? null,
+    // Phase 7 — the rate card ids, plus the resolved catalogue rows for display.
+    // The relation is optional on PrismaCase because not every caller includes
+    // it; `|| null` also collapses "" (the picker's "not specified") to null so
+    // the client gets a real null rather than an empty string.
+    bankProductId: c.bankProductId === "" || c.bankProductId == null ? null : c.bankProductId,
+    bookedBankProductId:
+      c.bookedBankProductId === "" || c.bookedBankProductId == null ? null : c.bookedBankProductId,
+    bankProduct: c.bankProduct ? serBankProduct(c.bankProduct) : null,
+    bookedBankProduct: c.bookedBankProduct ? serBankProduct(c.bookedBankProduct) : null,
     // Pre-approval
     preApprovalDate: c.preApprovalDate ?? null,
     preApprovalAmount: c.preApprovalAmount ?? null,
@@ -444,6 +460,8 @@ type PrismaBankProduct = {
   eligibility: string; documents: string; notes: string; axesJson: string;
   version: number; status: string; effectiveDate: string | null; approvedBy: string | null;
   sourceFiles: string; active: boolean;
+  /** Present only when the row was loaded WITH `include: { bank: … }`. */
+  bank?: { name?: string } | null;
 };
 
 export function serBankProduct(p: PrismaBankProduct): BankProduct {

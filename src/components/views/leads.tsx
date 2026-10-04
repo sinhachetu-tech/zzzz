@@ -235,7 +235,12 @@ return (
                       </div>
                     )}
                   </div>
-                  <div className="text-right shrink-0">
+                  {/* Age + owner sat in a `shrink-0` right-hand column competing with the
+                      contact details for one line, which squeezed both on a phone.
+                      They now drop to their own full-width row under the card —
+                      the age label is the urgency signal, so it still reads
+                      first, just not by crushing everything beside it. */}
+                  <div className="text-right shrink-0 w-full sm:w-auto sm:ml-auto mt-1.5 sm:mt-0">
                     <div className="text-[10.5px]"
                       style={{ color: age.tone === "mint" ? "var(--mint)" : age.tone === "amber" ? "var(--amber)" : "var(--coral)" }}>
                       {age.label}
@@ -280,7 +285,10 @@ return (
                     <button className="btn btn-ghost btn-sm" onClick={() => { setLoseTarget(l); setLoseReason(""); }}>Mark lost</button>
                     <button className="btn btn-ghost btn-sm" onClick={() => setStatus(l, "Invalid")}
                       title="Spam, wrong number or a duplicate — not lost business">Invalid</button>
-                    <button className="btn btn-ghost btn-sm !ml-auto" onClick={() => setDelLead(l)} aria-label="Delete lead">
+                    {/* `!ml-auto` shoved Delete to the far right of the wrapped action row, which on
+                      a phone left it stranded on its own line. Let it flow with
+                      the rest and only pin it right from `sm` up. */}
+                    <button className="btn btn-ghost btn-sm sm:!ml-auto" onClick={() => setDelLead(l)} aria-label="Delete lead">
                       <ITrash size={13} />
                     </button>
                   </div>
@@ -443,7 +451,7 @@ function NewLeadModal({ onClose }: { onClose: () => void }) {
             <input className="input mono" value={intendedAmount} onChange={(e) => setIntendedAmount(e.target.value)} inputMode="numeric" placeholder="e.g. 2500000" />
           </div>
         )}
-<div className="grid grid-cols-2 gap-3">
+<div className="rf-form-grid-sm">
           <div>
             <label className="label">Source</label>
             <select className="select" value={source} onChange={(e) => setSource(e.target.value)}>

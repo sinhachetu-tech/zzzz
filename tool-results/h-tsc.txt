@@ -1,0 +1,3 @@
+=== npx tsc --noEmit : FAIL (exit 2) ===
+src/components/views/admin/departments.tsx(236,50): error TS2322: Type '{ title: string; hint: string; }' is not assignable to type 'IntrinsicAttributes & { icon: ReactNode; title: string; body: string; }'.
+  Property 'hint' does not exist on type 'IntrinsicAttributes & { icon: ReactNode; title: string; body: string; }'.

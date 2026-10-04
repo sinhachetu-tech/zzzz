@@ -209,12 +209,18 @@ export function ProductDetail({ id, onBack }: { id: number; onBack: () => void }
         title="Rates"
         sub={`Each line resolved against today's EIBOR, with a worked example on a ${fmtMoney(d.sampleLoan)} loan.`}
       >
+        {/* The rates table below is genuinely tabular (rate per coverage), so it keeps
+            its columns aligned and scrolls sideways rather than becoming cards —
+            cards would destroy the alignment that makes the rates comparable.
+            `.rf-scroll .rf-scroll-x` replaces a bare `overflow-x-auto`: it adds
+            `overscroll-behavior: contain` (a sideways pan can't drag the page with
+            it) and the edge-fade that makes the pan discoverable. */}
         {d.quotes.length === 0 ? (
           <p className="text-[12px] m-0" style={{ color: "var(--coral)" }}>
             No rate lines filed — this product cannot be quoted until one is added in Admin → Bank Rules.
           </p>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="rf-scroll rf-scroll-x">
             <table className="tbl w-full">
               <thead>
                 <tr>

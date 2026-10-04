@@ -1,0 +1,9 @@
+﻿CaseCommandBar.tsx errors=0 warnings=0
+CaseParties.tsx errors=0 warnings=0
+ui.tsx errors=0 warnings=0
+case-detail.tsx errors=5 warnings=0
+    650:34 react-hooks/preserve-manual-memoization
+    687:21 react-hooks/preserve-manual-memoization
+    689:28 react-hooks/preserve-manual-memoization
+    701:20 react-hooks/preserve-manual-memoization
+    713:7 react-hooks/preserve-manual-memoization

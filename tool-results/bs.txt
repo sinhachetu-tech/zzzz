@@ -1,0 +1,4 @@
+   62: bankRate?: number | null;
+   63: bankTenor?: number | null;
+  315: bankRate: c.bankRate ?? null,
+  316: bankTenor: c.bankTenor ?? null,

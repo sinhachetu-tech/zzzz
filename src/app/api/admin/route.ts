@@ -16,6 +16,32 @@ async function guard() {
   return { me, flags };
 }
 
+/* ---------------- department scope (Phase F) ---------------- */
+
+// Designation.serviceLineIds is a JSON array of service-line CODES. This validates and
+// persists it.
+//
+// The important rule: an EMPTY result means "EVERY department". That is not a special
+// case to be careful with — it is the default every existing designation relies on, so
+// the UI must never be able to write an empty array by accident while an admin meant
+// "just mortgage". Rather than guess, the empty case is an explicit choice the UI
+// makes; here we only guarantee we never store something unrecognised, because a typo
+// like "MORTGAGE" vs "mortgage" would silently lock a colleague out of every file.
+async function normalizeServiceLineIds(raw: unknown): Promise<string[] | null> {
+  if (raw === undefined) return [];           // omitted ⇒ unchanged intent = all
+  if (raw === null) return [];
+  if (!Array.isArray(raw)) return null;
+  const codes = raw.filter((v): v is string => typeof v === "string" && v.trim().length > 0)
+    .map((v) => v.trim().toUpperCase());
+  const unique = Array.from(new Set(codes));
+  if (unique.length === 0) return [];
+  const known = await db.serviceLine.findMany({ where: { code: { in: unique } }, select: { code: true } });
+  const knownCodes = new Set(known.map((s) => s.code));
+  const unknown = unique.filter((c) => !knownCodes.has(c));
+  if (unknown.length) return null; // caller turns this into a 400 naming the bad code
+  return unique;
+}
+
 /* ---------------- banks ---------------- */
 export async function GET(req: NextRequest) {
   const me = await currentUser();
@@ -178,11 +204,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ item: serMaster(item) });
     }
     if (kind === "user") {
-      const item = await db.user.create({ data: { name: body.name, email: body.email.toLowerCase(), password: body.password || "demo123", role: body.role, team: body.team || "Dubai", active: body.active ?? true, phone: body.phone?.trim() || null } });
+      const item = await db.user.create({ data: { name: body.name, email: body.email.toLowerCase(), password: body.password || "demo123", role: body.role, team: body.team || "Dubai", active: body.active ?? true, phone: body.phone?.trim() || null, serviceLineId: body.serviceLineId ?? null } });
       return NextResponse.json({ item: serUser(item) });
     }
     if (kind === "designation") {
-      const item = await db.designation.create({ data: { name: body.name, scope: body.scope ?? "own", issueTasks: !!body.issueTasks, admin: !!body.admin, super: !!body.super, viewRevenue: !!body.viewRevenue, manageDocs: body.manageDocs !== undefined ? !!body.manageDocs : true, clientChat: body.clientChat !== undefined ? !!body.clientChat : true, builtIn: false } });
+      const ids = await normalizeServiceLineIds(body.serviceLineIds);
+      if (ids === null) return NextResponse.json({ error: "unknown service line code" }, { status: 400 });
+      const item = await db.designation.create({ data: { name: body.name, scope: body.scope ?? "own", serviceLineIds: JSON.stringify(ids), issueTasks: !!body.issueTasks, admin: !!body.admin, super: !!body.super, viewRevenue: !!body.viewRevenue, manageDocs: body.manageDocs !== undefined ? !!body.manageDocs : true, clientChat: body.clientChat !== undefined ? !!body.clientChat : true, builtIn: false } });
       return NextResponse.json({ item });
     }
     if (kind === "sla") {
@@ -364,6 +392,11 @@ export async function PATCH(req: NextRequest) {
       const data: Record<string, unknown> = { name: body.name, email: body.email?.toLowerCase(), role: body.role, team: body.team, active: body.active };
       if (body.password) data.password = body.password;
       if (body.phone !== undefined) data.phone = body.phone?.trim() || null;
+      // Phase F: which DEPARTMENT they work in. Distinct from `team` (the office), and
+      // informational only — access is controlled by Designation.serviceLineIds. Null is
+      // a legitimate value meaning "not assigned yet", so it is stored as null rather
+      // than defaulted to a department nobody chose.
+      if (body.serviceLineId !== undefined) data.serviceLineId = body.serviceLineId ?? null;
       const item = await db.user.update({ where: { id: numId }, data });
       return NextResponse.json({ item: serUser(item) });
     }
@@ -371,6 +404,11 @@ export async function PATCH(req: NextRequest) {
       const data: Record<string, unknown> = { name: body.name, scope: body.scope, issueTasks: !!body.issueTasks, admin: !!body.admin, super: !!body.super, viewRevenue: !!body.viewRevenue };
       if (body.manageDocs !== undefined) data.manageDocs = !!body.manageDocs;
       if (body.clientChat !== undefined) data.clientChat = !!body.clientChat;
+      if (body.serviceLineIds !== undefined) {
+        const ids = await normalizeServiceLineIds(body.serviceLineIds);
+        if (ids === null) return NextResponse.json({ error: "unknown service line code" }, { status: 400 });
+        data.serviceLineIds = JSON.stringify(ids);
+      }
       const item = await db.designation.update({ where: { id: numId }, data });
       return NextResponse.json({ item });
     }

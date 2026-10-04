@@ -242,7 +242,10 @@ export function BankMatchPanel({ c }: { c: LoanCase }) {
           </div>
         )}
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+        {/* `grid-cols-2 sm:grid-cols-4` left these four fields at TWO columns on a
+            phone, squeezing numeric inputs to ~85px. auto-fit gives 1-up on a phone,
+            2-up on a tablet, 4-up on desktop with no breakpoint classes here. */}
+        <div className="rf-form-grid-sm">
           <div>
             <label className="label">Monthly income</label>
             <input className="input mono" type="number" min={0} placeholder="20000" value={income} onChange={(e) => setIncome(e.target.value)} />

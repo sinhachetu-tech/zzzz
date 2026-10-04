@@ -1,0 +1,9 @@
+﻿
+src\components\views\reports.tsx:172:          
+readable. `.rf-scroll .rf-scroll-x` replaces a 
+bare `overflow-x-auto`:
+src\components\views\reports.tsx:1068:         
+   <div className="flex-1 min-w-[180px] flex 
+flex-col items-end overflow-x-auto">
+
+

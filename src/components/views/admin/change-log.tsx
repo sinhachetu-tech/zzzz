@@ -84,7 +84,7 @@ export function ChangeLog() {
         <EmptyState icon={<span>⎘</span>} title="No changes recorded yet"
           body="Revise a rate in the Rate Desk, or save the pricing floor, and it will appear here." />
       ) : (
-        <div className="overflow-x-auto">
+        <div className="rf-scroll rf-scroll-x">
           <table className="tbl w-full">
             <thead>
               <tr><th>When</th><th>Who</th><th>What</th><th>Change</th><th>Reason</th></tr>

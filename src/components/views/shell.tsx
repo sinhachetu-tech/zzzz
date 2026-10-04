@@ -181,8 +181,35 @@ function EiborModal({ onClose }: { onClose: () => void }) {
 }
 
 function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { stages, banks, partners, channels, users, me, flags, createCase, toast, nav, clients, cases } = useHfmcStore();
+  const { stages, banks, partners, channels, users, me, flags, createCase, toast, nav, clients, cases, serviceLines } = useHfmcStore();
   const activeStages = [...stages].filter((s) => s.active).sort((a, b) => a.sortOrder - b.sortOrder);
+
+  /* Phase C — department and offering, chosen FIRST because they change what the rest
+   * of the form means: the stage list, the bank picker and the document rules all hang
+   * off the line. Asking last would mean re-filling the form.
+   */
+  const activeLines = serviceLines.filter((s) => s.active);
+  const [lineId, setLineId] = useState<string>("");
+  const [productId, setProductId] = useState<string>("");
+
+  // DERIVED, not set in an effect. The default (MORTGAGE, else the first line) is
+  // computed on read so a single-line firm never has to touch the picker — and calling
+  // setState inside an effect just to seed a default causes a cascading render for no
+  // benefit. A "" lineId therefore still submits MORTGAGE server-side.
+  const effectiveLineId = lineId
+    || String((activeLines.find((l) => l.code === "MORTGAGE") ?? activeLines[0])?.id ?? "");
+  const chosenLine = activeLines.find((l) => l.id === Number(effectiveLineId));
+  // NOT memoised: a line has a handful of products, and the React Compiler cannot
+  // preserve a useMemo over a value that came out of `.find()` (it flags the dependency
+  // as "may be modified later"). Plain derivation is both correct and cheaper here.
+  const lineProducts = (chosenLine?.products ?? [])
+    .filter((p) => p.active)
+    .sort((a, b) => a.sortOrder - b.sortOrder);
+
+  // Changing department clears the offering in the SAME handler rather than in an
+  // effect: the previous product belongs to the old line and the server rejects it, so
+  // clearing on the change is both correct and free of a second render.
+  const pickLine = (next: string) => { setLineId(next); setProductId(""); };
   const [customer, setCustomer] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
   const [waGroup, setWaGroup] = useState("");
@@ -253,6 +280,13 @@ function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void })
     const selectedChannel = submissionType === "channel" ? channels.find((ch) => ch.id === channelId) : null;
     try {
       const res = await createCase({
+        // Phase C — decided at intake, not bolted on afterwards.
+        serviceLineId: effectiveLineId ? Number(effectiveLineId) : null,
+        productId: productId ? Number(productId) : null,
+        // Passing the matched client stops the server re-running the merge ladder for a
+        // case we already resolved in the UI. When nothing matched, the ladder runs
+        // server-side and CREATES the person.
+        clientId: knownClient?.id ?? null,
         customer, banks: bankList, loanAmount: amt, stage, ownerId,
         advisorId: advisorId ? Number(advisorId) : null,
         backup1Id: backup1Id ? Number(backup1Id) : null,
@@ -292,6 +326,35 @@ function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void })
   return (
     <Modal onClose={onClose} title="Add lead" sub="A new inquiry — qualify it in Leads, then convert it into a case." width={580}>
       <div className="space-y-3.5">
+        {/* Phase C — the department decides what everything below means: the journey,
+            the bank picker, the document rules. It is asked first on purpose. */}
+        {activeLines.length > 1 && (
+          <div className="rounded-lg p-3" style={{ background: "var(--tint)", border: "1px solid var(--line-soft)" }}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="label">Department / service</label>
+                <select className="select" value={effectiveLineId} onChange={(e) => pickLine(e.target.value)}>
+                  {activeLines.map((l) => (
+                    <option key={l.id} value={l.id}>{l.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="label">Offering {lineProducts.length === 0 && <span className="text-[var(--ink-faint)]">(optional)</span>}</label>
+                <select className="select" value={productId} onChange={(e) => setProductId(e.target.value)} disabled={lineProducts.length === 0}>
+                  <option value="">— not specified —</option>
+                  {lineProducts.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+            </div>
+            {lineProducts.length === 0 && (
+              <p className="text-[11px] text-[var(--ink-faint)] m-0 mt-1.5">
+                No offerings configured for {chosenLine?.name} yet — the case opens without one and
+                it can be set later.
+              </p>
+            )}
+          </div>
+        )}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="label">Customer name</label>
@@ -832,7 +895,11 @@ export default function Shell({ children }: { children: ReactNode }) {
               placed, so route changes feel instant instead of replaying the
               whole cascade. React keys force the remount/repaint — the class
               only grows quieter, never blocks. */}
-          <div key={JSON.stringify(route)} className="max-w-[1240px] mx-auto px-4 md:px-5 py-4 md:py-5 view-in" ref={viewRef}>
+          {/* `px-4 md:px-5` replaced by the shared `--gutter` token so the page gutter
+              has ONE definition (globals.css) rather than a magic number per
+              breakpoint here. Every view inherits this wrapper, so this is the
+              single place the app's side padding is decided. */}
+          <div key={JSON.stringify(route)} className="rf-page max-w-[1240px] mx-auto py-4 md:py-5 view-in" ref={viewRef}>
             {children}
           </div>
         </main>

@@ -1,0 +1,13 @@
+PASS MORTGAGE exists
+PASS GOLDEN_VISA exists
+PASS MORTGAGE has active products
+PASS GOLDEN_VISA has active products
+PASS cross-line product detectable
+PASS line persisted
+PASS product persisted
+PASS case without product allowed
+PASS no case left without a line (Phase I partition holds)
+PASS every product points at a real line
+PASS cases restored
+PASS clients untouched
+PASS=12 FAIL=0

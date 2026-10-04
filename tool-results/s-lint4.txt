@@ -1,0 +1,2 @@
+=== npx eslint src/components/views/clients.tsx src/components/views/cases.tsx : PASS (exit 0) ===
+(no output)

@@ -1,0 +1,34 @@
+    3: import type {
+    9: type PrismaUser = {
+   28: type PrismaCase = {
+   69: bankProduct?: PrismaBankProduct | null;
+   70: bookedBankProduct?: PrismaBankProduct | null;
+  127: type PrismaDesignation = {
+  329: bankProduct: c.bankProduct ? serBankProduct(c.bankProduct) : null,
+  330: bookedBankProduct: c.bookedBankProduct ? serBankProduct(c.bookedBankProduct) : null,
+  379: type PrismaClientRow = {
+  408: type PrismaChannel = { id: number; name: string; commissionPct: number; active: boolean; contactsJson?: string | null };
+  415: type PrismaTask = {
+  430: type PrismaActivity = {
+  442: type PrismaBank = { id: number; name: string; ratePct: number; active: boolean; logoData?: Uint8Array | Buffer | null; posPoints?: string | null; negPoints?: string | null; website?: string | null; contactsJson?: string | null };
+  449: type PrismaBankProduct = {
+  463: export function serBankProduct(p: PrismaBankProduct): BankProduct {
+  484: type PrismaPartner = { id: number; kind: string; name: string; defaultSharePct: number; active: boolean; contactsJson?: string | null };
+  491: type PrismaStageStep = {
+  504: type PrismaStage = {
+  533: type PrismaMaster = { id: number; kind: string; label: string; active: boolean };
+  538: type PrismaSla = { id: number; stage: string; bank: string | null; maxDays: number; active: boolean };
+  543: type PrismaReply = { id: number; userId: number; text: string; at: Date };
+  548: type PrismaInstruction = {
+  564: type PrismaBulletin = {
+  598: type PrismaEmailLog = {
+  613: type PrismaStageTransition = {
+  628: type PrismaStageTransitionWithUser = PrismaStageTransition & {
+  648: type PrismaUnmatchedEmail = {
+  664: type PrismaDocRuleRow = {
+  698: type PrismaCaseDocumentRow = {
+  779: type PrismaCommTemplateRow = {
+  794: type PrismaFeeRuleRow = {
+  806: type PrismaPromotionRow = {
+  821: type PrismaCaseUpdateRow = {
+  835: type PrismaProposalRow = {

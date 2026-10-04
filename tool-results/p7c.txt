@@ -1,0 +1,9 @@
+=== npx tsc --noEmit : FAIL (exit 2) ===
+src/lib/ser.ts(323,5): error TS2322: Type 'number | "" | null' is not assignable to type 'number | null'.
+  Type 'string' is not assignable to type 'number'.
+src/lib/ser.ts(324,5): error TS2322: Type 'number | "" | null' is not assignable to type 'number | null'.
+  Type 'string' is not assignable to type 'number'.
+src/lib/ser.ts(325,20): error TS2551: Property 'bankProduct' does not exist on type 'PrismaCase'. Did you mean 'bankProductId'?
+src/lib/ser.ts(325,51): error TS2551: Property 'bankProduct' does not exist on type 'PrismaCase'. Did you mean 'bankProductId'?
+src/lib/ser.ts(326,26): error TS2551: Property 'bookedBankProduct' does not exist on type 'PrismaCase'. Did you mean 'bookedBankProductId'?
+src/lib/ser.ts(326,63): error TS2551: Property 'bookedBankProduct' does not exist on type 'PrismaCase'. Did you mean 'bookedBankProductId'?

@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { confirmDiscard, setUnsavedChanges } from "@/lib/leave-guard";
+import type { ClientDocDto } from "@/lib/types";
 
 interface ClientUser {
   /** The person (Phase 3). Null only for a session predating the backfill. */
@@ -28,7 +29,7 @@ interface ClientState {
   case: import("@/lib/types").LoanCase | null;
   stages: { id: number; label: string; sortOrder: number; active: boolean }[];
   stageTransitions: { id: number; fromStage: string; toStage: string; comment: string; userName: string; at: string }[];
-  documents: { id: number; fileName: string; fileType: string; fileSize: number; uploadedAt: string }[];
+  documents: (ClientDocDto | { id: number; fileName: string | null; fileType: string | null; fileSize: number | null; uploadedAt: string | null; createdAt?: string; title?: string; category?: string; status?: string; sharing?: string })[];
   vaultDocuments: { id: number; title: string; category: string; status: string; clientCanUpload: boolean; rejectionReason: string; notes: string; fileName: string | null; fileSize: number | null; uploadedAt: string | null }[];
   advisor: { name: string; role: string } | null;
   advisorWhatsapp: string | null;

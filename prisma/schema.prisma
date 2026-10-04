@@ -147,6 +147,9 @@ model ServiceLine {
   slaRules     SlaRule[]
   commTemplates CommTemplate[]
   leads        Lead[]
+  // documents this department has produced (Phase G). Ownership is provenance and is
+  // NEVER rewritten when another department attaches the file to its own case.
+  documents    ClientDocument[]
 
   // Who runs this department. Set-on-delete is RESTRICT (the default) rather than
   // SetNull on purpose: the schema does not choose, but a departing head should be
@@ -297,9 +300,16 @@ model Client {
   leads            Lead[]
   // portal sessions for this person (Phase 3 — client-scoped, not case-scoped)
   clientSessions   ClientSession[]
+  // their person-level document vault (Phase G). Files belong to the HUMAN, so they
+  // survive every case: a passport uploaded for a mortgage is reused by the golden visa
+  // and the will rather than re-uploaded three times.
+  documents        ClientDocument[]
 
   @@index([phone])
   @@index([passportNo])
+  // The Clients list searches by name and had no index for it — same sequential-scan
+  // problem as LoanCase.customer.
+  @@index([fullName])
 }
 
 // Phase A — the people ON a case, each in a role.
@@ -430,6 +440,32 @@ model LoanCase {
   fileSubmittedDate String? // when the file was submitted to the bank
   bankRate          Float?  // rate the bank quoted
   bankTenor         Int?    // tenor the bank approved (months)
+
+  // --- Which RATE CARD priced this case (Phase 7) ---
+  //
+  // `banks` says WHICH bank; this says WHICH PRODUCT from that bank's sheet —
+  // "Emirates Islamic · Salaried · Non-Resident · Low Doc" out of the 103-row
+  // BankProduct catalogue. Without it a case records a bank but not the terms
+  // that bank actually quoted, so when a bank reissues its sheet nobody can
+  // answer "was this priced on v2 at 4.1%?".
+  //
+  // DELIBERATELY NOT `Product`. `Product` (service-line offerings: first-home,
+  // buyout…) is a DIFFERENT axis — it describes the deal, not the rate. Mixing
+  // them is what produced two competing vocabularies for one idea.
+  //
+  // One column, not a table, on purpose: a case is priced on ONE product at a
+  // time. A BANK LEG (a child LoanCase via parentCaseId) carries its own value,
+  // which is what lets a competitive race record a different rate card per bank
+  // without inventing a rate-card-per-bank join table.
+  //
+  // Storing the id (not the rate) is the point: the RATE lives in
+  // BankProduct.pricingJson and is versioned/effective-dated there, so a
+  // quarterly sheet update repricing the catalogue does not rewrite history here.
+  bankProductId Int?
+  // Set only when this product is the one the client actually accepted. Kept
+  // separate from bankProductId so "we quoted 4 options" and "they took 4.1%"
+  // stay distinguishable — the same split Proposal.productIds records for quotes.
+  bookedBankProductId Int?
   // --- Pre-approval stage capture ---
   preApprovalDate   String?
   preApprovalAmount Int?
@@ -503,6 +539,13 @@ model LoanCase {
   vaultDocuments   CaseDocument[]
   caseUpdates      CaseUpdate[]
   proposals        Proposal[]
+  // Phase 7 — the rate card this case was quoted on / booked from.
+  // Named because BankProduct already relates to several other models, so an
+  // unnamed pair would be ambiguous to Prisma.
+  // SetNull on delete: deleting a catalogue row must NOT delete the case that
+  // was priced on it. The rate's history outlives the rate card.
+  bankProduct       BankProduct? @relation("CaseRateCard", fields: [bankProductId], references: [id], onDelete: SetNull)
+  bookedBankProduct BankProduct? @relation("CaseBookedRateCard", fields: [bookedBankProductId], references: [id], onDelete: SetNull)
   notificationOverrides String? // JSON override: { push?: boolean, whatsapp?: boolean, email?: boolean }
   dealExceptions   DealException[]
   chatMessages     ChatMessage[]
@@ -519,6 +562,15 @@ model LoanCase {
   // Existing typed columns (preApprovalDate, folDate, etc.) remain canonical for now;
   // admin-added fields for NEW stages land here so no migration is needed per field.
   stageDataJson    String  @default("{}")
+
+  // --- Scale indexes (added for the 1,000-case question) ---------------------
+  // `customer` is what the worklist searches on ("Search case / customer…") and it had
+  // NO index, so name search was a sequential scan that worsens as the book grows.
+  // `caseNumber` is already covered — it is @unique, which Postgres indexes.
+  @@index([customer])
+  // Phase F department scoping filters on serviceLineId on every /api/state request,
+  // and the default worklist ordering is recency.
+  @@index([serviceLineId, updatedAt])
 }
 
 
@@ -813,6 +865,10 @@ model BankProduct {
   bank BankItem @relation(fields: [bankId], references: [id], onDelete: Cascade)
   promotions Promotion[]
   projects ProjectProduct[]
+  // Phase 7 — cases priced on this rate card. Two relations because "we quoted
+  // this" and "they booked this" are different facts (see LoanCase).
+  pricedCases   LoanCase[] @relation("CaseRateCard")
+  bookedCases   LoanCase[] @relation("CaseBookedRateCard")
 
   // --- Eligibility rules the engine now actually READS (were previously free
   // text buried in eligibility/axesJson, so the engine never saw them) ---
@@ -1166,16 +1222,10 @@ model ClientSession {
   @@index([caseId])
 }
 
-// Client-uploaded documents — metadata only; files live in storage/G-Drive.
-model ClientDocument {
-  id         Int      @id @default(autoincrement())
-  caseId     Int
-  fileName   String
-  fileType   String
-  fileSize   Int
-  uploadedAt DateTime @default(now())
-  case       LoanCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
-}
+// NOTE: the old case-scoped `ClientDocument` stub (caseId + filename/type/size only) used
+// to sit here. It was RESHAPED IN PLACE into the person-level vault documented further
+// down, rather than replaced by a second table. See that model's comment for why, and for
+// why `caseId` survives as a nullable legacy pointer (the client portal still reads it).
 
 // Document rule template — the master catalog behind the conditional Document
 // Vault. Admin CRUD (Admin → Doc Rules). Conditions are JSON string arrays of
@@ -1217,6 +1267,92 @@ model DocRule {
   @@index([serviceLineId])
 }
 
+// CLIENT DOCUMENT — the person-level vault (Phase G).
+//
+// ⚠️ HISTORY, because it explains the odd shape: this model used to be a metadata-only
+// stub hard-scoped to a CASE (`caseId`, onDelete: Cascade, filename/type/size only).
+// It was reshaped in place rather than replaced by a new table. Verified before the
+// change: **the table held 0 rows**, so nothing could be lost — but note the old
+// `caseId` is kept below as a NULLABLE legacy pointer, because
+// src/app/api/client/state/route.ts still reads `clientDocuments` per case for the
+// client portal. Dropping the column would have silently emptied the portal's upload
+// list.
+//
+// WHY IT IS NOW PERSON-SCOPED: a passport scan belongs to the HUMAN, not to one
+// engagement. Case-scoped, it had to be re-uploaded for the mortgage, again for the
+// golden visa, again for the will — and no file could see the others. A will is
+// assembled from a person's entire picture (assets, liabilities, dependants), most of
+// which other departments captured.
+//
+// ONE FILE, MANY USES: cases point at this row via CaseDocument.clientDocumentId, the
+// same one-file-many-rows shape as `copiedFromId`, in the opposite direction. The bytes
+// are stored once.
+//
+// THE TWO FIELDS THAT CARRY THE POLICY:
+//   serviceLineId — WHICH DEPARTMENT owns it (null = firm-wide). Provenance is NEVER
+//     rewritten: when the wills team attaches a bank valuation to read it, the document
+//     stays "Mortgage · shared" and only the ATTACHMENT is recorded. A valuation
+//     re-labelled "Wills" would misstate where it came from.
+//   sharing — "All" | "Team" | "Department".
+//     ALL        any staff may read/attach. THE DEFAULT, chosen deliberately: in a
+//                six-service consultancy the person-level documents are overwhelmingly
+//                KYC that every department needs, and the realistic failure is a
+//                missing passport, not a leaked one.
+//     Team       only the owning department (+ admins) may read/attach.
+//     Department stricter still, for genuinely department-private material.
+model ClientDocument {
+  id        Int      @id @default(autoincrement())
+  clientId  Int
+  title     String
+  category  String   @default("KYC") // KYC | Income | Asset | Property | Other
+  // Which department owns this document. NULL = firm-wide (uploaded before any
+  // department claimed the client).
+  serviceLineId Int?
+  sharing   String   @default("All") // All | Team | Department
+  status    String   @default("Pending upload") // Pending upload | Uploaded | Verified | Rejected | Waived
+  notes     String   @default("")
+  rejectionReason String @default("")
+  // Legacy case pointer. NULLABLE and no longer the identity of a row: it survives only
+  // so the client portal's per-case upload list keeps working. New documents leave it
+  // null and attach through CaseDocument.clientDocumentId instead.
+  caseId    Int?
+  // --- storage: mirrors CaseDocument exactly so R2 / Drive / version selection,
+  // --- compression and the legacy Postgres-bytes fallback all behave identically ---
+  fileName        String?
+  fileType        String?
+  fileSize        Int?
+  fileData        Bytes?
+  storageKey      String?
+  compressedKey   String?
+  compressedSize  Int?
+  selectedVersion String   @default("original") // original | compressed
+  driveFileId     String?
+  displayName     String?
+  source          String   @default("vault") // vault | chat
+  expiryDate      String?  // ISO. Passport/EID/visa expire and must be chased.
+  uploadedByKind  String   @default("")   // client | staff
+  uploadedById    Int?
+  uploadedAt      DateTime?
+  verifiedById    Int?
+  verifiedAt      DateTime?
+  createdAt       DateTime @default(now())
+  sortOrder       Int      @default(0)
+
+  client      Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  serviceLine ServiceLine? @relation(fields: [serviceLineId], references: [id])
+  // Legacy case link. NOT Cascade any more: a person's vault must not be destroyed
+  // because one engagement closed.
+  legacyCase  LoanCase?    @relation(fields: [caseId], references: [id], onDelete: SetNull)
+
+  // The cases this document is attached to. ONE row here can back many CaseDocuments.
+  attachments CaseDocument[]
+
+  @@index([clientId])
+  @@index([caseId])
+  @@index([serviceLineId])
+  @@index([clientId, category])
+}
+
 // Per-case document instance — the living vault. Auto-populated from templates
 // by the condition engine, plus ad-hoc additions; full CRUD on the case.
 model CaseDocument {
@@ -1231,6 +1367,15 @@ model CaseDocument {
   copiedFromId    Int?
   copiedFrom      CaseDocument?  @relation("DocCopy", fields: [copiedFromId], references: [id])
   copies          CaseDocument[] @relation("DocCopy")
+  // Phase G — points at the person-level vault entry this row is an instance of. The
+  // FILE BYTES ARE NOT DUPLICATED: this row is a cheap pointer, so one passport scan in
+  // ClientDocument can satisfy the EID slot on a mortgage, a golden visa AND a will at
+  // once. Null on every document uploaded directly against a case, which is all of
+  // them today.
+  //
+  // Same one-file-many-rows shape as copiedFromId above, in the opposite direction.
+  clientDocumentId Int?
+  clientDocument   ClientDocument? @relation(fields: [clientDocumentId], references: [id], onDelete: SetNull)
   title           String
   category        String   @default("KYC")
   status          String   @default("Pending upload") // Pending upload | Uploaded | Verified | Rejected | Waived

@@ -204,7 +204,7 @@ function ScenarioTable({ rows, base }: {
     return <span style={{ color: d > 0 ? "var(--mint)" : "var(--coral)" }}>{d > 0 ? "+" : "−"}{fmtAED(Math.abs(d))}</span>;
   };
   return (
-    <div className="overflow-x-auto">
+    <div className="rf-scroll rf-scroll-x">
       <table className="tbl" style={{ minWidth: 800 }}>
         <thead>
           <tr>
@@ -308,7 +308,7 @@ function AdvisorPanel({ input, r }: { input: MortgageInput; r: MortgageResult })
             Click <strong>Explain my eligibility</strong> for a plain-English breakdown — verdict, what threatens it,
             concrete levers to improve MPBF, and the monthly cost. Then ask follow-up questions like
             <em> “what if I clear the credit card?”</em> or <em>“how does adding a co-borrower help?”</em>.
-            <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+            <div className="rf-form-grid-sm mt-3 gap-2 text-[11px]">
               <div className="rounded-md px-2.5 py-2" style={{ background: "var(--tint)" }}>Maximum finance<br /><strong className="mono text-[var(--amber)]">{fmtAED(r.maxEligible)}</strong></div>
               <div className="rounded-md px-2.5 py-2" style={{ background: "var(--tint)" }}>Current DBR<br /><strong className="mono" style={{ color: r.currentDbr > 50 ? "var(--coral)" : "var(--ink)" }}>{fmtPct(r.currentDbr)}</strong></div>
               <div className="rounded-md px-2.5 py-2" style={{ background: "var(--tint)" }}>Residual DBR<br /><strong className="mono" style={{ color: "var(--mint)" }}>{fmtPct(r.residualDbr)}</strong></div>
@@ -519,7 +519,7 @@ function DocReaderPanel({ onApply }: { onApply: (data: ExtractedData) => void })
 
         {result && (
           <div className="mt-3 pt-3" style={{ borderTop: "1px dashed var(--line)" }}>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11.5px]">
+            <div className="rf-form-grid-sm gap-2 text-[11.5px]">
               <Field label="Applicant" value={result.applicantName || "—"} />
               <Field label="Monthly income" value={result.monthlyIncome ? fmtAED(result.monthlyIncome) : "—"} />
               <Field label="Other income" value={result.otherIncome ? fmtAED(result.otherIncome) : "—"} />
@@ -528,7 +528,7 @@ function DocReaderPanel({ onApply }: { onApply: (data: ExtractedData) => void })
               <Field label="Liabilities" value={result.liabilities?.length ? `${result.liabilities.length} found` : "none"} />
             </div>
             {result.liabilities && result.liabilities.length > 0 && (
-              <div className="mt-2.5 overflow-x-auto">
+              <div className="rf-scroll rf-scroll-x mt-2.5">
                 <table className="tbl" style={{ minWidth: 360 }}>
                   <thead>
                     <tr><th>Name</th><th>Type</th><th className="text-right">Limit / outstanding</th><th className="text-right">EMI</th></tr>
@@ -637,7 +637,7 @@ function MpbfHeadline({ r, input }: { r: MortgageResult; input: MortgageInput })
           )}
           <div className="absolute inset-y-0 w-[2px]" style={{ left: "50%", background: "var(--ink)" }} />
         </div>
-        <div className="grid grid-cols-3 gap-2 mt-2.5">
+        <div className="rf-form-grid-sm gap-2 mt-2.5">
           <Stat label="Current DBR" value={fmtPct(r.currentDbr)} tone={r.currentDbr > 50 ? "var(--coral)" : undefined} />
           <Stat label="Maximum" value={fmtPct(r.maxDbr)} />
           <Stat label="Residual" value={fmtPct(r.residualDbr)} tone="var(--mint)" />
@@ -682,7 +682,13 @@ function MpbfHeadline({ r, input }: { r: MortgageResult; input: MortgageInput })
             ];
         return (
           <>
-          <div className="grid grid-cols-3 gap-1 justify-items-center mt-4 pt-3.5" style={{ borderTop: "1px dashed var(--line)" }}>
+          {/* Three 124px dials side by side need ~372px, which does NOT fit the ~326px of
+              usable width on a 390px phone. Comparison between the three is the whole
+              point, so they stay side by side and the strip scrolls instead of
+              stacking (stacking would hide the comparison). `justify-items-center`
+              becomes `start` on a phone because centring an overflowing grid clips
+              its first column; `min-w-max` stops the tracks from shrinking. */}
+          <div className="grid grid-cols-3 gap-1 justify-items-start sm:justify-items-center min-w-max mt-4 pt-3.5 rf-scroll rf-scroll-x" style={{ borderTop: "1px dashed var(--line)" }}>
             {stages.map((s) => {
               const emi = Math.round(s.emi);
               return (
@@ -700,7 +706,7 @@ function MpbfHeadline({ r, input }: { r: MortgageResult; input: MortgageInput })
         );
       })()}
 
-      <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 mt-4 pt-3.5" style={{ borderTop: "1px dashed var(--line)" }}>
+      <div className="rf-form-grid-sm gap-x-4 gap-y-2.5 mt-4 pt-3.5" style={{ borderTop: "1px dashed var(--line)" }}>
         <Stat label="Required down payment" value={fmtAED(r.downPayment)} />
         <Stat label="Actual LTV" value={fmtPct(r.actualLtv)} />
         <Stat label="EMI at actual rate" value={`${fmtAED(r.newEmi)}/mo`} />
@@ -1306,7 +1312,7 @@ export default function Calculator() {
                 <label className="label">Date of birth</label>
                 <input className="input mono" type="date" value={input.dob} onChange={(e) => e.target.value && up({ dob: e.target.value })} />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="rf-form-grid-sm">
                 <div>
                   <label className="label">Final age</label>
                   <NumIn value={input.finalAge} onChange={(n) => up({ finalAge: n })} step={1} min={40} />
@@ -1317,7 +1323,7 @@ export default function Calculator() {
                 </div>
               </div>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3.5 pt-3.5" style={{ borderTop: "1px dashed var(--line)" }}>
+            <div className="rf-form-grid-sm gap-3 mt-3.5 pt-3.5" style={{ borderTop: "1px dashed var(--line)" }}>
               <Stat label="Current age" value={`${r.ageNowYears}y`} />
               <Stat label="After margin" value={`${Math.floor(r.ageAfterMarginMonths / 12)}y ${r.ageAfterMarginMonths % 12}m`} />
               <Stat label="Remaining period" value={tenorLabel(r.remainingMonths)} />
@@ -1617,7 +1623,7 @@ export default function Calculator() {
                         {/* ROI 3 is the qualifying rate for maximum eligibility. */}
             {/* DBR 1·2·3 at this scenario — read from the ENGINE, same figures as the dials opposite */}
             {r.roi ? (
-              <div className="grid grid-cols-3 gap-2.5 mt-3.5 pt-3.5" style={{ borderTop: "1px dashed var(--line)" }}>
+              <div className="rf-form-grid-sm gap-2.5 mt-3.5 pt-3.5" style={{ borderTop: "1px dashed var(--line)" }}>
                 {[
                   { label: `DBR 1 · intro ${r.roi.r1.toFixed(2)}%${r.roi.introYears ? ` · ${r.roi.introYears}y` : ""}`, emi: r.emi1, val: r.dbr1 },
                   { label: `DBR 2 · follow-on ${r.roi.r2.toFixed(2)}%`, emi: r.emi2, val: r.dbr2 },
@@ -1696,7 +1702,9 @@ export default function Calculator() {
               </div>
             </div>
             <div className="px-4 py-3 space-y-2.5">
-              <div className="grid grid-cols-3 gap-2 text-center">
+              {/* AED figures ("AED 2,500,000") need ~220px to render un-truncated, so this is
+            the wide variant: 1-up on a phone, 2-up on a tablet, 3-up on desktop. */}
+              <div className="rf-form-grid gap-2 text-center">
                 <div className="rounded-lg px-2 py-1.5" style={{ background: "var(--tint)" }}>
                   <div className="text-[10.5px] uppercase tracking-[0.1em] text-[var(--ink-faint)] font-disp font-semibold">Property value</div>
                   <div className="mono text-[13px] font-semibold">{fmtAED(input.propertyValue)}</div>
@@ -1947,7 +1955,7 @@ function TransferFees({ feeRules, docRules, initial }: { feeRules: FeeRule[]; do
             <h3 className="font-disp font-semibold text-[13.5px] m-0">{emirate} · {txn === "Buyout" ? "Buyout / Equity Release" : txn}</h3>
             <span className="text-[11px] text-[var(--ink-faint)] ml-auto">managed in Admin → Fee rules</span>
           </div>
-          <div className="overflow-x-auto">
+          <div className="rf-scroll rf-scroll-x">
             <table className="tbl min-w-[560px]">
               <thead>
                 <tr><th>Charge</th><th className="text-right">Amount</th><th>Payment</th></tr>

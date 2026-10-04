@@ -756,7 +756,14 @@ const STATUS_STYLE: Record<string, { bg: string; color: string }> = {
 function DocUploadCards({ caseId, vaultDocuments, legacyDocuments }: {
   caseId: number;
   vaultDocuments: VaultDoc[];
-  legacyDocuments: { id: number; fileName: string; fileSize: number; uploadedAt: string }[];
+  // Phase G: these rows come from the client-level vault, which is created as a
+  // PLACEHOLDER before any file exists. So fileName/fileSize/uploadedAt are null until
+  // the client actually uploads — "not uploaded yet", which is a real state the old
+  // model (rows only created on upload) could not express.
+  legacyDocuments: {
+    id: number; title?: string; category?: string; status?: string;
+    fileName: string | null; fileSize: number | null; uploadedAt: string | null;
+  }[];
 }) {
   const [uploading, setUploading] = useState<number | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -926,10 +933,20 @@ function DocUploadCards({ caseId, vaultDocuments, legacyDocuments }: {
             <div key={d.id} className="flex items-center gap-3 rounded-lg px-3 py-2" style={{ background: "var(--tint)" }}>
               <IUpload size={14} className="text-[var(--ink-faint)] shrink-0" />
               <div className="flex-1 min-w-0">
-                <p className="text-[12.5px] font-medium truncate m-0">{d.fileName}</p>
-                <p className="text-[10.5px] text-[var(--ink-faint)] m-0">{relTime(d.uploadedAt)} · {(d.fileSize / 1024).toFixed(0)} KB</p>
+                {/* Prefer the document's TITLE — it exists from the moment the row is
+                    created, whereas fileName only appears once a file lands. Falling back
+                    to it is what lets a vault show "Passport — still to upload" instead of
+                    an empty row. */}
+                <p className="text-[12.5px] font-medium truncate m-0">{d.fileName || d.title || "Document"}</p>
+                <p className="text-[10.5px] text-[var(--ink-faint)] m-0">
+                  {d.uploadedAt
+                    ? `${relTime(d.uploadedAt)}${d.fileSize != null ? ` · ${(d.fileSize / 1024).toFixed(0)} KB` : ""}`
+                    : "Requested — not uploaded yet"}
+                </p>
               </div>
-              <ICheck size={14} className="text-[var(--mint)] shrink-0" />
+              {d.uploadedAt
+                ? <ICheck size={14} className="text-[var(--mint)] shrink-0" />
+                : <span className="text-[10px] text-[var(--amber)] shrink-0">pending</span>}
             </div>
           ))}
         </div>

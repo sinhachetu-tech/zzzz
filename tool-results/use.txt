@@ -1,0 +1,25 @@
+   45: const visCases = useMemo(() => visibleCases(), [visibleCases, cases, visibleCaseIds]);
+   48: () => computeKpis(visCases, visTasks, (c) => caseStatusOf(c, tasks), banks, escalations),
+   49: [visCases, visTasks, banks, escalations, tasks]
+   52: () => activityPerDay(activities.filter((a) => visCases.some((c) => c.id === a.caseId)), 14),
+   53: [activities, visCases],
+   84: () => (deptLine ? visCases.filter((c) => c.serviceLineId === deptLine.id) : visCases),
+   85: [visCases, deptLine],
+  145: .filter((a) => visCases.some((c) => c.id === a.caseId))
+  153: .map((st) => ({ label: st.label, value: visCases.filter((c) => c.caseStatus === "Active" && c.stage === st.label).length }))
+  181: const myOpenAll = me ? openTasks.filter((t) => t.ownerId === me.id) : [];
+  182: const myOverdueAll = myOpenAll.filter((t) => isOverdueDue(t.dueDate));
+  183: const myDueNowCount = me ? myOpenAll.filter((t) => !isOverdueDue(t.dueDate) && dueDay(t.dueDate) <= todayISO()).length : 0;
+  187: const myNewLeads = me
+  191: const myDayEmpty = myOverdueAll.length === 0 && myDayList.length === 0 && myNewLeads.length === 0;
+  217: const count = visCases.filter((c) => c.serviceLineId === s.id).length;
+  249: {" · "}{myDueNowCount} due today{" · "}{myNewLeads.length} new lead{myNewLeads.length === 1 ? "" : "s"} · {myOpenAll.length} open total
+  277: {myNewLeads.length > 0 && myDayList.length === 0 && myNewLeads.map((l) => (
+  301: The floor at a glance — {k.openCases} live cases · {fmtMoney(k.pipelineValue)} in flight · {k.escalations} SLA breach{k.escalations === 1 ? "" : "es"}. Work happens in <button className="underline font-medium" onClick={() => nav({ name: "cases" })}>Cases</button> and <button className="underline font-medium" onClick={() => nav({ name: "leads" })}>Leads</button>.
+  349: <Kpi label="Cases in flight" value={k.openCases} />
+  350: <Kpi label="Overdue" value={k.overdue} tone="coral" />
+  351: <Kpi label="At risk" value={k.atRisk} tone="amber" />
+  352: <Kpi label="No next action" value={k.noAction} tone="sky" />
+  353: <Kpi label="Open tasks" value={k.openTasks} />
+  354: <Kpi label="Pipeline value" value={k.pipelineValue} format={fmtMoney} tone="mint" />
+  355: {flags?.viewRevenue && <Kpi label="Est. commission" value={k.estCommission} format={fmtMoney} tone="amber" sub="at current bank rates" />}

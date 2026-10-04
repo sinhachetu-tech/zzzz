@@ -40,6 +40,79 @@ if (!APPLY) {
   process.exit(0);
 }
 
+// ⚠️ PRE-FLIGHT for migrations that ALTER an existing table rather than adding a new
+// one. Phase 7 reshapes `ClientDocument` in place, which is only safe while the table
+// is EMPTY: the generated SQL adds `clientId INTEGER NOT NULL` with no default, which
+// fails against any existing row. The emptiness was checked when the SQL was written,
+// but "checked then" is not "checked now" — someone may have uploaded a document since.
+// Refuses to run if the count moved.
+//
+// ⚠️ THE REGEX MUST HANDLE MULTI-COLUMN ADD. `prisma migrate diff` emits ONE
+// `ADD COLUMN` per table followed by comma-separated columns on continuation lines:
+//
+//     ALTER TABLE "ClientDocument" ADD COLUMN "category" TEXT NOT NULL DEFAULT 'KYC',
+//     ADD COLUMN "clientId" INTEGER NOT NULL,
+//     ADD COLUMN "storageKey" TEXT, ...
+//
+// A naive /ADD COLUMN\s+"(\w+)" (\w+)/ only ever matches the FIRST column, so it found
+// "category" and never saw "clientId" — the pre-flight silently did NOTHING on the real
+// run. Same bug in the verifier, which reported 2/2 columns when 22 were added. Both
+// now scan every column inside each ADD COLUMN block.
+const ADD_BLOCK = /ALTER TABLE "(\w+)" ADD COLUMN([\s\S]*?);/g;
+const addedColumns = [];
+for (const [, table, body] of sql.matchAll(ADD_BLOCK)) {
+  for (const line of body.split("\n")) {
+    const m = line.match(/ADD COLUMN\s+"(\w+)"\s+([A-Z0-9()]+)(.*)$/);
+    if (!m) continue;
+    const rest = m[3] || "";
+    addedColumns.push({ table, column: m[1], notNull: /\bNOT NULL\b/.test(rest), hasDefault: /\bDEFAULT\b/.test(rest) });
+  }
+}
+// A NOT NULL column with NO default cannot be added to a table that already has rows.
+const risky = addedColumns.filter((c) => c.notNull && !c.hasDefault);
+const tablesToCheck = [...new Set(risky.map((c) => c.table))];
+if (risky.length) {
+  console.log(`pre-flight : NOT NULL, no default → ${risky.map((c) => `${c.table}.${c.column}`).join(", ")}`);
+}
+// Blocking pre-flight: adding a NOT NULL column to a table that already has rows will
+// fail (or, worse, be "fixed" by hand with a wrong default). Check the live count first.
+// Wrapped in an async IIFE because this is CommonJS — `await` is not valid at top level.
+// IMPORTANT: this is AWAITED before the apply below, via main().then() chaining further
+// down, so the DDL cannot start while the count is still being read. An un-awaited IIFE
+// would race the execSync and defeat the entire point of the check.
+function preflight() {
+  if (!tablesToCheck.length) return Promise.resolve();
+  return (async () => {
+    const { PrismaClient } = require("@prisma/client");
+    const pre = new PrismaClient({ datasources: { db: { url: envUrl() } } });
+    try {
+      for (const t of tablesToCheck) {
+        const rows = await pre.$queryRawUnsafe(`SELECT COUNT(*)::int AS n FROM "${t}"`);
+        const n = rows[0]?.n ?? -1;
+        console.log(`pre-flight : "${t}" currently holds ${n} row(s)`);
+        if (n > 0) {
+          console.error(
+            `\nREFUSING TO APPLY. This migration reshapes "${t}" in place and is only safe on an\n` +
+              `empty table — it adds NOT NULL columns with no default. It holds ${n} row(s) now,\n` +
+              `so they would be lost or need a data migration first. Back up and write one.`,
+          );
+          process.exit(1);
+        }
+      }
+    } finally {
+      await pre.$disconnect();
+    }
+  })().catch((e) => {
+    console.error("PRE-FLIGHT FAILED:", e.message);
+    process.exit(1);
+  });
+}
+
+// The pre-flight must COMPLETE before any DDL runs, so both are sequenced in one
+// promise chain. Running execSync at top level here would let the ALTER start while the
+// row count was still being read — which would defeat the entire point of the check.
+preflight()
+  .then(() => {
 try {
   execSync(`npx prisma db execute --file "${sqlPath}" --schema prisma/schema.prisma`, {
     cwd: root,
@@ -59,19 +132,26 @@ if (!alreadyApplied) {
 }
 console.log("already applied (column exists) — verifying…");
 }
+  })
+  .then(() => verify())
+  .catch((e) => { console.error("APPLY FAILED:", e.message); process.exit(1); });
+
+function verify() {
 
 // Verify generically: re-read the SQL and check that every table, column and
 // constraint it mentions now EXISTS. Hardcoding the Phase 1 objects meant this
 // script could only ever verify Phase 1 — deriving the list from the file means
-// a later phase needs no edit here at all.
+// a later phase needs no edit here at all. Chained after the apply so verification
+// cannot start before the DDL has landed.
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient({ datasources: { db: { url: envUrl() } } });
 
 (async () => {
   const wantTables = [...new Set([...sql.matchAll(/CREATE TABLE "(\w+)"/g)].map((m) => m[1]))];
-  const wantCols = [...new Set(
-    [...sql.matchAll(/ALTER TABLE "(\w+)" ADD COLUMN\s+"(\w+)"/g)].map((m) => `${m[1]}.${m[2]}`),
-  )];
+  // Use the SAME multi-column scan as the pre-flight. The old one-liner matched only
+  // the first column of each ADD COLUMN block, so it reported "2/2 columns" on Phase 7
+  // when 22 had actually been added — a verification that passes without checking.
+  const wantCols = addedColumns.map((c) => `${c.table}.${c.column}`);
   const wantFks = [...new Set(
     [...sql.matchAll(/ADD CONSTRAINT "(\w+_fkey)"/g)].map((m) => m[1]),
   )];
@@ -123,3 +203,4 @@ const prisma = new PrismaClient({ datasources: { db: { url: envUrl() } } });
 })()
   .catch((e) => { console.error("VERIFY FAILED:", e.message); process.exitCode = 1; })
   .finally(() => prisma.$disconnect());
+}

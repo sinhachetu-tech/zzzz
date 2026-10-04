@@ -1,0 +1,18 @@
+=== npx eslint src/app/api/cases/route.ts src/components/views/shell.tsx src/lib/client-store.ts : FAIL (exit 1) ===
+C:\Users\Lenovo\Desktop\zzzz\src\components\views\shell.tsx
+  204:6   error    Compilation Skipped: Existing memoization could not be preserved
+
+React Compiler has skipped optimizing this component because the existing manual memoization could not be preserved. This dependency may be mutated later, which could cause the value to change unexpectedly.
+
+C:\Users\Lenovo\Desktop\zzzz\src\components\views\shell.tsx:204:6
+  202 |   const lineProducts = useMemo(
+  203 |     () => (chosenLine?.products ?? []).filter((p) => p.active).sort((a, b) => a.sortOrder - b.sortOrder),
+> 204 |     [chosenLine],
+      |      ^^^^^^^^^^ This dependency may be modified later
+  205 |   );
+  206 |
+  207 |   // Changing department clears the offering in the SAME handler rather than in an  react-hooks/preserve-manual-memoization
+  857:51  warning  Expected an assignment or function call and instead saw an expression                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  @typescript-eslint/no-unused-expressions
+  948:45  warning  Expected an assignment or function call and instead saw an expression                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  @typescript-eslint/no-unused-expressions
+
+✖ 3 problems (1 error, 2 warnings)

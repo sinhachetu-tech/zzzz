@@ -1,0 +1,7 @@
+  167: const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  279: isEmpty={filtered.length === 0}
+  398: </table>
+  401: /* Mobile card list — no horizontal scroll, thumb-sized tap targets */
+  403: {filtered.slice(0, 60).map((c) => {
+  409: // Bank mark leads on mobile: "which bank is this with" is the
+  448: {filtered.length} of {nonLead.length} cases · leads are in the Leads tab until converted

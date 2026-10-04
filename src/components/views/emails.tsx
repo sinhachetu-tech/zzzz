@@ -187,7 +187,7 @@ export default function Emails() {
             body={search ? "Try a different search." : "Inbound emails from banks and clients will appear here once the Outlook → Postmark → webhook pipeline is live."}
           />
         ) : (
-          <div className="overflow-auto max-h-[calc(100vh-280px)]">
+          <div className="rf-scroll rf-scroll-x max-h-[calc(100vh-280px)]">
             <table className="tbl min-w-[760px]">
               <thead>
                 <tr>

@@ -1,0 +1,18 @@
+   62: proposals Proposal[] @relation("ProposalAuthor")
+  132: bankRaced Boolean  @default(false)
+  356: banks       String   @default("[]") // JSON array of bank names
+  364: bankRef     String?
+  419: bankRm           String? // bank relationship manager name
+  441: bankRate          Float?  // rate the bank quoted
+  442: bankTenor         Int?    // tenor the bank approved (months)
+  515: proposals        Proposal[]
+  779: bankId    Int
+  832: bank BankItem @relation(fields: [bankId], references: [id], onDelete: Cascade)
+  854: bankProductId         Int
+  868: bankProduct BankProduct @relation(fields: [bankProductId], references: [id], onDelete: Cascade)
+  917: bank      String? // null = all banks
+  940: bank             String
+ 1090: bankProductId Int
+ 1094: bankProduct BankProduct  @relation(fields: [bankProductId], references: [id], onDelete: Cascade)
+ 1107: bankProductId Int?
+ 1384: bank      String? // null = every bank

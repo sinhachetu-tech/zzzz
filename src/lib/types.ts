@@ -197,6 +197,30 @@ export interface Designation {
   builtIn: boolean;
 }
 
+// Phase G — a row in the client's person-level vault. Note that a vault entry is
+// created BEFORE any file exists (status "Pending upload"), so fileName/fileType/
+// fileSize/uploadedAt are all nullable and null means "not uploaded yet", not "empty".
+export interface ClientDocDto {
+  id: number;
+  title: string;
+  category: string;
+  status: string;
+  /** All | Team | Department — who may read/attach it. Defaults to "All". */
+  sharing: string;
+  fileName: string | null;
+  fileType: string | null;
+  fileSize: number | null;
+  uploadedAt: string | null;
+  createdAt: string;
+  /** Owning department, resolved for display. "Firm-wide" when null. */
+  serviceLineName?: string | null;
+  serviceLineId?: number | null;
+  /** How many cases this file is attached to — proves the "uploaded once" payoff. */
+  attachedTo?: { caseId: number; caseNumber: string }[];
+  expiryDate?: string | null;
+  hasFile?: boolean;
+}
+
 export interface LoanCase {
   id: number;
   caseNumber: string;
@@ -275,6 +299,18 @@ export interface LoanCase {
   fileSubmittedDate: string | null; // ISO date
   bankRate: number | null; // actual rate the bank quoted
   bankTenor: number | null; // actual tenor in months
+  /** Phase 7 — WHICH RATE CARD, not just which bank.
+   *  `banks` names the bank; this names the product from that bank's sheet that
+   *  priced the file (ids into the 103-row BankProduct catalogue). A bank leg
+   *  carries its own value, so a 3-way race can be priced differently per bank.
+   *  Set "we quoted this" and "they booked this" apart on purpose. */
+  bankProductId: number | null;
+  bookedBankProductId: number | null;
+  /** Resolved for display — the catalogue row behind bankProductId. Null when the
+   *  case has no rate card, or when the card has since been deleted (the FK is
+   *  ON DELETE SET NULL, so history survives the card; only the label is lost). */
+  bankProduct: BankProduct | null;
+  bookedBankProduct: BankProduct | null;
   // --- Pre-approval stage capture ---
   preApprovalDate: string | null;
   preApprovalAmount: number | null;

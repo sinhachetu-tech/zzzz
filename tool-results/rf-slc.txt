@@ -1,0 +1,26 @@
+﻿
+> src\components\hfmc\bits.tsx:20:export 
+function ServiceLineChip({ serviceLineId, 
+serviceLines, compact }: {
+  src\components\hfmc\bits.tsx:21:  
+serviceLineId: number | null;
+  src\components\hfmc\bits.tsx:22:  
+serviceLines: ServiceLineDto[];
+  src\components\hfmc\bits.tsx:23:  compact?: 
+boolean;
+  src\components\hfmc\bits.tsx:24:}) {
+  src\components\hfmc\bits.tsx:25:  const sl = 
+serviceLines.find((s) => s.id === 
+serviceLineId);
+  src\components\hfmc\bits.tsx:26:  if (!sl) 
+return null;
+  src\components\hfmc\bits.tsx:27:  if 
+(serviceLines.filter((s) => s.active).length 
+<= 1) return null;
+  src\components\hfmc\bits.tsx:28:  return (
+  src\components\hfmc\bits.tsx:29:    <Chip 
+tone="sky" title={sl.name}>
+  src\components\hfmc\bits.tsx:30:      
+{compact ? sl.shortName || sl.name : sl.name}
+
+

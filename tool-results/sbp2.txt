@@ -1,0 +1,1 @@
+  449: export function serBankProduct(p: PrismaBankProduct): BankProduct {

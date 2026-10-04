@@ -1,0 +1,65 @@
+﻿
+  src\components\views\case-detail.tsx:218:    
+  footer={<><button className="btn btn-ghost" 
+onClick={onClose}>Cancel</button><button 
+className="btn btn-primary" 
+onClick={submit}>Confirm</button></>}>
+  src\components\views\case-detail.tsx:219:    
+  <div className="space-y-3">
+> src\components\views\case-detail.tsx:220:    
+    <div className="grid grid-cols-2 gap-2">
+  src\components\views\case-detail.tsx:221:    
+      <button className="rowlink rounded-lg 
+px-3 py-3 text-center" style={{ border: "1px 
+solid", borderColor: status === "Closed" ? 
+"var(--mint)" : "var(--line-soft)", 
+background: status === "Closed" ? 
+"rgba(67,214,155,0.07)" : "transparent" }} 
+onClick={() => setStatus("Closed")}>
+  src\components\views\case-detail.tsx:222:    
+        <div className="font-disp 
+font-semibold text-[14px]" style={{ color: 
+status === "Closed" ? "var(--mint)" : 
+"var(--ink-dim)" }}>Booked</div>
+  src\components\views\case-detail.tsx:459:    
+    </div>
+  src\components\views\case-detail.tsx:460:    
+    {c.onHold && (
+> src\components\views\case-detail.tsx:461:    
+      <div className="grid grid-cols-1 
+sm:grid-cols-2 gap-3 anim-fade-up">
+  src\components\views\case-detail.tsx:462:    
+        <Field label="Hold reason">
+  src\components\views\case-detail.tsx:463:    
+          <SaveText value={c.holdReason ?? ""} 
+placeholder="e.g. Awaiting client salary 
+certificate" onSave={(v) => save("holdReason", 
+v || null)} />
+  src\components\views\case-detail.tsx:543:    
+    <h3 className="font-disp font-semibold 
+text-[13.5px] m-0">Pre-approval details</h3>
+  src\components\views\case-detail.tsx:544:    
+  </div>
+> src\components\views\case-detail.tsx:545:    
+  <div className="grid grid-cols-2 gap-3">
+  src\components\views\case-detail.tsx:546:    
+    <Field label="Pre-approval date">
+  src\components\views\case-detail.tsx:547:    
+      <SaveText value={c.preApprovalDate ?? 
+""} type="date" mono onSave={(v) => 
+save("preApprovalDate", v || null)} />
+  src\components\views\case-detail.tsx:565:    
+    <h3 className="font-disp font-semibold 
+text-[13.5px] m-0">Final Offer Letter</h3>
+  src\components\views\case-detail.tsx:566:    
+  </div>
+> src\components\views\case-detail.tsx:567:    
+  <div className="grid grid-cols-2 gap-3">
+  src\components\views\case-detail.tsx:568:    
+    <Field label="FOL date">
+  src\components\views\case-detail.tsx:569:    
+      <SaveText value={c.folDate ?? ""} 
+type="date" mono onSave={(v) => 
+save("folDate", v || null)} />
+
+

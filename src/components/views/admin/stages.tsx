@@ -523,7 +523,7 @@ export function StagesManager() {
                           No sub-steps configured yet. Click "Add Sub-Step" above to create checklist items and blockers.
                         </div>
                       ) : (
-                        <div className="overflow-x-auto">
+                        <div className="rf-scroll rf-scroll-x">
                           <table className="tbl min-w-[700px]">
                             <thead>
                               <tr>
@@ -630,7 +630,7 @@ export function StagesManager() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="rf-form-grid-sm">
               <div>
                 <label className="label">Sort Order</label>
                 <input
@@ -740,7 +740,7 @@ export function StagesManager() {
           }
         >
           <div className="space-y-3.5">
-            <div className="grid grid-cols-3 gap-3">
+            <div className="rf-form-grid-sm">
               <div>
                 <label className="label">Step Number</label>
                 <input
@@ -784,7 +784,7 @@ export function StagesManager() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="rf-form-grid-sm">
               <div>
                 <label className="label">Check Type</label>
                 <select

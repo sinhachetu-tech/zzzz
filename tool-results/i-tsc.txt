@@ -1,0 +1,4 @@
+=== npx tsc --noEmit : FAIL (exit 2) ===
+src/components/views/dashboard.tsx(68,37): error TS2304: Cannot find name 'serviceLines'.
+src/components/views/dashboard.tsx(68,76): error TS2304: Cannot find name 'serviceLines'.
+src/components/views/dashboard.tsx(82,31): error TS2304: Cannot find name 'serviceLines'.

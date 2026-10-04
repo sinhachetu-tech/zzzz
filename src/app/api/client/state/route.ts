@@ -131,8 +131,21 @@ export async function GET(req: Request) {
     })),
     vaultDocuments: c.vaultDocuments.map(serCaseDocument),
     documents: c.clientDocuments.map((d) => ({
-      id: d.id, fileName: d.fileName, fileType: d.fileType, fileSize: d.fileSize,
-      uploadedAt: d.uploadedAt.toISOString(),
+      // Phase G: fileName/fileType/fileSize/uploadedAt are now NULLABLE because a
+      // vault entry is created as a placeholder ("pending upload") before any file
+      // exists. uploadedAt is null until a file actually lands, so the old
+      // `.toISOString()` would throw on the very first pending row — which is the
+      // state every document starts in.
+      id: d.id,
+      title: d.title,
+      category: d.category,
+      status: d.status,
+      sharing: d.sharing,
+      fileName: d.fileName,
+      fileType: d.fileType,
+      fileSize: d.fileSize,
+      uploadedAt: d.uploadedAt ? d.uploadedAt.toISOString() : null,
+      createdAt: d.createdAt.toISOString(),
     })),
     advisor: facingUser ? { name: facingUser.name, role: facingUser.role } : null,
     advisorWhatsapp: facingUser?.phone || settings.clientPortalWhatsapp || null,

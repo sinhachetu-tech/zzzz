@@ -43,7 +43,7 @@ check("5 null flags fail open", spansAllDepartments(null), true);
 
 // 6-8. Department membership.
 check("6 no line editable", canEditDepartment(flags({ serviceLineIds: [WILLS] }), null), true);
-check("7 wrong dept blocked", canEditDepartment(flags({ serviceLineIds: [WILS] }), MORT), false);
+check("7 wrong dept blocked", canEditDepartment(flags({ serviceLineIds: [WILLS] }), MORT), false);
 check("8 right dept allowed", canEditDepartment(flags({ serviceLineIds: [WILLS] }), WILLS), true);
 
 // 9-12. THE REGRESSION GUARD. Every real designation today is "[]", so visibleCases

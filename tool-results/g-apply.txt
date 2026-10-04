@@ -1,0 +1,9 @@
+phase7_person_vault.sql — 11 statements
+APPLIED — verifying…
+
+tables      : 0/0 
+columns     : 2/2 CaseDocument.clientDocumentId, ClientDocument.category
+constraints : 4/4 CaseDocument_clientDocumentId_fkey, ClientDocument_caseId_fkey, ClientDocument_clientId_fkey, ClientDocument_serviceLineId_fkey
+data intact : LoanCase=41 ClientSession=4
+
+verified: every object in the SQL file is present.

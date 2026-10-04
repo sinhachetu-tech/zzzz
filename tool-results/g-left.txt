@@ -1,0 +1,9 @@
+vault rows: 2
+  #2 client=11 "Emirates ID" sharing=All status=Pending upload file=(none)
+  #3 client=11 "Emirates ID" sharing=All status=Pending upload file=(none)
+case documents pointing at a vault row: 4
+  #825 case=1 vault=2 "Emirates ID"
+  #826 case=2 vault=2 "Emirates ID"
+  #827 case=1 vault=3 "Emirates ID"
+  #828 case=2 vault=3 "Emirates ID"
+total case documents: 673

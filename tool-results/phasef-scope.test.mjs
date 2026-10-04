@@ -5,3 +5,8 @@
 import { register } from "node:module";
 import { pathToFileURL } from "node:url";
 register(pathToFileURL(new URL("./ts-resolve.mjs", import.meta.url).pathname.slice(1)));
+
+// Registering the resolver is not enough — without this import the process exits
+// immediately having asserted nothing, which is exactly the "0-byte file that looks
+// like a pass" trap this whole harness exists to avoid.
+await import("./phasef-scope.ts");

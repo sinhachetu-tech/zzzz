@@ -36,7 +36,7 @@ function Kpi({ label, value, format, tone, sub }: { label: string; value: number
 }
 
 export default function Dashboard() {
-  const { cases, leads, tasks, activities, stages, banks, bankProducts, whyPending, waitingFor, users, me, nav, userById, visibleCases, visibleTasks, escalations, bulletin, visibleCaseIds, visibleTaskIds, flags, completeTask, toast } = useHfmcStore();
+  const { cases, leads, tasks, activities, stages, banks, bankProducts, whyPending, waitingFor, users, me, nav, userById, visibleCases, visibleTasks, escalations, bulletin, visibleCaseIds, visibleTaskIds, flags, completeTask, toast, serviceLines } = useHfmcStore();
   useTick(30000);
 
   // deps must include the data arrays (cases/visibleCaseIds/tasks/visibleTaskIds)
@@ -54,6 +54,57 @@ export default function Dashboard() {
   );
 
   const openTasks = visTasks.filter((t) => t.status === "Open");
+
+  /* Phase I — department tabs.
+   *
+   * THE DASHBOARD STAYS GLOBAL. The firm wants total pipeline, so the cards are never
+   * scoped to a department by default; the tab is a lens ON TOP of a global view. That is
+   * the opposite of the Clients list, which must NOT be filtered (one person, all
+   * services) — hiding half a person's history there would break read-across.
+   *
+   * Persisted by service-line CODE, never by id: ids die with the database, codes are the
+   * stable contract. Same reasoning as the worklist filter.
+   */
+  const activeLines = useMemo(() => serviceLines.filter((s) => s.active), [serviceLines]);
+  const multiLine = activeLines.length > 1;
+
+  const [deptCode, setDeptCode] = useState<string>(() => {
+    try { return localStorage.getItem("hfmc.dashboardDept") ?? ""; } catch { return ""; }
+  });
+  useEffect(() => {
+    try {
+      if (deptCode) localStorage.setItem("hfmc.dashboardDept", deptCode);
+      else localStorage.removeItem("hfmc.dashboardDept");
+    } catch { /* private mode */ }
+  }, [deptCode]);
+
+  // A line that has since been deactivated must not silently filter everything away.
+  const deptLine = deptCode ? serviceLines.find((s) => s.code === deptCode) : undefined;
+  const scopedCases = useMemo(
+    () => (deptLine ? visCases.filter((c) => c.serviceLineId === deptLine.id) : visCases),
+    [visCases, deptLine],
+  );
+  const scopedCaseIds = useMemo(() => new Set(scopedCases.map((c) => c.id)), [scopedCases]);
+  // Tasks are filtered by the cases they belong to, so the tab cannot show a task whose
+  // case is filtered out — otherwise the counts disagree with the worklist.
+  const scopedTasks = useMemo(
+    () => visTasks.filter((t) => scopedCaseIds.has(t.caseId)),
+    [visTasks, scopedCaseIds],
+  );
+  const scopedKpis = useMemo(
+    () => computeKpis(scopedCases, scopedTasks, (c) => caseStatusOf(c, tasks), banks, escalations),
+    [scopedCases, scopedTasks, banks, escalations, tasks],
+  );
+  // Leads carry their own serviceLineId, so the tab narrows the funnel too.
+  const scopedLeads = useMemo(
+    () => (deptLine ? leads.filter((l) => l.serviceLineId === deptLine.id) : leads),
+    [leads, deptLine],
+  );
+
+  // Every KPI reads THIS, not `k`. One alias means no consumer can accidentally keep
+  // using the global figures while the tab is active — which would be the worst kind
+  // of bug here: the cards would disagree with the filter above them.
+  const kShown = deptLine ? scopedKpis : k;
 
   // Bank Products card counts. `bankProducts` is already in the hydrated store, so
   // this costs no extra request on the dashboard. Only APPROVED + active products
@@ -137,9 +188,10 @@ export default function Dashboard() {
   const myDueNowCount = me ? myOpenAll.filter((t) => !isOverdueDue(t.dueDate) && dueDay(t.dueDate) <= todayISO()).length : 0;
   // "My new leads" — from the Lead table (Phase 4). Sorted by arrival, not by the
   // SLA clock: this strip answers "what just landed on me", and the Leads tab
-  // is where the going-quiet ones live.
+  // is where the going-quiet ones live. Phase I: scoped to the department tab, so
+  // the strip agrees with the KPI cards rather than contradicting them.
   const myNewLeads = me
-    ? openLeads.filter((l) => l.ownerId === me.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 3)
+    ? scopedLeads.filter((l) => l.ownerId === me.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 3)
     : [];
   const myDayList = [...myDueToday];
   const myDayEmpty = myOverdueAll.length === 0 && myDayList.length === 0 && myNewLeads.length === 0;
@@ -153,6 +205,52 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-5">
+      {/* Phase I — department tabs. HIDDEN while a single line is active: a tab bar
+          offering one option is noise, and this matches the worklist's rule exactly. */}
+      {multiLine && (
+        <div className="flex flex-wrap items-center gap-1.5" role="tablist" aria-label="Department">
+          <button
+            role="tab"
+            aria-selected={!deptLine}
+            className={`chip cursor-pointer ${!deptLine ? "" : "opacity-70"}`}
+            style={!deptLine ? { background: "var(--ink)", color: "var(--paper)" } : undefined}
+            onClick={() => setDeptCode("")}
+          >
+            All departments
+          </button>
+          {activeLines.map((s) => {
+            const on = deptLine?.id === s.id;
+            const count = visCases.filter((c) => c.serviceLineId === s.id).length;
+            // A line can be ACTIVE (offered) with zero work — five shipped that way with
+            // empty "coming soon" journeys. A bare "0" reads like a broken filter, so it
+            // says so instead. Verified: all 6 lines are active, only MORTGAGE has cases.
+            return (
+              <button
+                key={s.id}
+                role="tab"
+                aria-selected={on}
+                className={`chip cursor-pointer ${on ? "" : "opacity-70"}`}
+                style={on ? { background: "var(--ink)", color: "var(--paper)" } : undefined}
+                title={count === 0 ? `${s.name} — no cases yet` : s.name}
+                onClick={() => setDeptCode(s.code)}
+              >
+                {s.shortName || s.name}
+                {count === 0
+                  ? <span className="ml-1 opacity-60">soon</span>
+                  : <span className="ml-1 opacity-70">{count}</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {/* Explains WHY the numbers below changed, rather than leaving the user to guess
+          whether the tab is hiding their work. */}
+      {multiLine && deptLine && (
+        <p className="text-[11.5px] text-[var(--ink-faint)] m-0">
+          Showing <strong>{deptLine.name}</strong> only — the firm's totals are unchanged, this is a lens.
+          {" "}Clients are deliberately <em>not</em> filtered: one person holds every service.
+        </p>
+      )}
       {isFrontline && (
         <div className="card p-4 sm:p-5 anim-fade-up" style={{ borderLeft: "3px solid var(--amber)" }}>
           <div className="flex flex-wrap items-end justify-between gap-3">
@@ -212,7 +310,7 @@ export default function Dashboard() {
             Dashboard · <span style={{ color: "var(--amber)" }}>{scope}</span>
           </h1>
           <p className="text-[13px] text-[var(--ink-dim)] mt-0.5 mb-0">
-            The floor at a glance — {k.openCases} live cases · {fmtMoney(k.pipelineValue)} in flight · {k.escalations} SLA breach{k.escalations === 1 ? "" : "es"}. Work happens in <button className="underline font-medium" onClick={() => nav({ name: "cases" })}>Cases</button> and <button className="underline font-medium" onClick={() => nav({ name: "leads" })}>Leads</button>.
+            The floor at a glance — {kShown.openCases} live cases · {fmtMoney(kShown.pipelineValue)} in flight · {kShown.escalations} SLA breach{kShown.escalations === 1 ? "" : "es"}. Work happens in <button className="underline font-medium" onClick={() => nav({ name: "cases" })}>Cases</button> and <button className="underline font-medium" onClick={() => nav({ name: "leads" })}>Leads</button>.
           </p>
         </div>
         <div className="flex items-center gap-2 text-[12px] text-[var(--ink-faint)]">
@@ -260,13 +358,13 @@ export default function Dashboard() {
           returns to the original single-row scroll strip, which is denser and
           suits a wide desktop. */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:flex md:gap-3 md:overflow-x-auto md:pb-1 stagger">
-        <Kpi label="Cases in flight" value={k.openCases} />
-        <Kpi label="Overdue" value={k.overdue} tone="coral" />
-        <Kpi label="At risk" value={k.atRisk} tone="amber" />
-        <Kpi label="No next action" value={k.noAction} tone="sky" />
-        <Kpi label="Open tasks" value={k.openTasks} />
-        <Kpi label="Pipeline value" value={k.pipelineValue} format={fmtMoney} tone="mint" />
-        {flags?.viewRevenue && <Kpi label="Est. commission" value={k.estCommission} format={fmtMoney} tone="amber" sub="at current bank rates" />}
+        <Kpi label={deptLine ? `${deptLine.shortName || deptLine.name} in flight` : "Cases in flight"} value={kShown.openCases} />
+        <Kpi label="Overdue" value={kShown.overdue} tone="coral" />
+        <Kpi label="At risk" value={kShown.atRisk} tone="amber" />
+        <Kpi label="No next action" value={kShown.noAction} tone="sky" />
+        <Kpi label="Open tasks" value={kShown.openTasks} />
+        <Kpi label="Pipeline value" value={kShown.pipelineValue} format={fmtMoney} tone="mint" />
+        {flags?.viewRevenue && <Kpi label="Est. commission" value={kShown.estCommission} format={fmtMoney} tone="amber" sub="at current bank rates" />}
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-4 items-start">

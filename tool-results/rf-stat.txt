@@ -1,0 +1,30 @@
+﻿git : warning: in the working copy of 
+'src/app/globals.css', LF will be replaced by 
+CRLF the next time Git touches it
+At line:1 char:130
++ ... f-css4.txt; git --no-pager diff --stat 
+-- src/app/globals.css src/com ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (w 
+   arning: in the... Git touches it:String) [  
+  ], RemoteException
+    + FullyQualifiedErrorId : NativeCommandErr 
+   or
+ 
+warning: in the working copy of 
+'src/components/views/cases.tsx', LF will be 
+replaced by CRLF the next time Git touches it
+warning: in the working copy of 
+'src/components/views/clients.tsx', LF will be 
+replaced by CRLF the next time Git touches it
+warning: in the working copy of 
+'src/components/views/shell.tsx', LF will be 
+replaced by CRLF the next time Git touches it
+ CODEBASE.md                      |  48 +++++++++++-
+ src/app/globals.css              | 165 ++++++++++++++++++++++++++++++++++++++-
+ src/components/hfmc/ui.tsx       |  83 +++++++++++++++++++-
+ src/components/views/cases.tsx   |  98 +++++++++++++++++------
+ src/components/views/clients.tsx |  25 +++---
+ src/components/views/shell.tsx   |  71 ++++++++++++++++-
+ 6 files changed, 448 insertions(+), 42 deletions(-)

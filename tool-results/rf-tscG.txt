@@ -1,0 +1,3 @@
+﻿src/components/views/calculator.tsx(210,10): error TS1005: ')' expected.
+src/components/views/calculator.tsx(239,5): error TS1128: Declaration or statement expected.
+src/components/views/calculator.tsx(240,3): error TS1109: Expression expected.

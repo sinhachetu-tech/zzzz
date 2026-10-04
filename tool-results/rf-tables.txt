@@ -1,0 +1,80 @@
+﻿
+> src\components\views\admin\departments.tsx:10
+9:        <div className="tbl">
+  src\components\views\admin\departments.tsx:11
+0:          <div className="tr th">
+  src\components\views\admin\departments.tsx:11
+1:            <span>Department</span><span>Head
+</span><span>Staff</span><span>Open 
+cases</span>
+> src\components\views\admin\departments.tsx:15
+1:        <div className="tbl">
+  src\components\views\admin\departments.tsx:15
+2:          <div className="tr th"><span>Person
+</span><span>Office</span><span>Department</spa
+n></div>
+  src\components\views\admin\departments.tsx:15
+3:          {users.map((u) => (
+> src\components\views\admin\departments.tsx:18
+7:        <div className="tbl">
+  src\components\views\admin\departments.tsx:18
+8:          <div className="tr th">
+  src\components\views\admin\departments.tsx:18
+9:            
+<span>Role</span><span>Scope</span><span 
+className="w-[45%]">Departments it may 
+touch</span>
+> 
+src\components\views\products\browser.tsx:221: 
+       <div className="flex items-center gap-2 
+min-w-0 shrink-0" style={{ width: 180 }}>
+  
+src\components\views\products\browser.tsx:222: 
+         {r.bankLogoUrl ? (
+  
+src\components\views\products\browser.tsx:223: 
+           <img src={r.bankLogoUrl} alt="" 
+className="h-7 w-7 rounded object-contain 
+shrink-0"
+> 
+src\components\views\products\browser.tsx:249: 
+       <div className="text-[11px] mono 
+truncate shrink-0" style={{ width: 132, color: 
+"var(--ink-dim)" }}>
+  
+src\components\views\products\browser.tsx:250: 
+         {r.followOnLabel}
+  
+src\components\views\products\browser.tsx:251: 
+       </div>
+> src\components\views\tasks.tsx:223:          
+  <table className="tbl min-w-[860px]">
+  src\components\views\tasks.tsx:224:          
+    <thead>
+  src\components\views\tasks.tsx:225:          
+      <tr>
+> src\components\views\emails.tsx:191:         
+   <table className="tbl min-w-[760px]">
+  src\components\views\emails.tsx:192:         
+     <thead>
+  src\components\views\emails.tsx:193:         
+       <tr>
+> src\components\views\proposals.tsx:83:       
+   <table className="tbl min-w-[860px]">
+  src\components\views\proposals.tsx:84:       
+     <thead>
+  src\components\views\proposals.tsx:85:       
+       <tr>
+> src\components\views\proposals.tsx:95:       
+           <td className="text-[11.5px] 
+text-[var(--ink-dim)]" style={{ maxWidth: 260 
+}}>
+  src\components\views\proposals.tsx:96:       
+             {(p.inputs as { results?: { 
+bankName?: string }[] })?.results?.map((x) => 
+x.bankName).filter(Boolean).join(", ") || 
+`${p.productIds.length} products`}
+  src\components\views\proposals.tsx:97:       
+           </td>
+
+

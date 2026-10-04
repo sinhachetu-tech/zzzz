@@ -1,0 +1,103 @@
+=== npx eslint src/components/client/ClientVaultPanel.tsx src/app/api/client-documents/route.ts src/app/client/dashboard.tsx src/components/views/case-detail.tsx src/app/api/client/state/route.ts : FAIL (exit 1) ===
+C:\Users\Lenovo\Desktop\zzzz\src\components\client\ClientVaultPanel.tsx
+  45:21  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+C:\Users\Lenovo\Desktop\zzzz\src\components\client\ClientVaultPanel.tsx:45:21
+  43 |   }, [clientId]);
+  44 |
+> 45 |   useEffect(() => { load(); }, [load]);
+     |                     ^^^^ Avoid calling setState() directly within an effect
+  46 |
+  47 |   if (!clientId) {
+  48 |     return (  react-hooks/set-state-in-effect
+
+C:\Users\Lenovo\Desktop\zzzz\src\components\views\case-detail.tsx
+  650:34  error  Compilation Skipped: Existing memoization could not be preserved
+
+React Compiler has skipped optimizing this component because the existing manual memoization could not be preserved. The inferred dependencies did not match the manually specified dependencies, which could cause the value to change more or less frequently than expected. The inferred dependency was `setPendingTab`, but the source dependencies were [setCaseTabRaw]. Inferred different dependency than source.
+
+C:\Users\Lenovo\Desktop\zzzz\src\components\views\case-detail.tsx:650:34
+  648 |   const [pendingTab, setPendingTab] = useState<CaseTab | null>(null);
+  649 |
+> 650 |   const setCaseTab = useCallback((t: CaseTab) => {
+      |                                  ^^^^^^^^^^^^^^^^^
+> 651 |     if (sheetDirtyRef.current && t !== "client") { setPendingTab(t); return; }
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 652 |     setCaseTabRaw(t);
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 653 |   }, [setCaseTabRaw]);
+      | ^^^^ Could not preserve existing manual memoization
+  654 |
+  655 |   // Browser-level guard: a refresh or back-navigation loses the draft too.
+  656 |   useEffect(() => {  react-hooks/preserve-manual-memoization
+  687:21  error  Compilation Skipped: Existing memoization could not be preserved
+
+React Compiler has skipped optimizing this component because the existing manual memoization could not be preserved. This value was memoized in source but not in compilation output.
+
+C:\Users\Lenovo\Desktop\zzzz\src\components\views\case-detail.tsx:687:21
+  685 |   // could be moved to "Valuation" — and the mortgage-only labels below
+  686 |   // (preApprovalIdx / folIdx) simply resolved to -1 and silently did nothing.
+> 687 |   const stageList = useMemo(
+      |                     ^^^^^^^^
+> 688 |     () => [...stagesForServiceLine(stages, serviceLines, c?.serviceLineId)].sort((a, b) => a.sortOrder - b.sortOrder),
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 689 |     [stages, serviceLines, c?.serviceLineId],
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 690 |   );
+      | ^^^^ Could not preserve existing memoization
+  691 |
+  692 |   /* BLOCKERS — one ranked list feeding BOTH the command bar's primary button and
+  693 |    * its one-line strip. Derived from the same task/document/sheet rows the tab       react-hooks/preserve-manual-memoization
+  689:28  error  Compilation Skipped: Existing memoization could not be preserved
+
+React Compiler has skipped optimizing this component because the existing manual memoization could not be preserved. This dependency may be mutated later, which could cause the value to change unexpectedly.
+
+C:\Users\Lenovo\Desktop\zzzz\src\components\views\case-detail.tsx:689:28
+  687 |   const stageList = useMemo(
+  688 |     () => [...stagesForServiceLine(stages, serviceLines, c?.serviceLineId)].sort((a, b) => a.sortOrder - b.sortOrder),
+> 689 |     [stages, serviceLines, c?.serviceLineId],
+      |                            ^ This dependency may be modified later
+  690 |   );
+  691 |
+  692 |   /* BLOCKERS — one ranked list feeding BOTH the command bar's primary button and                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          react-hooks/preserve-manual-memoization
+  701:20  error  Compilation Skipped: Existing memoization could not be preserved
+
+React Compiler has skipped optimizing this component because the existing manual memoization could not be preserved. This value was memoized in source but not in compilation output.
+
+C:\Users\Lenovo\Desktop\zzzz\src\components\views\case-detail.tsx:701:20
+  699 |    * only shows up when a case is deleted mid-session, which is exactly when you
+  700 |    * do not want a white screen. */
+> 701 |   const blockers = useMemo(() => {
+      |                    ^^^^^^^^^^^^^^^
+> 702 |     if (!c) return [];
+      | ^^^^^^^^^^^^^^^^^^^^^^
+> 703 |     const docs = caseDocuments.filter((d) => d.caseId === id);
+      …
+      | ^^^^^^^^^^^^^^^^^^^^^^
+> 712 |     });
+      | ^^^^^^^^^^^^^^^^^^^^^^
+> 713 |   }, [c, id, caseTasks, caseDocuments, clients, caseInstr, caseUpdates]);
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Could not preserve existing memoization
+  714 |
+  715 |   /* Stage-conditional money panels. Pre-approval and FOL figures only become
+  716 |    * relevant once the case has reached those stages — the same rule the                                                                                                                      react-hooks/preserve-manual-memoization
+  713:7   error  Compilation Skipped: Existing memoization could not be preserved
+
+React Compiler has skipped optimizing this component because the existing manual memoization could not be preserved. This dependency may be mutated later, which could cause the value to change unexpectedly.
+
+C:\Users\Lenovo\Desktop\zzzz\src\components\views\case-detail.tsx:713:7
+  711 |       updatedOn: caseUpdates.filter((u) => u.caseId === id).map((u) => u.date),
+  712 |     });
+> 713 |   }, [c, id, caseTasks, caseDocuments, clients, caseInstr, caseUpdates]);
+      |       ^ This dependency may be modified later
+  714 |
+  715 |   /* Stage-conditional money panels. Pre-approval and FOL figures only become
+  716 |    * relevant once the case has reached those stages — the same rule the                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                react-hooks/preserve-manual-memoization
+
+✖ 6 problems (6 errors, 0 warnings)

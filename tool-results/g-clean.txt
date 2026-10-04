@@ -1,0 +1,6 @@
+vault rows to remove: 2 2,3
+case documents to remove: 4
+vault   : 2 -> 0
+caseDoc : 673 -> 669
+pointers left: 0
+cases=41 clients=52

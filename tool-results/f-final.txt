@@ -1,0 +1,3 @@
+=== npx tsc --noEmit : FAIL (exit 2) ===
+tool-results/phasef-scope.ts(4,83): error TS5097: An import path can only end with a '.ts' extension when 'allowImportingTsExtensions' is enabled.
+tool-results/phasef-scope.ts(5,31): error TS2305: Module '"../src/lib/types.ts"' has no exported member 'RoleFlags'.

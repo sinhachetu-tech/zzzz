@@ -1,0 +1,2 @@
+=== npx eslint src/lib/ser.ts src/lib/types.ts src/app/api/cases : PASS (exit 0) ===
+(no output)

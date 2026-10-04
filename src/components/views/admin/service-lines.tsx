@@ -170,7 +170,7 @@ export default function ServiceLinesAdmin() {
           }
         >
           <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="rf-form-grid-sm">
               <div>
                 <label className="label">Code</label>
                 <input
@@ -185,7 +185,7 @@ export default function ServiceLinesAdmin() {
                   onChange={(e) => setLine({ ...line, sortOrder: Number(e.target.value) || 0 })} />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="rf-form-grid-sm">
               <div>
                 <label className="label">Name</label>
                 <input className="input" value={line.name} onChange={(e) => setLine({ ...line, name: e.target.value })}
@@ -238,7 +238,7 @@ export default function ServiceLinesAdmin() {
           }
         >
           <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="rf-form-grid-sm">
               <div>
                 <label className="label">Code</label>
                 <input className="input" value={product.code} disabled={!!product.id}

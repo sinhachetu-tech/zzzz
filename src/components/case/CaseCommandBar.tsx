@@ -140,7 +140,11 @@ export function CaseCommandBar({
             <span className="chip" style={{ fontSize: 10, background: "rgba(242,176,76,0.1)", color: "var(--amber)", borderColor: "rgba(242,176,76,0.3)" }}>
               {c.stage}
             </span>
-            <span className="mono text-[10.5px] text-[var(--ink-faint)] ml-auto shrink-0">
+            {/* `ml-auto` was pushing this meta block hard against the right edge, where it
+            fought the chips for the same line and truncated the case number on a
+            phone. Letting it wrap onto its own full-width line below the chips is
+            the app-like behaviour: identity chips first, metadata second. */}
+            <span className="mono text-[10.5px] text-[var(--ink-faint)] w-full sm:w-auto sm:ml-auto shrink-0">
               opened {fmtDate(c.createdAt)} · {age}d
               {slaOver != null && slaOver > 0 && <span style={{ color: "var(--coral)" }}> · SLA +{slaOver}d</span>}
             </span>
@@ -190,8 +194,13 @@ export function CaseCommandBar({
           )}
         </div>
 {/* actions: ONE primary, drawn from the top blocker. Everything else is a
-            peer-free ghost button or an overflow item. */}
-        <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+            peer-free ghost button or an overflow item.
+
+            `shrink-0 justify-end` in a horizontal row squeezed these on a phone —
+            the primary action ended up competing with the case number for width.
+            Going full-width on a phone lets the row WRAP into a proper action bar,
+            which is the app convention: primary full-width, ghosts beside it. */}
+        <div className="flex items-center gap-1.5 flex-wrap w-full md:w-auto md:shrink-0 md:justify-end">
           {top ? (
             <button className="btn btn-primary btn-sm" onClick={() => onTab(top.tab as JumpTab)} title={top.detail ?? top.label}>
               <span style={{ width: 6, height: 6, borderRadius: 999, background: "currentColor" }} />
@@ -204,13 +213,13 @@ export function CaseCommandBar({
           )}
 
           <button className="btn btn-ghost btn-sm !px-2.5" onClick={onAddTask} title="Add a task">
-            <IPlus size={14} /><span className="hidden lg:inline">Task</span>
+            <IPlus size={14} /><span className="hidden sm:inline">Task</span>
           </button>
           <button className="btn btn-ghost btn-sm !px-2.5" onClick={onMoveStage} title="Move to another stage">
-            <IFlag size={14} /><span className="hidden lg:inline">Move</span>
+            <IFlag size={14} /><span className="hidden sm:inline">Move</span>
           </button>
           <button className="btn btn-ghost btn-sm !px-2.5" onClick={onOpenDetails} title="Case details, people and numbers">
-            <IBriefcase size={14} /><span className="hidden lg:inline">Details</span>
+            <IBriefcase size={14} /><span className="hidden sm:inline">Details</span>
           </button>
 
           <OverflowMenu

@@ -1,0 +1,7 @@
+﻿
+src\components\views\reports.tsx:671:      
+<div className={`grid gap-3 stagger 
+${canRevenue ? "grid-cols-2 lg:grid-cols-4" : 
+"grid-cols-2 lg:grid-cols-3"}`}>
+
+

@@ -1,0 +1,4 @@
+﻿doc-vault.tsx errors=1 warnings=0
+    164:24 react-hooks/preserve-manual-memoization
+leads.tsx errors=0 warnings=0
+detail.tsx errors=0 warnings=0

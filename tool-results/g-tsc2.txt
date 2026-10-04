@@ -1,0 +1,2 @@
+=== npx tsc --noEmit : FAIL (exit 2) ===
+src/app/client/client-store.ts(31,15): error TS2304: Cannot find name 'ClientDocDto'.

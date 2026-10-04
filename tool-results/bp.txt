@@ -1,0 +1,2 @@
+   53: bankProducts: BankProduct[];
+  240: escalations: 0, docRules: [], feeRules: [], eibor: [], stageTransitions: [], caseDocuments: [], bankProducts: [], unmatchedEmails: [], emails: [], clients: [], promotions: [], caseParties: [],

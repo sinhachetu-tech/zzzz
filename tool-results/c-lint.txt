@@ -1,0 +1,38 @@
+=== npx eslint src/app/api/cases/route.ts src/components/views/shell.tsx src/lib/client-store.ts : FAIL (exit 1) ===
+C:\Users\Lenovo\Desktop\zzzz\src\components\views\shell.tsx
+  198:5   error    Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+C:\Users\Lenovo\Desktop\zzzz\src\components\views\shell.tsx:198:5
+  196 |     if (lineId || activeLines.length === 0) return;
+  197 |     const mort = activeLines.find((l) => l.code === "MORTGAGE");
+> 198 |     setLineId(String((mort ?? activeLines[0]).id));
+      |     ^^^^^^^^^ Avoid calling setState() directly within an effect
+  199 |   }, [activeLines, lineId]);
+  200 |   const lineProducts = useMemo(
+  201 |     () => (chosenLine?.products ?? []).filter((p) => p.active).sort((a, b) => a.sortOrder - b.sortOrder),                                                        react-hooks/set-state-in-effect
+  207:21  error    Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+C:\Users\Lenovo\Desktop\zzzz\src\components\views\shell.tsx:207:21
+  205 |   // Switching department must clear the offering: the old one belongs to another line
+  206 |   // and the server would reject it, so leaving it selected would produce a dead picker.
+> 207 |   useEffect(() => { setProductId(""); }, [lineId]);
+      |                     ^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  208 |   const [customer, setCustomer] = useState("");
+  209 |   const [whatsapp, setWhatsapp] = useState("");
+  210 |   const [waGroup, setWaGroup] = useState("");  react-hooks/set-state-in-effect
+  854:51  warning  Expected an assignment or function call and instead saw an expression                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                @typescript-eslint/no-unused-expressions
+  945:45  warning  Expected an assignment or function call and instead saw an expression                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                @typescript-eslint/no-unused-expressions
+
+✖ 4 problems (2 errors, 2 warnings)

@@ -1,0 +1,11 @@
+phase7_person_vault.sql — 11 statements
+pre-flight : NOT NULL, no default → ClientDocument.clientId, ClientDocument.title
+pre-flight : "ClientDocument" currently holds 0 row(s)
+already applied (column exists) — verifying…
+
+tables      : 0/0 
+columns     : 22/22 ClientDocument.clientId, ClientDocument.compressedKey, ClientDocument.compressedSize, ClientDocument.createdAt, ClientDocument.displayName, ClientDocument.driveFileId, ClientDocument.expiryDate, ClientDocument.fileData, ClientDocument.notes, ClientDocument.rejectionReason, ClientDocument.selectedVersion, ClientDocument.serviceLineId, ClientDocument.sharing, ClientDocument.sortOrder, ClientDocument.source, ClientDocument.status, ClientDocument.storageKey, ClientDocument.title, ClientDocument.uploadedById, ClientDocument.uploadedByKind, ClientDocument.verifiedAt, ClientDocument.verifiedById
+constraints : 4/4 CaseDocument_clientDocumentId_fkey, ClientDocument_caseId_fkey, ClientDocument_clientId_fkey, ClientDocument_serviceLineId_fkey
+data intact : LoanCase=41 ClientSession=4
+
+verified: every object in the SQL file is present.

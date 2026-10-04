@@ -152,7 +152,7 @@ export function BankDefaults({ onToast }: { onToast: (t: "success" | "error" | "
           {GROUPS.map((g) => (
             <div key={g} className="mb-3">
               <div className="text-[10.5px] uppercase tracking-[0.08em] font-semibold mb-1.5" style={{ color: "var(--ink-faint)" }}>{g}</div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="rf-form-grid-sm">
                 {FIELDS.filter((f) => f.group === g).map((f) => {
                   const n = editing.overrides?.[f.key] ?? 0;
                   return (

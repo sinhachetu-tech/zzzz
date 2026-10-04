@@ -1,0 +1,4 @@
+   50: function hasWorkingAccess(c: LoanCase, user: User, teamIds: Set<number>): boolean {
+   66: // clients via hasWorkingAccess(), which includes TEAM membership — so an "own"-scope
+   70: function touchedClientIds(
+  111: const myClients = deptRestricted ? touchedClientIds(cases, user, teamIds) : new Set<number>();

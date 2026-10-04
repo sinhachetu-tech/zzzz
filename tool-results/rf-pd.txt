@@ -1,0 +1,67 @@
+﻿
+  
+src\components\views\products\detail.tsx:176:  
+    <Block title="Who this suits" sub="The 
+eligibility axes. A blank here is a data gap, 
+not a silent pass.">
+> 
+src\components\views\products\detail.tsx:177:  
+      <div className="grid grid-cols-2 
+sm:grid-cols-3 lg:grid-cols-4 gap-4">
+  
+src\components\views\products\detail.tsx:178:  
+        <Field label="Mortgage 
+type">{or(p.mortgageType)}</Field>
+  
+src\components\views\products\detail.tsx:216:  
+      ) : (
+> 
+src\components\views\products\detail.tsx:217:  
+        <div className="overflow-x-auto">
+> 
+src\components\views\products\detail.tsx:218:  
+          <table className="tbl w-full">
+  
+src\components\views\products\detail.tsx:219:  
+            <thead>
+  
+src\components\views\products\detail.tsx:273:  
+    <Block title="Bank fees & insurance" 
+sub="The charges that decide the real cost, 
+not the headline rate.">
+> 
+src\components\views\products\detail.tsx:274:  
+      <div className="grid grid-cols-2 
+sm:grid-cols-3 lg:grid-cols-4 gap-4">
+  
+src\components\views\products\detail.tsx:275:  
+        <Field label="Processing fee">
+  
+src\components\views\products\detail.tsx:305:  
+    <Block title="Timeline & validity" 
+sub="Working days, and how long each stage 
+stays valid once granted.">
+> 
+src\components\views\products\detail.tsx:306:  
+      <div className="grid grid-cols-2 
+sm:grid-cols-3 lg:grid-cols-5 gap-4">
+  
+src\components\views\products\detail.tsx:307:  
+        <Field label="Total 
+TAT">{p.tat.totalTatDays != null ? 
+`${p.tat.totalTatDays} days` : NA}</Field>
+  
+src\components\views\products\detail.tsx:316:  
+    <Block title="Source & provenance" 
+sub="Where this came from, and the bank's 
+original text when a field above is wrong.">
+> 
+src\components\views\products\detail.tsx:317:  
+      <div className="grid grid-cols-2 
+sm:grid-cols-4 gap-4">
+  
+src\components\views\products\detail.tsx:318:  
+        <Field label="Source 
+files">{or(p.sourceFiles)}</Field>
+
+

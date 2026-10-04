@@ -1,11 +1,16 @@
 # HFMC Codebase Map
 
-> **Multi-service migration.** Phases **0–5, A and B shipped** (service lines, bank-leg
-> outcomes, client-scoped portal sessions, real `Lead` entity, per-line workflows,
-> case parties + the co-borrower button). The full spec, phase log, the agreed-but-
-> **unbuilt** §9/§10 (departments & offices, read-across access, the shared client
-> document vault), open questions and ⚠️ unverified items are in
-> **`MIGRATION-NOTES.md`** — read that before Phase C.
+> **Multi-service migration.** Phases **0–5, A, B, C, F, G, H, I, 7 + scale hardening** are
+> **SHIPPED** — service lines, bank-leg outcomes, client-scoped portal, the real `Lead`
+> entity, per-line journeys, case parties + the co-borrower button, **departments +
+> read-across access**, **Admin → Departments**, **the shared document vault**, **dashboard
+> department tabs**, the **open-case flow**, the **rate card** (`LoanCase.bankProductId` →
+> `BankProduct`), and **indexes + list pagination**.
+>
+> 👉 **`MIGRATION-NOTES.md` §17 is the work queue — read it FIRST.** It lists what is
+> still to do, the known problems left unfixed, the environment traps (never trust a
+> zero-byte test file; `prisma migrate dev` is FORBIDDEN), and the baseline numbers to
+> sanity-check after any migration.
 
 Plain-English guide to every code file, for humans and AI assistants.
 **Rule: after any code change, update the relevant entry here in the same commit.**
@@ -67,10 +72,60 @@ existed before Phase F — upgrading grants access rather than removing it.
   `src/lib/auth.ts`. It used to be duplicated in both files, which is precisely how the
   two would have drifted the moment `serviceLineIds` was added to one.
 
-**Still to build:** Admin → Departments UI, per-department dashboard tabs, and the
-shared client document vault (`ClientDocument`). **Do not switch on a second department
-until the Admin screen exists** — the access rules are in place, but nothing lets you
-configure them yet.
+**Admin → Departments UI is live** (`src/components/views/admin/departments.tsx`, mounted
+in `views/admin.tsx` under the Workflow group). It keeps the three concepts on separate
+tables and never merges office with department. Code validation lives in
+`normalizeServiceLineIds()` in `src/app/api/admin/route.ts`.
+
+**Scale (the "1,000 cases" work).** `views/cases.tsx` and `views/clients.tsx` paginate at
+**50 rows**, pager visible only when there is more than one page. `safePage` **clamps**
+rather than resets so a narrowing search can never leave you on an empty page. Name search
+is indexed (`LoanCase.customer`, `Client.fullName` — both were sequential scans); `caseNumber`
+was already covered by `@unique`. **Do not quote raw JSON as "payload size"** — Next.js
+gzips: 41 cases = 6 KB on the wire, 1,000 cases ≈ 150 KB, i.e. ~154 B/case.
+
+**Still to build:** Phase D (person screen), E (assets), J (Wills live), Phase 7 (Reports by department), and the **rate-product** work you chose as option **(b)** — `LoanCase.bankProductId` + retiring `transactionType`.
+
+**Phase C — open-case flow.** `POST /api/cases` now takes `serviceLineId`, `productId` and
+`clientId`; before this it took **none of them**, so every new case was silently mortgage and
+attached to **no person**. Department omitted ⇒ MORTGAGE; unknown or deactivated line ⇒ 400;
+a product from another line ⇒ 400; an explicit `clientId` links the person, otherwise the
+merge ladder (EID → phone+name → never phone alone) creates them. The New Case modal picks
+department + offering **first**, since they change what the rest of the form means.
+
+**Phase I — department tabs on the dashboard.** `views/dashboard.tsx` persists the choice
+to `localStorage["hfmc.dashboardDept"]` **by service-line code**. The dashboard stays
+**global**; the tab is a lens. **Clients are never filtered** — one person, all services.
+One alias `kShown = deptLine ? scopedKpis : k` feeds every KPI so the cards can never
+disagree with the filter; tasks are filtered by the cases they belong to. A line with
+**zero cases renders "soon"**, not "0" — all six lines ship `active`, five have no work.
+
+## The person-level document vault (Phase G)
+
+`ClientDocument` was **reshaped in place** — it used to be a case-scoped metadata stub
+(`caseId`, `onDelete: Cascade`, filename/type/size only) and is now scoped to the **person**:
+
+- **`clientId`** (Cascade) — a passport belongs to the human, so it is uploaded ONCE and
+  attached to the mortgage, the golden visa and the will.
+- **`serviceLineId`** = the **owning department**, and it is **never rewritten** when
+  another department attaches the file. A bank valuation stays "Mortgage · shared" even
+  on a will; only the *attachment* is recorded. Provenance is a fact, not a label.
+- **`sharing`** = `All | Team | Department`, **defaulting to `All`** (the realistic
+  failure here is a missing passport, not a leaked one).
+- Rows are created as **placeholders** (`Pending upload`) before any file exists — that is
+  how you ask a client for a passport, and it is why every file field is nullable.
+- `caseId` survives as a **nullable legacy pointer** (`onDelete: SetNull`) because
+  `api/client/state/route.ts` still reads it.
+- `CaseDocument.clientDocumentId` is the attach pointer (`onDelete: SetNull`): **one file,
+  many case rows.**
+
+`/api/client-documents` enforces the rules server-side — a document may only attach to a
+case **belonging to the same client** (otherwise anyone could staple any client's passport
+onto any file they can see), attaching twice is idempotent, and DELETE is **refused while
+attached** so no case row is left pointing at nothing.
+
+UI: `src/components/client/ClientVaultPanel.tsx`, mounted in `case-detail.tsx` beside the
+person's data sheet.
 
 ## Multi-service architecture (Phase 1 of the service-line migration)
 
@@ -294,7 +349,7 @@ Client  ── the human (KYC, address, income, assets, liabilities)
 │  │                           CommButton, stage-parts (exports `CaseTab` union — the
 │  │                           canonical tab type; always import from here, never
 │  │                           re-declare the union), useStageLive)
-│  ├─ hfmc/ui.tsx              Design system: Modal, Chip, Avatar, Seg, buttons
+│  ├─ hfmc/ui.tsx              Design system: Modal, Chip, Avatar, Seg, buttons, KpiValue, and the responsive primitives (ResponsiveList, useIsPhone, useMediaQuery)
 │  ├─ hfmc/bits.tsx            Composite widgets (WaButtons, CommissionPanel, BankChips…)
 │  ├─ hfmc/charts.tsx          Tiny chart components (Spark, donut, bars)
 │  ├─ hfmc/toaster.tsx         Toast host
@@ -339,8 +394,8 @@ Client  ── the human (KYC, address, income, assets, liabilities)
 | **Adding a service line or product** | `prisma/schema.prisma` → seed via `scripts/seed-service-lines.cjs` → Admin → Workflow → Service lines (`src/app/api/service-lines/route.ts`, `views/admin/service-lines.tsx`). `code` is immutable once set; a line in use can be deactivated but not deleted |
 | **Add a co-borrower / co-applicant / guarantor** | `prisma/schema.prisma` `model CaseParty` → `src/lib/types.ts` (`CaseParty`, `PartyRole`, `PARTY_ROLES`) → `src/lib/ser.ts` (`serCaseParty`) → `src/lib/client-store.ts` (`partiesOfCase`/`partiesOfClient`/`roleOnCase`) → `src/app/api/state/route.ts`. **⚠️ The person is a `Client`; the role lives ONLY on `CaseParty`** — never add a role column to `Client`. **Keep `secondPartyClientId` in step** while Phase B's write path lands, or `roleOnCase`'s fallback and the new table will disagree |
 | **Reporting a number about leads** | `views/reports.tsx` reads `leads` from the store. **Lost ≠ Invalid** — keep them apart or the conversion rate is understated. Revenue masking mirrors cases (`flags.viewRevenue` nulls `intendedAmount`) |
-| **Restrict a role to certain departments** | `Designation.serviceLineIds` in `prisma/schema.prisma` → `src/lib/types.ts` (`Designation.serviceLineIds`) → `src/lib/ser.ts` (`serDesignation` — raw rows ship the JSON *string*, the client needs `string[]`) → `src/lib/auth.ts` (`parseServiceLineIds` → `RoleFlags`) → `src/lib/domain.ts` (`spansAllDepartments`, `canEditDepartment`, read-across in `visibleCases`, `canEditCase`) → `src/app/api/state/route.ts` (builds `serviceLineCodeById` so every case carries its `serviceLineCode`). **`"[]"` = every department** — never treat empty as "none" |
-| **Put someone in a department / appoint a head** | `User.serviceLineId` (department) and `ServiceLine.headUserId` (who runs it). **Office is `User.team` and must stay separate** — don't merge them into "Dubai-Wills". Neither field controls access; that is `Designation.serviceLineIds` |
+| **Give a role access to only some departments** | Admin → **Workflow → Departments** (`views/admin/departments.tsx`) → "Role access" checkboxes → `POST /api/admin` (POST = create, PATCH = update) with `serviceLineIds`. Validation + normalisation is `normalizeServiceLineIds()` in `src/app/api/admin/route.ts`. **No boxes ticked = all departments** |
+| **Assign someone to a department, or appoint a head** | Admin → Workflow → Departments, tables 1–2 → `User.serviceLineId` (department, informational) and `ServiceLine.headUserId` (who runs it). **Neither grants access** — that is `Designation.serviceLineIds` only. `User.team` (office) is never touched by these |
 | Case-360 journey / stage drawer / transfer branch | `src/lib/workflow/registry.ts` + `stages/*.ts`, UI in `src/components/case/` (StageRail, StageDrawer, stage-parts, useStageLive, CommButton) |
 | "What is blocking this case?" / the header's primary CTA | `src/lib/case-blockers.ts` (`computeCaseBlockers` — pure projection of tasks, documents, instructions, data-sheet gaps and today's update, ranked; **stores nothing**, so it cannot drift from the tab bodies). Consumed by `CaseCommandBar` (primary button label + blocker strip) and `case-detail.tsx` (the overdue-task nudge link). Each blocker carries the `CaseTab` that can clear it. |
 | **Task completion feels slow** | `src/lib/client-store.ts` — `completeTask` / `reopenTask` / `deleteTask` are the ONLY mutations that patch local Zustand state instead of calling `hydrate()`. They apply optimistically on click, reconcile with the `task` the PATCH already returns, and **now throw on failure** (every caller has a `catch` + error toast). `reconcileTask(id)` re-reads one row to roll back a rejected write. `/api/state` returns every case, doc, chat message and product, so re-hydrating to tick one checkbox froze the UI for the whole workspace round-trip. A trailing `hydrate()` still runs off the critical path to pick up side effects (the activity row). In Case 360 the tick is one click; the ✎ beside it opens the optional-note modal. |
@@ -396,6 +451,11 @@ Client  ── the human (KYC, address, income, assets, liabilities)
 | Left panel collapse behaviour | `src/hooks/use-collapsible-sidebar.ts` (rule: user pin > viewport), rail widths + `collapsed` markup in `shell.tsx`, `.nav-rail`/`.side-shell` in `globals.css` |
 | text/contrast, hover, motion, shadows | tokens in `globals.css` `:root`/`[data-theme="dark"]` (ink-faint is AA-tuned; hover tiered + touch-guarded; prefers-reduced-motion kill-switch lives there); route-settle logic in `shell.tsx` (`viewRef`, no state) |
 | **UI polish system (spacing/radius/type floor/touch targets)** | `globals.css` — **radius ladder** `--r-xs…--r-xl` (4/6/8/12/16px; the old `--radius: 0.625rem` is unused — use the ladder), **spacing ladder** `--sp-1…--sp-6` (4px base; pick from these instead of freehand `space-y-2.5`/`gap-3.5`), **type floor = 10.5px** (no `text-[9px]`/`9.5px`/`10px` anywhere in `src/`), **`@media (pointer: coarse)` block** grows `.btn`/`.btn-sm`/`.chip`/`.nav-item`/inputs to real touch targets without touching desktop density, and `html { -webkit-text-size-adjust: 100% }` stops iOS PWA inflating small type. `--ink-faint` was darkened (light `#55677c`) / lightened (dark `#9ab6b3`) to pay for the larger labels. |
+| **Responsive / mobile layout (ONE global layer)** | `.rf-*` rules in `globals.css` ("responsive width layer") + `ResponsiveList` / `useIsPhone` / `useMediaQuery` in `src/components/hfmc/ui.tsx`. **The only width-based `@media` in the file** — everything else is themed for pointer/motion/print. ONE boundary, `md` = 768px, chosen to match the shell's sidebar→drawer swap so chrome and content can't disagree. Classes: `.rf-page` (standard gutter; applied once to the shell's view wrapper in `views/shell.tsx`, NOT per-view — adding it in a view double-pads it), `.rf-form-grid`/`-sm`/`-stack` (auto-fit form columns, replaces `grid-cols-1 sm:grid-cols-3`), `.rf-toolbar` (wrapping filter bar, replaces per-control `w-full sm:!w-[Npx]`), `.rf-scroll` (contained table h-scroll, `overscroll-behavior-x: contain` so the page can't pan), `.rf-card-list`/`.rf-card`/`.rf-card-tap` (stacked thumb-sized cards — see the card-shape rule below), `.rf-desktop-only`, `.rf-tap`/`-sm` (44px targets), `.rf-container`/`@container` + `.rf-kpis` (charts/KPIs size off their container, not the viewport). **New list screens must use `<ResponsiveList>`**, not a hand-rolled `hidden sm:block` + `sm:hidden` pair — it branches in JS so only the visible tree mounts (CSS would render both). `useMediaQuery` uses `useSyncExternalStore` (an effect + `setState` version trips `react-hooks/set-state-in-effect` and risks hydration mismatch). Caveat: `globals.css` is **unlayered**, so `.rf-*` rules beat Tailwind utilities on the same element — `.rf-card` deliberately sets no `display`/`width` for that reason. |
+| **Div-based tables** | `.tbl-grid` in `globals.css` (+ a per-table `--cols` custom property, collapsing to 2 columns below `md`). `admin/departments.tsx` builds three tables from `<div class="tbl"><div class="tr"><span>…</span></div></div>` — but only `.tbl` ever existed, and it sets `border-collapse`, which means nothing on a div. `.tr`/`.td`/`.th` had **no rules at all**, so those three tables rendered as spans flowing inline: the columns never lined up, on ANY viewport. `.tbl-grid` is the grid they were always assumed to have. A 4-column grid on a 390px phone leaves ~80px per cell, hence the 2-column collapse. Don't reintroduce `w-[45%]`-style width hints on grid children — the track handles it. |
+| **Phone audit tooling** | `scripts/mobile-score.cjs` ranks every view by mobile-hostile layout patterns so the migration is ordered by damage, not file size (`node scripts/mobile-score.cjs`, `--json` for machine output). Rules match on **tokenised** class names — an earlier regex `/grid-cols-[2-9]/` also matched *inside* `sm:grid-cols-3` and inflated every score (admin.tsx read as "30 fixed-cols grids" when ~10 were real). **The score is a heuristic, not a renderer**: a `grid-cols-2` of two big buttons is fine, so a high score means "look here", not "broken". `scripts/verify-responsive-css.cjs` compiles `globals.css` through the real PostCSS/Tailwind pipeline and asserts the `.rf-*` layer survived — catches a broken CSS rule in seconds instead of at the end of a 5-minute `next build`. On Windows, redirect with `Out-File -Encoding utf8` (bare `>` writes UTF-16 and looks like mojibake). |
+| **Phone list: cards vs. sideways scroll** | `ResponsiveList` takes `phone="cards"` (default) or `phone="table"`. **Do NOT flatten every table into cards.** Cards are for worklists you tap through (name, phone, status) — there a card beats a 14-column table you must pan. `phone="table"` keeps the real table and lets it scroll sideways in its own contained box; use it for genuinely tabular data (money/rate/date columns) where a card would either drop columns or turn aligned numbers into prose, destroying the column alignment that makes a table readable. Scrolling is the honest answer there. `.rf-scroll-x` adds a pure-CSS edge-fade so sideways scroll is *discoverable* (no JS scroll listener); `.rf-scroll` carries iOS momentum + `overscroll-behavior: contain` on both axes so a contained list never drags the page behind it. |
+| **Mobile card shape (the clean reference)** | `views/clients.tsx` mobile cards are the cleanest list in the app and are the shape to copy: **one real `.rf-card` per row** in a `.rf-card-list`, **avatar + `min-w-0 flex-1` text column**, and **status chips on their OWN `flex flex-wrap` row underneath**. **Never** put the chips in a fixed right-hand `flex` cluster on the same line as the text — that is the `cases.tsx` bug: the text column and chip cluster fight for one line and a non-wrapping `flex` silently overflows at 390px, so the card reads as a mess. Full-bleed rows split by a 1px divider (an earlier `.rf-cards` design) were removed for the same reason. `.rf-card-tap` is a separate modifier because many cards are NOT tappable (a client summary has nowhere to navigate to) and a bare `cursor: pointer` on every card would lie about that. |
 | **Tab strips (ONE primitive)** | `.tabs` / `.tabs-item` (+ `.active`, `.tabs-flush`, `.tabs-scroll`) in `globals.css` — active tab = raised pill + amber underline, replacing the old faint 0.09-alpha tint. Every tab strip uses it: `Seg` in `src/components/hfmc/ui.tsx` (admin's 2 nav levels), client + agent portal pills, `SegGroup` in `agent/dashboard.tsx`, `DocActionRow.tsx` workspace switcher, and the `STATE_TABS` filter in `views/cases.tsx`. **New tab strips must use `.tabs`**, not a hand-rolled pill/chip row. |
 | **KPI tiles (ONE primitive)** | `.kpi` / `.kpi-label` / `.kpi-value` / `.kpi-sub` (+ `.kpi-plain`, `.kpi-accent`) in `globals.css` — replaces ~10 hand-rolled label/value/sub boxes that each had their own size. Used by `StatCard` in `agent/dashboard.tsx` and the data-quality strip in `admin.tsx`. Values use tabular figures + ellipsis so long AED amounts can't stretch a tile. **New stat tiles must use `.kpi`.** |
 | **Modals / overlays (ONE primitive)** | `.modal-scrim` + `.modal-pop` in `globals.css` — 8+ hand-rolled scrims had drifted (alpha .45/.72/.74/.8, blur 3/4/none). Now used by `Modal` in `src/components/hfmc/ui.tsx`, `ConfirmModal` in `bits.tsx`, and the StageDrawer in `views/case-detail.tsx`. `.modal-pop` also gives the reserved deep overlay shadow an actual consumer (the dark `--shadow` comment had referenced a class that never existed). **New dialogs must use these**, not `fixed inset-0` + inline rgba. Side drawers (StageShell) keep their own right-edge layout, not this scrim. |

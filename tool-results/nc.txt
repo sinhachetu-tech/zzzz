@@ -1,0 +1,11 @@
+  183: function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  195: const [advisorId, setAdvisorId] = useState<string>(""); // client-facing advisor (senior) — shown on the client's Ask card
+  257: advisorId: advisorId ? Number(advisorId) : null,
+  444: <select className="select" value={advisorId} onChange={(e) => setAdvisorId(e.target.value)}>
+  588: const { me, route, nav, logout, escalations, instructions, bulletin, visibleCases, newCaseOpen, openNewCase, closeNewCase, eibor, flags, loading } = useHfmcStore();
+  623: if (k === "c") { e.preventDefault(); useHfmcStore.getState().openNewCase(); return; }
+  783: onClick={() => { haptic('light'); openNewCase(); }}
+  823: <button className="btn btn-primary !hidden md:!inline-flex" onClick={() => { haptic('light'); openNewCase(); }}>
+  878: <button className="flex items-center gap-2 anim-fade-up" onClick={() => { haptic('light'); setFabOpen(false); openNewCase(); }}>
+  887: onClick={() => { haptic('light'); canInstruct ? setFabOpen((v) => !v) : openNewCase(); }}
+  897: <NewCaseModal open={newCaseOpen} onClose={closeNewCase} />

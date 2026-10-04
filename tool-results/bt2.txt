@@ -1,0 +1,3 @@
+  300: bankRate: number | null; // actual rate the bank quoted
+  301: bankTenor: number | null; // actual tenor in months
+  531: export interface BankProduct {

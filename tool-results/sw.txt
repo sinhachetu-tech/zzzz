@@ -1,4 +1,5 @@
-   11: serStageTransitionDto, serCaseDocument, serCaseUpdate, serProposal, serBankProduct, serClient, serCommTemplate, serPromotion, serServiceLine, serLead, serCaseParty, serCaseWith, serDesignation,
-   54: const serviceLinesRaw = await db.serviceLine.findMany({
-  164: serCaseWith(c, { coApplicantName: firstPartyNameByCase.get(c.id) || undefined }),
-  216: serviceLines: serviceLinesRaw.map((l) => serServiceLine(l, l.products)),
+   27: import { StagesManager } from "@/components/views/admin/stages";
+   28: import ServiceLinesAdmin from "@/components/views/admin/service-lines";
+  279: {tab === "stages" && <StagesManager />}
+  280: {tab === "services" && <ServiceLinesAdmin />}
+ 1595: return <StagesManager />;

@@ -1,0 +1,2 @@
+=== npx eslint src/components/client/ClientVaultPanel.tsx src/app/api/client-documents/route.ts : PASS (exit 0) ===
+(no output)

@@ -1,0 +1,20 @@
+PASS default sharing is All
+PASS starts as Pending upload
+PASS no file yet
+PASS uploadedAt null until upload
+PASS legacy caseId defaults null
+PASS department recorded
+PASS attached to case A
+PASS pointer recorded
+PASS one file, two case rows
+PASS still one vault row
+PASS caseB attached
+PASS cross-client attach rejected by rule
+PASS origin department preserved
+PASS still attached
+PASS delete guard triggers
+PASS vault rows restored
+PASS cases intact
+PASS clients intact
+PASS orphan case documents
+PASS=19 FAIL=0

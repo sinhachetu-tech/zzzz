@@ -1,0 +1,21 @@
+﻿Γû▓ Next.js 16.3.4 (Turbopack)
+- Environments: .env
+node.exe : ΓÜá Warning: Next.js ignored 
+package-lock.json in C:\Users\Lenovo because 
+it is outside the current Git repository 
+(C:\Users\Lenovo\Desktop\zzzz).
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" 
+"C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Γ 
+   Üá Warning: Ne...\Desktop\zzzz).:String) [  
+  ], RemoteException
+    + FullyQualifiedErrorId : NativeCommandErr 
+   or
+ 
+ To use this directory, set `turbopack.root` 
+in your Next.js config.
+
+Γ£ô Running next.config.ts took 49ms

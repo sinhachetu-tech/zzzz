@@ -46,25 +46,37 @@ export function canEditDepartment(flags: RoleFlags | null, serviceLineCode: stri
 /* ---------- visibility scoping ---------- */
 
 /** Owner / backup / advisor / party links, i.e. everyone with a working reason to see
- *  this case. Shared by visibleCases() and canEditCase() so the two can't disagree. */
-function hasWorkingAccess(c: LoanCase, user: User, teamIds: Set<number>): boolean {
-  return (
+ *  this case. Shared by visibleCases() and touchedClientIds() so the two can't disagree
+ *  about who "touches" a client. */
+function hasWorkingAccess(c: LoanCase, user: User, teamIds: Set<number>, scope: RoleFlags["scope"]): boolean {
+  const direct =
     c.ownerId === user.id ||
     c.backup1Id === user.id ||
     c.backup2Id === user.id ||
     c.advisorId === user.id ||
-    c.vrmId === user.id ||
-    teamIds.has(c.ownerId)
-  );
+    c.vrmId === user.id;
+  if (direct) return true;
+  return (scope === "team" || scope === "all") && teamIds.has(c.ownerId);
 }
 
 // Clients this user already touches through ANY route — own case, backup, advisor, or
 // being a party on it. This is the set that makes read-across safe: their OTHER
 // departments become readable, which is exactly what a will needs.
-function touchedClientIds(cases: LoanCase[], user: User, teamIds: Set<number>): Set<number> {
+//
+// `scope` is a parameter, not an assumption. An earlier version collected these
+// clients via hasWorkingAccess(), which includes TEAM membership — so an "own"-scope
+// user was treated as touching every client owned by anyone in their office, and
+// read-across then leaked two extra cases past the check that caught it. The set must
+// be gathered through exactly the same lens that produced the visible list.
+function touchedClientIds(
+  cases: LoanCase[],
+  user: User,
+  scope: RoleFlags["scope"],
+  teamIds: Set<number>,
+): Set<number> {
   const ids = new Set<number>();
   for (const c of cases) {
-    if (!hasWorkingAccess(c, user, teamIds)) continue;
+    if (!hasWorkingAccess(c, user, teamIds, scope)) continue;
     if (c.clientId) ids.add(c.clientId);
     if (c.secondPartyClientId) ids.add(c.secondPartyClientId);
   }
@@ -90,7 +102,7 @@ export function visibleCases(cases: LoanCase[], users: User[], user: User, flags
   // (b) is the whole point: a wills officer must be able to open the mortgage file
   // that lists the debts their will has to account for. Without it, every will
   // would be written blind, which is the single most common way wills go wrong.
-  const myClients = deptRestricted ? touchedClientIds(cases, user, teamIds) : new Set<number>();
+  const myClients = deptRestricted ? touchedClientIds(cases, user, flags.scope, teamIds) : new Set<number>();
 
   if (flags.scope === "team") {
     return cases.filter((c) => {

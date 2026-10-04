@@ -1,0 +1,14 @@
+PASS catalogue has MORTGAGE
+PASS catalogue has WILLS_LEGAL
+PASS all designations unrestricted
+PASS head currently null
+PASS head set
+PASS restriction persisted
+PASS restricted is no longer unrestricted
+PASS user department set
+PASS office untouched
+PASS designations restored
+PASS users restored
+PASS service lines restored
+PASS full snapshot identical
+PASS=13 FAIL=0

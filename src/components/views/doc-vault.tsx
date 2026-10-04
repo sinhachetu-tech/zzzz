@@ -780,7 +780,7 @@ function EditDocModal({ doc, onClose, onSave }: { doc: CaseDocument; onClose: ()
           <label className="label">Custom Display Name (optional override)</label>
           <input className="input" placeholder="e.g. Emirates ID — Lakshmi Nair" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="rf-form-grid-sm">
           <div>
             <label className="label">Category</label>
             <select className="select" value={category} onChange={(e) => setCategory(e.target.value)}>

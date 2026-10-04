@@ -1,0 +1,4 @@
+   11: serStageTransitionDto, serCaseDocument, serCaseUpdate, serProposal, serBankProduct, serClient, serCommTemplate, serPromotion, serServiceLine, serLead, serCaseParty, serCaseWith, serDesignation,
+   77: const [bankProducts, emails, unmatched, clients, promotions] = await Promise.all([
+   78: db.bankProduct.findMany({ orderBy: [{ bankId: "asc" }, { id: "asc" }], include: { bank: { select: { name: true } } } }),
+  241: bankProducts: bankProducts.map(serBankProduct),

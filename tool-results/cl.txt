@@ -1,5 +1,4 @@
-  103: clientId: number | null;
-  152: clientId: number;
-  158: /** True when this link is the one held by LoanCase.secondPartyClientId. */
-  295: clientId: number | null;
-  296: secondPartyClientId: number | null;
+  196: {rows.map(({ client, engagements, volume, lastAt, contact }) => (
+  222: {engagements.slice(0, 3).map((k) => (
+  250: {rows.map(({ client, engagements, volume, lastAt, contact }) => (
+  268: {engagements.slice(0, 4).map((k) => (

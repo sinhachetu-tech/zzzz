@@ -1,0 +1,2 @@
+  261: export function Tabs<T extends string>({
+  305: export function Seg<T extends string>({

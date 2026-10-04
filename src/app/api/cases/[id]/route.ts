@@ -255,6 +255,68 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     profileChanged = true;
   }
   if (body.bankRm !== undefined) data.bankRm = body.bankRm;
+
+  /* ---- Phase 7: which RATE CARD priced this case ----
+   *
+   * The rule worth enforcing: a rate card must belong to a bank this case is
+   * actually dealing with. Without that check, picking "Emirates Islamic · Low
+   * Doc" on a Mashreq-only file records a product the file can never have been
+   * priced on, and every later "which sheet was this?" question answers wrongly
+   * — which is the whole reason the column exists.
+   *
+   * Enforced server-side, not in the picker, because the picker is not the only
+   * way to reach this endpoint.
+   */
+  for (const key of ["bankProductId", "bookedBankProductId"] as const) {
+    if (body[key] === undefined) continue;
+    const raw = body[key];
+    // "" / null / 0 all mean "not specified" — the select sends "" for that.
+    const id = raw === "" || raw === null || raw === 0 ? null : Number(raw);
+
+    if (id === null) {
+      data[key] = null;
+      continue;
+    }
+    if (!Number.isInteger(id)) {
+      return NextResponse.json({ error: `Invalid ${key}.` }, { status: 400 });
+    }
+
+    const bp = await db.bankProduct.findUnique({
+      where: { id },
+      include: { bank: { select: { name: true } } },
+    });
+    if (!bp) {
+      // Distinct from "wrong bank" so the UI can say "that rate card is gone"
+      // rather than a generic failure — the catalogue is edited independently.
+      return NextResponse.json(
+        { error: "That rate product no longer exists. Pick another or leave it unset." },
+        { status: 400 }
+      );
+    }
+
+    const caseBanks = banksOf(existing.banks).map((b) => b.trim().toLowerCase());
+    if (caseBanks.length > 0 && !caseBanks.includes(bp.bank.name.trim().toLowerCase())) {
+      return NextResponse.json(
+        {
+          error: `${bp.bank.name} is not one of this case's banks (${banksOf(existing.banks).join(", ")}).`,
+        },
+        { status: 400 }
+      );
+    }
+    data[key] = id;
+  }
+
+  // "Booked" is a strictly stronger claim than "quoted". Letting the booked card
+  // be something we never quoted would make the two columns disagree about the
+  // same fact, which is exactly the ambiguity they exist to avoid.
+  const quoted = "bankProductId" in data ? data.bankProductId : existing.bankProductId;
+  const booked = "bookedBankProductId" in data ? data.bookedBankProductId : existing.bookedBankProductId;
+  if (booked != null && quoted != null && booked !== quoted) {
+    return NextResponse.json(
+      { error: "The booked rate product must also be one of the quoted rate products." },
+      { status: 400 }
+    );
+  }
   if (body.propertyLocation !== undefined) data.propertyLocation = body.propertyLocation;
   if (body.coApplicantName !== undefined) data.coApplicantName = body.coApplicantName;
   if (body.onHold !== undefined) data.onHold = !!body.onHold;

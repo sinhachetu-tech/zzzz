@@ -218,7 +218,12 @@ function ProductCard({ r, onOpen }: { r: ProductRow; onOpen: () => void }) {
 
       <div className="flex flex-wrap items-center gap-3">
         {/* bank identity with logo */}
-        <div className="flex items-center gap-2 min-w-0 shrink-0" style={{ width: 180 }}>
+        {/* The five fixed-width blocks below (180+96+76+74+132 = 558px) were
+            `style={{ width: N }} shrink-0`. On a 390px phone that exceeded the
+            viewport, so each block took its own line and the row degraded into
+            five near-empty rows. The widths now apply from `sm` up only: desktop
+            keeps the exact column alignment, and a phone flows them by content. */}
+        <div className="flex items-center gap-2 min-w-0 shrink-0 sm:w-[180px]">
           {r.bankLogoUrl ? (
             <img src={r.bankLogoUrl} alt="" className="h-7 w-7 rounded object-contain shrink-0"
               style={{ background: "var(--bg2)" }} />
@@ -235,18 +240,18 @@ function ProductCard({ r, onOpen }: { r: ProductRow; onOpen: () => void }) {
         </div>
 
         {/* the money, in the order a broker reads it */}
-        <div className="flex items-baseline gap-1.5 shrink-0" style={{ width: 96 }}>
+        <div className="flex items-baseline gap-1.5 shrink-0 sm:w-[96px]">
           <span className="mono text-[15px] font-bold" style={{ color: "var(--mint)" }}>
             {rate != null ? `${rate}%` : "—"}
           </span>
         </div>
-        <div className="text-[11px] shrink-0" style={{ width: 76, color: "var(--ink-dim)" }}>
+        <div className="text-[11px] shrink-0 sm:w-[76px]" style={{ color: "var(--ink-dim)" }}>
           {isFixed ? `${r.termYears ?? 0}y fixed` : "variable"}
         </div>
-        <div className="text-[11px] mono shrink-0" style={{ width: 74, color: "var(--ink-dim)" }}>
+        <div className="text-[11px] mono shrink-0 sm:w-[74px]" style={{ color: "var(--ink-dim)" }}>
           {feePct} fee
         </div>
-        <div className="text-[11px] mono truncate shrink-0" style={{ width: 132, color: "var(--ink-dim)" }}>
+        <div className="text-[11px] mono truncate shrink-0 sm:w-[132px]" style={{ color: "var(--ink-dim)" }}>
           {r.followOnLabel}
         </div>
 

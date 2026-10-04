@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import type { CSSProperties, ReactNode } from "react";
 // `m` (not `motion`) so this uses the LazyMotion feature bundle from
@@ -187,6 +187,97 @@ export function SectionLabel({ children }: { children: ReactNode }) {
 function prefersReducedMotion(): boolean {
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+/* ---------------- responsive ----------------
+   THE reason this file grew a `useMediaQuery`: every list screen in the app
+   needed the same "wide table on desktop, stacked cards on a phone" behaviour,
+   and each one was hand-writing the pair — `overflow-x-auto hidden sm:block`
+   for the table plus a `sm:hidden` divide-y list for the cards, duplicated in
+   cases.tsx, clients.tsx and a third place before long.
+
+   ResponsiveList owns that switch so a new list screen is correct by
+   construction and there is exactly ONE place to change the breakpoint.
+
+   Why a JS media query and not the `sm:hidden` / `hidden sm:block` CSS pair?
+   Because CSS shows BOTH trees and hides one with `display:none`. For a table
+   that is a real cost: every hidden row is still built, still holds its DOM ids
+   and its event handlers, and a 1,000-row table renders 2,000 rows on a phone.
+   Branching in JS mounts only the tree that is actually visible.
+
+   The `md` boundary (768px) is the same one the app shell uses to swap the
+   sidebar for the drawer, so chrome and content never disagree about who owns
+   the screen. It must stay in sync with the `@media (min-width: 768px)` block in
+   globals.css. */
+
+export function useMediaQuery(query: string): boolean {
+  /* useSyncExternalStore rather than useState + useEffect. The store is the
+     browser's matchMedia; subscribing to it is exactly what the hook contract
+     is for. The effect version also had to call setMatches synchronously inside
+     the effect body on first read, which trips react-hooks/set-state-in-effect
+     and costs an extra render — this version has neither problem.
+
+     getServerSnapshot returns `false`, so SSR and the first client render agree
+     (no hydration mismatch) and the correct branch lands on the commit right
+     after. */
+  const subscribe = useCallback(
+    (onChange: () => void) => {
+      if (typeof window === "undefined" || typeof window.matchMedia !== "function") return () => {};
+      const mql = window.matchMedia(query);
+      mql.addEventListener("change", onChange);
+      return () => mql.removeEventListener("change", onChange);
+    },
+    [query],
+  );
+  const getSnapshot = useCallback(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
+    return window.matchMedia(query).matches;
+  }, [query]);
+  return useSyncExternalStore(subscribe, getSnapshot, () => false);
+}
+
+/** True on phone-width viewports — matches the `.rf-*` rules in globals.css. */
+export function useIsPhone(): boolean {
+  return useMediaQuery("(max-width: 767px)");
+}
+
+export function ResponsiveList({
+  table, cards, isEmpty = false, empty, maxHeight, phone = "cards",
+}: {
+  /** the `.tbl` markup — rendered on tablet and up, inside its own scroll box */
+  table: ReactNode;
+  /** the stacked card markup — rendered on phones, one thumb-sized target per row */
+  cards: ReactNode;
+  /** when true, `empty` replaces both trees on every viewport */
+  isEmpty?: boolean;
+  /** the no-results panel; ignored unless `isEmpty` */
+  empty?: ReactNode;
+  /** caps the scrollable body (the worklists use ~60vh) */
+  maxHeight?: string;
+  /**
+   * What a PHONE gets. Default `"cards"`.
+   *
+   * `"table"` keeps the real table on a phone and lets it scroll sideways inside
+   * its own contained box. Use it for genuinely tabular data — money/rate/date
+   * columns where a card would either drop columns or turn the numbers into
+   * prose. Flattening those into cards destroys the column alignment that makes
+   * a table readable, so scrolling is the honest answer there.
+   *
+   * `"cards"` is for worklists you tap through: name, phone, status. There the
+   * card genuinely beats a 14-column table you have to pan sideways.
+   */
+  phone?: "cards" | "table";
+}) {
+  const isPhone = useIsPhone();
+  if (isEmpty) return <>{empty ?? null}</>;
+  // `cards` is only meaningful on a phone — on a wider screen the table wins
+  // regardless, so `phone` never suppresses it.
+  const showCards = isPhone && phone === "cards";
+  return (
+    <div className="rf-scroll rf-scroll-x" style={maxHeight ? { maxHeight, overflowY: "auto" } : undefined}>
+      {showCards ? cards : table}
+    </div>
+  );
 }
 
 /* ---------------- KPI value (count-up) ----------------

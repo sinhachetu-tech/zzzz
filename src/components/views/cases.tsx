@@ -9,7 +9,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useHfmcStore } from "@/lib/client-store";
 import type { CaseStatus, LoanCase } from "@/lib/types";
 import { ageDays, caseStatusOf, fmtDate, fmtMoney } from "@/lib/format";
-import { Avatar, Chip, EmptyState, StatusChip, Tabs } from "@/components/hfmc/ui";
+import { Avatar, Chip, EmptyState, ResponsiveList, StatusChip, Tabs } from "@/components/hfmc/ui";
 import { isBeatenLeg } from "@/lib/domain";
 import { BankChips, CaseStateChip, LegStatusChip, ServiceLineChip, SourceChip } from "@/components/hfmc/bits";
 import { BankLogo } from "@/components/case/ContactBits";
@@ -148,6 +148,33 @@ export default function Cases() {
     });
 
   const nonLead = visCases.filter((c) => c.stage !== "Lead");
+
+  /* --- Pagination -----------------------------------------------------------
+   * The worklist used to render EVERY row (`filtered.map`), which meant React
+   * re-rendered the whole table on every keystroke in the search box. At 41 cases
+   * that is invisible; at a few hundred it is the thing that makes the app feel
+   * broken.
+   *
+   * This is the same pattern the Leads list already uses (`PAGE_SIZE` + `paged` +
+   * reset-on-filter), copied rather than invented.
+   *
+   * It does NOT reduce the download — /api/state still ships every row — but gzip
+   * makes that cheap (measured: ~150 KB of cases at 1,000 rows, not 2.2 MB), so the
+   * cost that actually matters is the DOM, and that is what this caps.
+   */
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 50;
+  const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  // Clamp rather than reset: a filter change SHRINKS the list, and without this the
+  // user can sit on page 7 of a 2-page result staring at an empty table. The reset
+  // below handles the common path; this handles the rest.
+  const safePage = Math.min(page, pages);
+  // No reset-on-filter effect. `safePage` above already clamps a shrunken result set down
+  // to a page that exists, which is the actual bug people hit (an empty table after
+  // searching). An effect that only calls setPage would also trip
+  // react-hooks/set-state-in-effect and re-render the whole list to change one number.
+
+  const paged = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
   const counts = {
     Active: nonLead.filter((c) => c.caseStatus === "Active").length,
     Booked: nonLead.filter((c) => c.caseStatus === "Closed").length,
@@ -156,6 +183,9 @@ export default function Cases() {
   };
 
   return (
+    /* No `.rf-page` here: the shell's view wrapper (views/shell.tsx) already
+       applies the shared gutter to every view, and adding it again would double
+       the side padding on this one screen. */
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
@@ -197,7 +227,10 @@ export default function Cases() {
             </button>
           )}
         </div>
-        <div className="flex flex-wrap items-center gap-2 p-3 border-b" style={{ borderColor: "var(--line-soft)" }}>
+        {/* `.rf-toolbar` replaces the per-control `w-full sm:!w-[Npx]` widths —
+            controls now size to content and wrap, so the bar degrades to a
+            readable stack instead of one full-width bar per row. */}
+        <div className="rf-toolbar p-3 border-b" style={{ borderColor: "var(--line-soft)" }}>
           <Tabs
             scroll
             className="w-full sm:w-auto"
@@ -205,18 +238,18 @@ export default function Cases() {
             onChange={setStateTab}
             options={STATE_TABS.map((t) => ({ value: t, label: t, count: counts[t] }))}
           />
-          <input className="input w-full sm:!w-[190px]" placeholder="Search case / customer…" value={search} onChange={(e) => setSearch(e.target.value)} />
-          <select className="select w-full sm:!w-[150px]" value={stage} onChange={(e) => setStage(e.target.value)}>
+          <input className="input" placeholder="Search case / customer…" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <select className="select" value={stage} onChange={(e) => setStage(e.target.value)}>
             <option value="All">All stages</option>
             {[...stages].sort((a, b) => a.sortOrder - b.sortOrder).filter((s) => s.label !== "Lead").map((s) => <option key={s.id} value={s.label}>{s.label}</option>)}
           </select>
           {stateTab === "Active" && (
-            <select className="select w-full sm:!w-[130px]" value={status} onChange={(e) => setStatus(e.target.value)}>
+            <select className="select" value={status} onChange={(e) => setStatus(e.target.value)}>
               <option value="All">All status</option>
               {["On Track", "At Risk", "Overdue", "No Action"].map((s) => <option key={s}>{s}</option>)}
             </select>
           )}
-          <select className="select w-full sm:!w-[140px]" value={owner} onChange={(e) => { setOwner(e.target.value); setActiveView(null); }}>
+          <select className="select" value={owner} onChange={(e) => { setOwner(e.target.value); setActiveView(null); }}>
             <option value="All">All owners</option>
             <option value="mine">Mine</option>
             <option value="unassigned">Unassigned</option>
@@ -225,13 +258,13 @@ export default function Cases() {
           {/* Service-line filter — only rendered once the firm actually sells more than one
               thing. A "Service: All" dropdown next to a single service is noise. */}
           {serviceLines.filter((s) => s.active).length > 1 && (
-            <select className="select w-full sm:!w-[150px]" value={service}
+            <select className="select" value={service}
               onChange={(e) => { setService(e.target.value); setActiveView(null); }}>
               <option value="All">All services</option>
               {serviceLines.filter((s) => s.active).map((s) => <option key={s.id} value={s.code}>{s.shortName || s.name}</option>)}
             </select>
           )}
-          <select className="select w-full sm:!w-[140px] sm:ml-auto" value={sort} onChange={(e) => setSort(e.target.value)}>
+          <select className="select sm:ml-auto" value={sort} onChange={(e) => setSort(e.target.value)}>
             <option value="urgency">Most urgent</option>
             <option value="newest">Newest</option>
             <option value="oldest">Oldest</option>
@@ -239,12 +272,18 @@ export default function Cases() {
           </select>
         </div>
 
-        <div className="overflow-x-auto hidden sm:block" style={{ maxHeight: "60vh" }}>
-          {filtered.length === 0 ? (
+        {/* ONE primitive owns the phone/desktop switch (table vs stacked cards),
+            instead of the `hidden sm:block` + `sm:hidden` pair this screen used
+            to hand-roll. Every list screen now shares this breakpoint. */}
+        <ResponsiveList
+          isEmpty={filtered.length === 0}
+          empty={(
             <div className="p-6">
               <EmptyState icon={<IInbox size={26} />} title={`Nothing in “${stateTab}”`} body="Adjust the filters, or use the Add lead button in the top bar to get things moving." />
             </div>
-          ) : (
+          )}
+          maxHeight="60vh"
+          table={(
             <table className="tbl min-w-[1200px]">
               <thead>
                 <tr>
@@ -265,7 +304,7 @@ export default function Cases() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((c) => {
+                {paged.map((c) => {
                   const st = statusOf(c);
                   const vrm = c.vrmId ? userById(c.vrmId) : null;
                   const note = c.statusNote?.trim() ?? "";
@@ -358,23 +397,29 @@ export default function Cases() {
               </tbody>
             </table>
           )}
-        </div>
-        {/* Mobile card list — no horizontal scroll, thumb-sized tap targets */}
-        <div className="sm:hidden divide-y" style={{ borderColor: "var(--line-soft)" }}>
-          {filtered.slice(0, 60).map((c) => {
+          cards={(
+            /* Mobile cards — one card per case, stacked. Shaped like the Clients
+               cards: avatar + a min-w-0 text column, with the status chips on
+               their OWN wrapping row underneath. The previous version put the
+               chips in a fixed right-hand `flex` cluster on the same line as the
+               text, which squeezed and overflowed at 390px. */
+            <div className="rf-card-list">
+          {/* Mobile used a silent `slice(0, 60)` — a hard cap with no indication more existed.
+              Same PAGE_SIZE paging as the table so both views agree. */}
+          {paged.map((c) => {
             const st = statusOf(c);
             return (
-              <button key={c.id} className="w-full text-left px-3.5 py-3 flex items-center gap-3 active:bg-[var(--tint)]" style={isBeatenLeg(c) ? { opacity: 0.55 } : undefined} onClick={() => nav({ name: "case", id: c.id })}>
-                <div className="flex items-start gap-3">
+              <button key={c.id} className="rf-card rf-card-tap" style={isBeatenLeg(c) ? { opacity: 0.55 } : undefined} onClick={() => nav({ name: "case", id: c.id })}>
+                <div className="flex items-start gap-2.5">
                   {(() => {
                     // Bank mark leads on mobile: "which bank is this with" is the
                     // first question on a phone; the customer name is right there.
                     const b = banks.find((x) => x.name === (c.wonBank ?? c.banks[0]));
-                    return b ? <BankLogo bank={b} size={30} /> : <Avatar name={c.customer} size={30} />;
+                    return b ? <BankLogo bank={b} size={34} /> : <Avatar name={c.customer} size={34} />;
                   })()}
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-1.5">
-                      <span className="text-[13px] font-semibold truncate">{c.customer}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[13.5px] font-semibold truncate">{c.customer}</span>
                       {c.onHold && <span className="chip shrink-0" style={{ color: "var(--amber)", background: "rgba(242,176,76,0.12)", borderColor: "rgba(242,176,76,0.4)", padding: "1px 6px", fontSize: "9px" }}>HOLD</span>}
                       {c.convertedAt && (
                         <span
@@ -385,31 +430,46 @@ export default function Cases() {
                           CONVERTED
                         </span>
                       )}
-                    </span>
+                    </div>
                     {/* Phone is the number a broker dials from the worklist on a
                         phone — it belongs on the card, not behind a tap. */}
                     {c.whatsapp && (
-                      <span className="block mono text-[11px] mt-0.5 truncate" style={{ color: "var(--ink-dim)" }}>{c.whatsapp}</span>
+                      <div className="mono text-[11px] mt-0.5 truncate" style={{ color: "var(--ink-dim)" }}>{c.whatsapp}</div>
                     )}
-                    <span className="block mono text-[10.5px] text-[var(--ink-faint)] mt-0.5 truncate">{c.caseNumber} · {fmtMoney(c.loanAmount)} · {c.stage} · {ageDays(c.createdAt)}d</span>
-                  </span>
+                    <div className="mono text-[10.5px] text-[var(--ink-faint)] mt-0.5 truncate">{c.caseNumber} · {fmtMoney(c.loanAmount)} · {c.stage} · {ageDays(c.createdAt)}d</div>
+                    {/* Chips wrap onto their own row instead of competing with the
+                        text column for one line — this is what makes the card
+                        readable rather than cramped at phone widths. */}
+                    <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                      <ServiceLineChip serviceLineId={c.serviceLineId} serviceLines={serviceLines} compact />
+                      <LegStatusChip status={c.legStatus} />
+                      {c.caseStatus === "Active" ? <StatusChip status={st} /> : <CaseStateChip state={c.caseStatus} />}
+                    </div>
+                  </div>
                 </div>
-                <span className="flex items-center gap-1.5">
-                  <LegStatusChip status={c.legStatus} />
-                  {c.caseStatus === "Active" ? <StatusChip status={st} /> : <CaseStateChip state={c.caseStatus} />}
-                </span>
               </button>
             );
           })}
-          {filtered.length === 0 && (
-            <div className="p-6">
-              <EmptyState icon={<IInbox size={26} />} title={`Nothing in “${stateTab}”`} body="Adjust the filters, or use the Add lead button in the top bar to get things moving." />
             </div>
           )}
-        </div>
-        <div className="px-4 py-2.5 border-t text-[11.5px] text-[var(--ink-faint)] flex items-center gap-2" style={{ borderColor: "var(--line-soft)" }}>
+        />
+        <div className="px-4 py-2.5 border-t text-[11.5px] text-[var(--ink-faint)] flex flex-wrap items-center gap-2" style={{ borderColor: "var(--line-soft)" }}>
           <IBriefcase size={13} />
-          {filtered.length} of {nonLead.length} cases · leads are in the Leads tab until converted
+          <span>
+            {filtered.length === nonLead.length
+              ? `${filtered.length} case${filtered.length === 1 ? "" : "s"}`
+              : `${filtered.length} of ${nonLead.length} cases`}
+            {" · "}leads are in the Leads tab until converted
+          </span>
+          {/* The pager only appears once there is more than one page, so a 30-case
+              worklist looks exactly as it did before this change. */}
+          {pages > 1 && (
+            <span className="flex items-center gap-1.5 ml-auto">
+              <button className="btn btn-ghost btn-sm !px-2" disabled={safePage <= 1} onClick={() => setPage(safePage - 1)}>Previous</button>
+              <span className="mono text-[11px]">Page {safePage} of {pages}</span>
+              <button className="btn btn-ghost btn-sm !px-2" disabled={safePage >= pages} onClick={() => setPage(safePage + 1)}>Next</button>
+            </span>
+          )}
         </div>
       </div>
     </div>

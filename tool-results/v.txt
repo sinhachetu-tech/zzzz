@@ -1,0 +1,2 @@
+  114: function verify() {
+  124: (async () => {

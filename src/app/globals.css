@@ -390,6 +390,42 @@ input[type="date"]::-webkit-calendar-picker-indicator, input[type="time"]::-webk
 }
 .tbl tbody tr:last-child td { border-bottom: none; }
 
+/* ---------- div-based table ----------
+   `admin/departments.tsx` builds its three tables from
+   `<div class="tbl"><div class="tr"><span>…</span>…</div></div>` — but only
+   `.tbl` actually existed in this file, and it sets `border-collapse`, which is
+   meaningless on a div. `.tr` / `.td` / `.th` had NO rules at all, so those
+   three "tables" rendered as spans flowing inline: the columns never lined up,
+   on any viewport. This is the grid they were always assumed to have.
+
+   `--cols` is the column count, set per table. Below `md` it collapses to 2,
+   because a 4-column grid on a 390px phone leaves ~80px per cell — too narrow
+   for a name plus a `<select>`. */
+.tbl-grid .tr {
+  display: grid;
+  grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr));
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line-soft);
+  align-items: center;
+}
+.tbl-grid .tr:last-child { border-bottom: none; }
+.tbl-grid .tr.th {
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+  font-family: var(--font-disp);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+/* min-width: 0 so a long name truncates instead of stretching the track. */
+.tbl-grid .tr > * { min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 767px) {
+  .tbl-grid .tr { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+}
+
 /* ---------- chips ---------- */
 .chip {
   display: inline-flex;
@@ -943,7 +979,206 @@ button:focus-visible, a:focus-visible, [role="button"]:focus-visible, [tabindex]
   * { border-color: var(--line); }
 }
 
-/* ============ PWA / Native App Feel ============ */
+/* ============ responsive width layer ============
+   THE FIRST width-based @media in this file. Everything above is themed for
+   pointer type (hover/coarse), motion, print and standalone display — but not
+   for VIEWPORT WIDTH, so until now each screen hand-rolled its own breakpoints
+   and only 4 of ~40 views had any at all.
+
+   One boundary, used everywhere: `md` = 768px. It is deliberately the same line
+   the app shell already uses for its sidebar→drawer swap (views/shell.tsx), so
+   the chrome and the content can never disagree about who owns the screen.
+
+   The goal of this layer is that a NEW screen is mobile-correct by default.
+   Anything a screen must opt into is a `.rf-*` class below, not an ad-hoc
+   breakpoint scattered through JSX. */
+
+/* Gutters. Content padding shrinks on phones so tables and forms get the width,
+   and the value is a token so a screen never hard-codes a px gutter.
+   NOTE: deliberately no bottom padding here. The app shell's <main> already
+   carries `pb-20 md:pb-0` for the mobile bottom nav; adding it again here would
+   double the gap under the last card. `.rf-page` is about side gutters only. */
+:root {
+  --gutter: 16px;
+}
+@media (min-width: 768px) {
+  :root { --gutter: 20px; }
+}
+
+/* The standard page wrapper. Every view's outermost element should be this so
+   the gutter is identical on all ~40 screens. */
+.rf-page {
+  padding-left: var(--gutter);
+  padding-right: var(--gutter);
+}
+
+/* ---------- form grids ----------
+   Replaces the `grid-cols-1 sm:grid-cols-3` pattern repeated across every modal
+   and form in the app. Declared with auto-fit so a 3-up form is 3-up on a
+   desktop, 2-up on a tablet, 1-up on a phone — with no breakpoint classes at the
+   call site and no per-screen column maths. */
+.rf-form-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+}
+/* tighter variant for short fields (dates, small selects) */
+.rf-form-grid-sm {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(min(140px, 100%), 1fr));
+}
+/* a form row that should stay a single column even on desktop (long free text) */
+.rf-form-stack { display: grid; gap: 12px; }
+
+/* ---------- toolbar / filter row ----------
+   Filters used to force `w-full sm:!w-[190px]` on every control. This wraps and
+   lets each control size to its own content, so a filter bar degrades to a
+   tidy stacked list on a phone instead of full-width bars one per row. */
+.rf-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.rf-toolbar > .input,
+.rf-toolbar > .select { width: auto; min-width: 140px; flex: 1 1 140px; }
+
+/* ---------- table behaviour below md ----------
+   A wide table must never force the whole page sideways. `rf-scroll` gives the
+   table its own horizontal scroll container (contained, so the page itself does
+   not pan), which is the correct desktop-tablet behaviour. Anything that must
+   NOT scroll sideways on a phone should render as cards instead — that is what
+   ResponsiveList in components/hfmc/ui.tsx does. */
+.rf-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch; /* momentum scroll on iOS */
+  overscroll-behavior-x: contain;
+  /* Contain the vertical bounce too when this box also caps height (maxHeight),
+     so flicking the list does not drag the page behind it. */
+  overscroll-behavior-y: contain;
+}
+
+/* A horizontal scroll container with no visual cue is a dead end on a phone —
+   the user sees a clipped column and never learns they can pan. These gradient
+   "cover" layers fade the right/left edge only while more content exists, which
+   is the standard CSS scroll-shadow trick (background-attachment: local/scroll
+   pair: the local layer scrolls away at the end of travel, revealing the fixed
+   one). It is pure CSS — no scroll listener, no JS, no re-render. */
+.rf-scroll-x {
+  background-image:
+    linear-gradient(to right, var(--surface) 30%, rgba(0, 0, 0, 0)),
+    linear-gradient(to left, var(--surface) 30%, rgba(0, 0, 0, 0)),
+    linear-gradient(to right, var(--surface), rgba(0, 0, 0, 0)),
+    linear-gradient(to left, var(--surface), rgba(0, 0, 0, 0));
+  background-position: left center, right center, left center, right center;
+  background-repeat: no-repeat;
+  background-size: 34px 100%, 34px 100%, 14px 100%, 14px 100%;
+  background-attachment: local, local, scroll, scroll;
+}
+/* Inside a scroll container the columns shouldn't collapse to nothing just to
+   avoid scrolling, so the table keeps its natural width. */
+.rf-scroll > .tbl { min-width: max-content; }
+
+/* A table forced to fit the phone width (2–3 key columns only). */
+@media (max-width: 767px) {
+  .rf-table-compact .tbl th,
+  .rf-table-compact .tbl td { padding: 8px; }
+  .rf-table-compact .tbl td { font-size: 12.5px; }
+}
+
+/* ---------- container queries ----------
+   Charts and KPI tiles should size off the space they are given, not the
+   viewport, so the same component works full-width on Dashboard and inside a
+   sidebar or modal. `@container` is native in Tailwind v4's engine. */
+.rf-container { container-type: inline-size; }
+@container (max-width: 560px) {
+  .rf-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .rf-kpis-3 { grid-template-columns: repeat(1, minmax(0, 1fr)) !important; }
+}
+
+/* ---------- mobile card list ----------
+   The counterpart to a wide table. Shaped after the Clients mobile cards, which
+   are the cleanest list in the app: one real card per row, avatar + a
+   `min-w-0 flex-1` text column, and status chips on their OWN `flex-wrap` row
+   underneath.
+
+   An earlier version used full-bleed rows split by a 1px divider with the
+   chips in a fixed right-hand `flex` cluster. That reads as a mess on a 390px
+   phone: the text column and the chip cluster fight for the same line, and a
+   non-wrapping `flex` row silently overflows once two chips are present. Hence
+   cards with vertical stacking rather than divider rows.
+
+   These rules cover only what a layout utility does not (surface, padding, tap
+   height). `globals.css` is unlayered and therefore beats Tailwind's utility
+   layer, so a `display:` here would silently defeat a `flex`/`grid` class. */
+.rf-card-list {
+  display: grid;
+  gap: 8px;
+}
+.rf-card {
+  box-sizing: border-box;
+  width: 100%;
+  text-align: left;
+  padding: 14px;
+  border-radius: var(--r-md, 10px);
+  border: 1px solid var(--line-soft);
+  background: linear-gradient(180deg, var(--surface), color-mix(in srgb, var(--surface) 82%, var(--bg)));
+  box-shadow: var(--shadow);
+  color: inherit;
+  font: inherit;
+  min-height: 44px; /* thumb target */
+}
+/* Modifier, not a bare `.rf-card` rule: many cards are NOT tappable (a client
+   summary has nowhere to navigate to), so pointer affordance has to be opt-in
+   rather than applied to every card. */
+.rf-card-tap { cursor: pointer; transition: border-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease; }
+@media (hover: hover) and (pointer: fine) {
+  .rf-card-tap:hover { border-color: var(--line); box-shadow: 0 10px 30px -14px rgba(0, 0, 0, 0.28); }
+}
+.rf-card-tap:active { background: var(--hover); transform: translateY(0.5px); }
+
+/* ---------- desktop-only affordances ----------
+   One named class for "this is meaningless on a phone" (a 12-column table
+   header, a hover-reveal action strip, a keyboard-shortcut hint). Cheaper to
+   read than scattering `hidden md:table-cell` through 40 files, and it gives the
+   views one consistent vocabulary. */
+@media (max-width: 767px) {
+  .rf-desktop-only { display: none !important; }
+}
+
+/* ---------- horizontal overflow guard ----------
+   A single wide child (a long unbroken string, a fixed inline width, a 1200px
+   table) otherwise stretches the page and lets the user pan the whole layout.
+   Clamp the offender rather than letting the viewport scroll. */
+@media (max-width: 767px) {
+  .rf-page img,
+  .rf-page svg,
+  .rf-page video,
+  .rf-page canvas { max-width: 100%; height: auto; }
+  .rf-page pre { overflow-x: auto; }
+}
+
+/* ---------- touch targets on phones ----------
+   The existing `@media (pointer: coarse)` block grows controls for touch devices,
+   but a large phone/tablet is often a FINE pointer (paired mouse/trackpad) while
+   still narrow. Keying off width as well covers that case. */
+@media (pointer: coarse), (max-width: 767px) {
+  .rf-tap { min-height: 44px; }
+  .rf-tap-sm { min-height: 36px; }
+  /* kill the grey tap flash on the card/row controls */
+  .rf-card, .rf-tap {
+    -webkit-tap-highlight-color: transparent;
+    tap-highlight-color: transparent;
+  }
+}
+
+/* ---------- type floor ----------
+   Dense analytics labels are unreadable at 10.5px on a 390px screen, so labels
+   get a small bump rather than being left as-is. */
+@media (max-width: 767px) {
+  .rf-page .label { font-size: 11px; letter-spacing: 0.06em; }
+}
 /* Only active when installed as PWA (display-mode: standalone) */
 @media (display-mode: standalone) {
   /* Prevent pull-to-refresh on the entire app — kills "web" feel */

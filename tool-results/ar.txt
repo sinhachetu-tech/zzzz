@@ -1,0 +1,19 @@
+    1: // /api/admin/* — master data CRUD for banks, partners, stages, masters, users, designations, sla.
+    5: import { currentUser, flagsFor } from "@/lib/auth";
+    6: import { serBank, serPartner, serStage, serMaster, serUser, serChannel, serDocRule, serFeeRule, serCommTemplate, serPromotion } from "@/lib/ser";
+   12: const me = await currentUser();
+   21: const me = await currentUser();
+   35: if (kind === "users") return NextResponse.json({ items: (await db.user.findMany({ orderBy: { id: "asc" } })).map(serUser) });
+   36: if (kind === "designations") return NextResponse.json({ items: await db.designation.findMany({ orderBy: { id: "asc" } }) });
+  180: if (kind === "user") {
+  181: const item = await db.user.create({ data: { name: body.name, email: body.email.toLowerCase(), password: body.password || "demo123", role: body.role, team: body.team || "Dubai", active: body.active ?? true, phone: body.phone?.trim() || null } });
+  182: return NextResponse.json({ item: serUser(item) });
+  184: if (kind === "designation") {
+  185: const item = await db.designation.create({ data: { name: body.name, scope: body.scope ?? "own", issueTasks: !!body.issueTasks, admin: !!body.admin, super: !!body.super, viewRevenue: !!body.viewRevenue, manageDocs: body.manageDocs !== undefined ? !!body.manageDocs : true, clientChat: body.clientChat !== undefined ? !!body.clientChat : true, builtIn: false } });
+  363: if (kind === "user") {
+  367: const item = await db.user.update({ where: { id: numId }, data });
+  368: return NextResponse.json({ item: serUser(item) });
+  370: if (kind === "designation") {
+  374: const item = await db.designation.update({ where: { id: numId }, data });
+  523: else if (kind === "user") await db.user.delete({ where: { id: numId } });
+  524: else if (kind === "designation") await db.designation.delete({ where: { id: numId } });

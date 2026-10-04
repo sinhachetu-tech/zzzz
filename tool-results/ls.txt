@@ -1,0 +1,2 @@
+  128: const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  292: <span>Converted {fmtDate(l.convertedAt.slice(0, 10))} · {daysSince(l.convertedAt)}d ago</span>

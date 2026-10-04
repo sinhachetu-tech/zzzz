@@ -1,0 +1,2 @@
+=== npx eslint src/components/views/dashboard.tsx : PASS (exit 0) ===
+(no output)

@@ -1,0 +1,9 @@
+   51: const PAGE_SIZE = 10;
+   63: const [page, setPage] = useState(1);
+  128: const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  129: const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  174: <select className="select !w-auto !py-1 text-[12px]" value={sort} onChange={(e) => { setSort(e.target.value as never); setPage(1); }}>
+  189: onClick={() => { setFilter(k); setPage(1); }}>
+  194: <select className="select !w-auto !py-1 text-[12px] ml-1" value={lineFilter} onChange={(e) => { setLineFilter(e.target.value); setPage(1); }}>
+  310: <button className="btn btn-ghost btn-sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Previous</button>
+  312: <button className="btn btn-ghost btn-sm" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>Next</button>

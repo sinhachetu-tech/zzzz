@@ -26,10 +26,11 @@ import { isBankFeeLabel, BANK_FEE_MISFILE_MESSAGE } from "@/lib/fee-scope";
 import { DealExceptions } from "@/components/views/admin/deal-exceptions";
 import { StagesManager } from "@/components/views/admin/stages";
 import ServiceLinesAdmin from "@/components/views/admin/service-lines";
+import DepartmentsAdmin from "@/components/views/admin/departments";
 
 /* ------------------------------ types ------------------------------ */
 
-type Tab = "ratedesk" | "changelog" | "dealexceptions" | "bankdefaults" | "users" | "designations" | "banks" | "bankrules" | "promotions" | "dataquality" | "partners" | "channels" | "stages" | "services" | "masters" | "sla" | "docrules" | "feerules" | "templates" | "storage" | "portal" | "notifications" | "devices";
+type Tab = "ratedesk" | "changelog" | "dealexceptions" | "bankdefaults" | "users" | "designations" | "banks" | "bankrules" | "promotions" | "dataquality" | "partners" | "channels" | "stages" | "services" | "departments" | "masters" | "sla" | "docrules" | "feerules" | "templates" | "storage" | "portal" | "notifications" | "devices";
 type MasterKind = "whyPending" | "waitingFor";
 
 const TEAMS = ["Management", "Dubai", "Abu Dhabi"];
@@ -49,6 +50,7 @@ const TAB_OPTIONS: { value: Tab; label: string }[] = [
   { value: "channels", label: "Channels" },
   { value: "stages", label: "Stages" },
   { value: "services", label: "Service lines" },
+  { value: "departments", label: "Departments" },
   { value: "masters", label: "Masters" },
   { value: "sla", label: "SLA rules" },
   { value: "docrules", label: "Doc Rules" },
@@ -71,7 +73,7 @@ const GROUPS: { key: string; label: string; tabs: { value: Tab; label: string }[
   { key: "pricing", label: "Pricing", tabs: TAB_OPTIONS.filter((t) => ["ratedesk", "bankdefaults", "bankrules", "promotions", "changelog", "dataquality", "dealexceptions"].includes(t.value)) },
   { key: "team", label: "Team & Access", tabs: TAB_OPTIONS.filter((t) => ["users", "designations"].includes(t.value)) },
   { key: "market", label: "Marketplace", tabs: TAB_OPTIONS.filter((t) => ["banks", "partners", "channels"].includes(t.value)) },
-  { key: "workflow", label: "Workflow", tabs: TAB_OPTIONS.filter((t) => ["stages", "services", "masters", "sla", "portal"].includes(t.value)) },
+  { key: "workflow", label: "Workflow", tabs: TAB_OPTIONS.filter((t) => ["stages", "services", "departments", "masters", "sla", "portal"].includes(t.value)) },
   { key: "docs", label: "Docs & Fees", tabs: TAB_OPTIONS.filter((t) => ["docrules", "feerules", "templates", "storage"].includes(t.value)) },
   { key: "settings", label: "Settings", tabs: TAB_OPTIONS.filter((t) => ["notifications", "devices"].includes(t.value)) },
 ];
@@ -276,6 +278,7 @@ export default function Admin() {
       {tab === "channels" && <ChannelsTab />}
       {tab === "stages" && <StagesManager />}
       {tab === "services" && <ServiceLinesAdmin />}
+      {tab === "departments" && <DepartmentsAdmin />}
       {tab === "masters" && <MastersTab />}
       {tab === "sla" && <SlaTab />}
       {tab === "docrules" && <DocRulesTab />}

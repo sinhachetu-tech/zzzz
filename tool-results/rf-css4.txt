@@ -1,0 +1,1 @@
+﻿OK: globals.css compiled (183763 bytes) and the responsive layer is present.

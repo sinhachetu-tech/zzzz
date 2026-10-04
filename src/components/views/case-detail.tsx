@@ -1,5 +1,6 @@
 "use client";
 import { CaseProfileEditor } from "@/components/views/case-profile-editor";
+import { ClientVaultPanel } from "@/components/client/ClientVaultPanel";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -94,7 +95,7 @@ function AddTaskModal({ open, onClose, caseId }: { open: boolean; onClose: () =>
           <label className="label">What needs doing?</label>
           <input className="input" autoFocus value={description} onChange={(e) => setDescription(e.target.value)} placeholder="e.g. Submit application to Mashreq" />
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="rf-form-grid-sm">
           <div>
             <label className="label">Owner</label>
             <select className="select" value={ownerId} onChange={(e) => setOwnerId(parseInt(e.target.value, 10))} disabled={!canInstruct()}>
@@ -393,6 +394,103 @@ function SaveText({
   );
 }
 
+/** Phase 7 — which RATE CARD priced this case.
+ *
+ * Two dropdowns, deliberately separate: "quoted" is what we offered, "booked" is
+ * what they accepted. Collapsing them into one loses the only thing that matters
+ * at FOL time — which of several options actually got taken.
+ *
+ * FILTERED TO THE CASE'S OWN BANKS. The API enforces this too, but showing 103
+ * rate cards and then rejecting 90 of them on save is a worse experience than
+ * never offering them. When a case has no banks yet the list is empty and the
+ * card says why, instead of presenting an unfiltered catalogue that cannot work.
+ */
+function RateCardPanel({ c }: { c: LoanCase }) {
+  const { updateCase, toast, bankProducts } = useHfmcStore();
+  const caseBanks = new Set(c.banks.map((b) => b.trim().toLowerCase()));
+
+  const options = useMemo(
+    () =>
+      bankProducts
+        .filter((p) => caseBanks.has((p.bankName || "").trim().toLowerCase()))
+        // Grouped by bank in the label so a 11-card bank is still readable.
+        .sort((a, b) =>
+          a.bankName === b.bankName
+            ? a.name.localeCompare(b.name)
+            : a.bankName.localeCompare(b.bankName)
+        ),
+    [bankProducts, c.banks]
+  );
+
+  const label = (id: number | null) => {
+    if (id == null) return null;
+    const p = bankProducts.find((x) => x.id === id);
+    if (!p) return `#${id} (removed from catalogue)`;
+    return `${p.bankName} · ${p.name}`;
+  };
+
+  const save = async (field: "bankProductId" | "bookedBankProductId", v: string) => {
+    try {
+      await updateCase(c.id, { [field]: v === "" ? null : Number(v) });
+      toast("success", "Saved.");
+    } catch (e) {
+      // The API's own wording matters here ("Mashreq is not one of this case's
+      // banks"), so surface it rather than replacing it with a generic message.
+      toast("error", e instanceof Error ? e.message : "Could not save.");
+    }
+  };
+
+  const sel = (value: number | null, onChange: (v: string) => void, disabled?: boolean) => (
+    <select
+      className="input !py-1 text-[12px]"
+      value={value == null ? "" : String(value)}
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.value)}
+    >
+      <option value="">Not specified</option>
+      {options.map((p) => (
+        <option key={p.id} value={p.id}>
+          {p.bankName} · {p.name}
+        </option>
+      ))}
+    </select>
+  );
+
+  return (
+    <div className="rf-form-grid-sm mt-2 anim-fade-up">
+      <Field label="Quoted rate card">
+        {sel(c.bankProductId, (v) => save("bankProductId", v))}
+      </Field>
+      <Field label="Booked rate card">
+        {sel(
+          c.bookedBankProductId,
+          (v) => save("bookedBankProductId", v),
+          // Cannot mark something booked that was never quoted.
+          c.bankProductId == null
+        )}
+      </Field>
+
+      {c.bankProduct && (
+        <div className="col-span-full text-[11px] text-[var(--ink-faint)] leading-snug">
+          Priced on <strong>{label(c.bankProductId)}</strong>
+          {c.bankProduct.version > 1 && <> (sheet v{c.bankProduct.version})</>}
+          {c.bankProduct.effectiveDate && <> · effective {c.bankProduct.effectiveDate}</>}
+          {" — "}the rate itself lives on the catalogue row, so a later sheet update reprices
+          this case without rewriting its history.
+        </div>
+      )}
+
+      {options.length === 0 && (
+        <div className="col-span-full text-[11px] text-[var(--ink-faint)]">
+          {c.banks.length === 0
+            ? "No banks on this case yet — add one and the matching rate cards appear here."
+            : `No rate cards in the catalogue for ${c.banks.join(", ")}.`}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MisPanel({ c }: { c: LoanCase }) {
   const { updateCase, toast } = useHfmcStore();
   const [expanded, setExpanded] = useState(false);
@@ -419,7 +517,7 @@ function MisPanel({ c }: { c: LoanCase }) {
       </button>
 
       {expanded && (
-        <div className="grid grid-cols-2 gap-3 mt-1 anim-fade-up">
+        <div className="rf-form-grid-sm mt-1 anim-fade-up">
           <Field label="Bank RM">
             <SaveText value={c.bankRm ?? ""} placeholder="RM name at bank" onSave={(v) => save("bankRm", v || null)} />
           </Field>
@@ -432,6 +530,10 @@ function MisPanel({ c }: { c: LoanCase }) {
           <Field label="Bank rate (%)">
             <SaveText value={c.bankRate != null ? String(c.bankRate) : ""} type="number" mono placeholder="e.g. 4.49" onSave={(v) => save("bankRate", v ? Number(v) : null)} />
           </Field>
+          {/* Phase 7 — which sheet from that bank priced it, not just which bank. */}
+          <div className="col-span-full">
+            <RateCardPanel c={c} />
+          </div>
         </div>
       )}
 
@@ -457,7 +559,7 @@ function MisPanel({ c }: { c: LoanCase }) {
           </button>
         </div>
         {c.onHold && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 anim-fade-up">
+          <div className="rf-form-grid-sm anim-fade-up">
             <Field label="Hold reason">
               <SaveText value={c.holdReason ?? ""} placeholder="e.g. Awaiting client salary certificate" onSave={(v) => save("holdReason", v || null)} />
             </Field>
@@ -541,7 +643,7 @@ function PreApprovalPanel({ c }: { c: LoanCase }) {
         <IBank size={14} className="text-[var(--sky)]" />
         <h3 className="font-disp font-semibold text-[13.5px] m-0">Pre-approval details</h3>
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="rf-form-grid-sm">
         <Field label="Pre-approval date">
           <SaveText value={c.preApprovalDate ?? ""} type="date" mono onSave={(v) => save("preApprovalDate", v || null)} />
         </Field>
@@ -563,7 +665,7 @@ function FolPanel({ c }: { c: LoanCase }) {
         <ICheck size={14} className="text-[var(--mint)]" />
         <h3 className="font-disp font-semibold text-[13.5px] m-0">Final Offer Letter</h3>
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="rf-form-grid-sm">
         <Field label="FOL date">
           <SaveText value={c.folDate ?? ""} type="date" mono onSave={(v) => save("folDate", v || null)} />
         </Field>
@@ -1008,6 +1110,10 @@ export default function CaseDetail({ id }: { id: number }) {
                 !partiesOfCase(c.id).some((p) => p.clientId === c.secondPartyClientId) && (
                   <PersonSheetCard c={c} clientId={c.secondPartyClientId} role="Co-applicant / Co-borrower" />
                 )}
+              {/* Phase G — the person's own document vault, not the case's. Sitting
+                  here means "is this client's passport already on file?" is one glance,
+                  and attaching an existing file replaces a second upload. */}
+              <ClientVaultPanel clientId={c.clientId} caseId={c.id} />
             </div>
           )}
 

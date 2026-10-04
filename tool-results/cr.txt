@@ -1,0 +1,2 @@
+  508: clientDocuments  ClientDocument[]
+ 1228: // src/app/api/client/state/route.ts still reads `clientDocuments` per case for the

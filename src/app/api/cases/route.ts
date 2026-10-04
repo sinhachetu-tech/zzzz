@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { currentUser } from "@/lib/auth";
 import { serCase } from "@/lib/ser";
 import { syncCaseVault } from "@/lib/vault";
-import { syncCaseClients } from "@/lib/client-master";
+import { syncCaseClients, resolveClient, type ClientSeed } from "@/lib/client-master";
 import { toISODate } from "@/lib/format";
 import type { CaseSource, CasePartner } from "@/lib/types";
 
@@ -57,6 +57,8 @@ export async function POST(req: NextRequest) {
     loanType, fileSubmittedDate, bankRate, bankTenor,
     preApprovalDate, preApprovalAmount, preApprovalTenure, preApprovalRoi,
     folDate, folAmount, folTenure, folRoi,
+    // Phase C — the segregation is decided AT INTAKE, not bolted on afterwards.
+    serviceLineId, productId, clientId,
   } = body as {
     customer: string;
     banks: string[];
@@ -78,10 +80,77 @@ export async function POST(req: NextRequest) {
     channelId?: number | null;
     channelName?: string | null;
     channelRatePct?: number;
+    // Phase C — decided at intake. serviceLineId omitted ⇒ MORTGAGE server-side.
+    // productId is `number | null | ""` because the picker sends "" for "not specified";
+    // typing it as a bare number would make that falsy branch unreachable to the
+    // compiler while the UI kept sending it.
+    serviceLineId?: number | null;
+    productId?: number | null | "";
+    clientId?: number | null;
   } & NewCaseMisInput;
 
   if (!customer?.trim()) return NextResponse.json({ error: "Customer name is required." }, { status: 400 });
   if (!loanAmount || loanAmount <= 0) return NextResponse.json({ error: "Invalid loan amount." }, { status: 400 });
+
+  /* ---- Phase C: which department, which offering, which person ----
+   *
+   * These three were previously decided AFTER the fact (or never). Deciding them at
+   * intake is the whole point of the phase: a golden-visa case created as "mortgage"
+   * because the picker did not exist is the exact failure the multi-service work is
+   * meant to prevent.
+   */
+  // Default to MORTGAGE when the caller sends nothing, because every pre-Phase-1 case
+   // is mortgage and a missing value must not block opening a file. An UNKNOWN line is
+   // a hard error though — silently storing a dangling id would break the department
+  // scoping in src/lib/domain.ts (a case on a line nobody can see).
+  let lineId = 1;
+  let lineCode = "MORTGAGE";
+  if (serviceLineId != null) {
+    const line = await db.serviceLine.findUnique({ where: { id: Number(serviceLineId) }, select: { id: true, code: true, active: true } });
+    if (!line) return NextResponse.json({ error: "Unknown service line." }, { status: 400 });
+    if (!line.active) return NextResponse.json({ error: `${line.code} is deactivated — reactivate it before opening cases on it.` }, { status: 400 });
+    lineId = line.id;
+    lineCode = line.code;
+  } else {
+    const mort = await db.serviceLine.findFirst({ where: { code: "MORTGAGE" }, select: { id: true } });
+    if (mort) { lineId = mort.id; lineCode = "MORTGAGE"; }
+  }
+
+  // A product must belong to the chosen line. Rejecting a mismatch stops "First-home
+  // purchase" on a golden-visa case, which would otherwise report nonsense in every
+  // per-department rollup.
+  let prodId: number | null = null;
+  if (productId != null && productId !== "") {
+    const prod = await db.product.findUnique({ where: { id: Number(productId) }, select: { id: true, serviceLineId: true, active: true } });
+    if (!prod) return NextResponse.json({ error: "Unknown product." }, { status: 400 });
+    if (prod.serviceLineId !== lineId) {
+      return NextResponse.json({ error: "That product belongs to a different service line." }, { status: 400 });
+    }
+    if (!prod.active) return NextResponse.json({ error: "That product is deactivated." }, { status: 400 });
+    prodId = prod.id;
+  }
+
+  // Resolve the PERSON. Reuses the existing merge ladder unchanged (EID → phone+name →
+  // never phone alone), so opening a case for a returning customer links their existing
+  // Client instead of minting a duplicate. A case with no client at all is the gap Phase
+  // C exists to close, so it is created here rather than left null.
+  const clientIdNum = clientId ? Number(clientId) : null;
+  let resolvedClientId: number | null = null;
+  let resolvedName = customer.trim();
+  if (clientIdNum) {
+    const c = await db.client.findUnique({ where: { id: clientIdNum }, select: { id: true, fullName: true } });
+    if (!c) return NextResponse.json({ error: "Unknown client." }, { status: 400 });
+    resolvedClientId = c.id;
+    resolvedName = c.fullName;
+  } else {
+    const { client } = await resolveClient({
+      fullName: customer.trim(),
+      phone: whatsapp ?? "",
+      email: "",
+    } as ClientSeed);
+    resolvedClientId = client.id;
+    resolvedName = client.fullName;
+  }
 
   // Each bank runs its own journey (its own RM, TAT, approval path), so
   // selecting multiple banks at creation opens one case per bank.
@@ -100,7 +169,15 @@ export async function POST(req: NextRequest) {
   const created = await db.loanCase.create({
     data: {
       caseNumber,
-      customer: customer.trim(),
+      // Phase C: use the RESOLVED name, not whatever was typed. When the merge ladder
+      // matched an existing Client the canonical name is theirs, so the case and the
+      // client master cannot drift apart.
+      customer: resolvedName,
+      // Phase C: the department and offering, decided at intake. `lineCode` is carried
+      // only to make the intent readable here — the stored link is the id.
+      serviceLineId: lineId,
+      productId: prodId,
+      clientId: resolvedClientId,
       banks: JSON.stringify(singleBank ? [singleBank] : (banks ?? [])),
       bankRm: singleBank ? (rmMap[singleBank] ?? bankRm ?? null) : (bankRm ?? null),
       wonBank: null,

@@ -1,0 +1,9 @@
+phase8_scale_indexes.sql — 3 statements
+APPLIED — verifying…
+
+tables      : 0/0 
+columns     : 0/0 
+constraints : 0/0 
+data intact : LoanCase=41 ClientSession=4
+
+verified: every object in the SQL file is present.

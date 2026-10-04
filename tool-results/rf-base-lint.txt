@@ -1,0 +1,6 @@
+﻿BASELINE case-detail.tsx errors=5
+    649:34 react-hooks/preserve-manual-memoization
+    686:21 react-hooks/preserve-manual-memoization
+    688:28 react-hooks/preserve-manual-memoization
+    700:20 react-hooks/preserve-manual-memoization
+    712:7 react-hooks/preserve-manual-memoization

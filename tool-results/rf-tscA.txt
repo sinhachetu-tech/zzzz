@@ -1,0 +1,17 @@
+﻿src/components/views/products/detail.tsx(208,8): error TS17008: JSX element 'Block' has no corresponding closing tag.
+src/components/views/products/detail.tsx(223,16): error TS1005: ')' expected.
+src/components/views/products/detail.tsx(223,49): error TS1382: Unexpected token. Did you mean `{'>'}` or `&gt;`?
+src/components/views/products/detail.tsx(276,7): error TS1128: Declaration or statement expected.
+src/components/views/products/detail.tsx(279,14): error TS1005: ';' expected.
+src/components/views/products/detail.tsx(279,44): error TS1005: ';' expected.
+src/components/views/products/detail.tsx(308,7): error TS1128: Declaration or statement expected.
+src/components/views/products/detail.tsx(311,14): error TS1005: ';' expected.
+src/components/views/products/detail.tsx(311,42): error TS1005: ';' expected.
+src/components/views/products/detail.tsx(319,7): error TS1128: Declaration or statement expected.
+src/components/views/products/detail.tsx(322,14): error TS1005: ';' expected.
+src/components/views/products/detail.tsx(322,42): error TS1005: ';' expected.
+src/components/views/products/detail.tsx(323,9): error TS2657: JSX expressions must have one parent element.
+src/components/views/products/detail.tsx(348,7): error TS1128: Declaration or statement expected.
+src/components/views/products/detail.tsx(349,5): error TS1109: Expression expected.
+src/components/views/products/detail.tsx(350,3): error TS1109: Expression expected.
+src/components/views/products/detail.tsx(351,1): error TS1128: Declaration or statement expected.

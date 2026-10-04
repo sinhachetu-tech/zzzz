@@ -1,0 +1,6 @@
+   21: export function digits(s?: string | null): string {
+   26: export function eidDigits(s?: string | null): string {
+   50: export interface ClientSeed {
+   72: export async function matchClientByPhoneName(phone: string | null | undefined, fullName: string): Promise<{ id: number } | null> {
+   80: export async function resolveClient(seed: ClientSeed): Promise<{ client: { id: number; fullName: string; phone: string } ; matched: MatchStrength }> {
+  171: export async function syncCaseClients(caseId: number): Promise<void> {

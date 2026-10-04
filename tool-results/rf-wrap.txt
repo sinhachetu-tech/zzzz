@@ -1,0 +1,22 @@
+﻿
+  src\components\views\tasks.tsx:221:        ) 
+: (
+> src\components\views\tasks.tsx:222:          
+<div className="overflow-x-auto 
+max-h-[calc(100vh-260px)] overflow-y-auto">
+> src\components\views\tasks.tsx:223:          
+  <table className="tbl min-w-[860px]">
+  src\components\views\emails.tsx:190:         
+ <div className="overflow-auto 
+max-h-[calc(100vh-280px)]">
+> src\components\views\emails.tsx:191:         
+   <table className="tbl min-w-[760px]">
+  src\components\views\proposals.tsx:81:      
+) : (
+> src\components\views\proposals.tsx:82:       
+ <div className="card anim-fade-up 
+overflow-x-auto">
+> src\components\views\proposals.tsx:83:       
+   <table className="tbl min-w-[860px]">
+
+

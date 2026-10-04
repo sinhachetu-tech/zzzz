@@ -1,0 +1,2 @@
+=== npx tsc --noEmit : FAIL (exit 2) ===
+src/app/api/client/state/route.ts(135,19): error TS18047: 'd.uploadedAt' is possibly 'null'.

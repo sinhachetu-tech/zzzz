@@ -1,0 +1,5 @@
+  268: {filtered.map((c) => {
+  272: const noteShort = note.length > 40 ? `${note.slice(0, 39)}…` : note;
+  307: title={`Converted from a lead on ${fmtDate(c.convertedAt.slice(0, 10))}${c.convertedById ? ` by ${userById(c.convertedById)?.name ?? "staff"}` : ""}`}
+  364: {filtered.slice(0, 60).map((c) => {
+  382: title={`Converted from a lead on ${fmtDate(c.convertedAt.slice(0, 10))}`}

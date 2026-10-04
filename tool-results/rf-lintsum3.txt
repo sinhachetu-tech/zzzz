@@ -1,0 +1,4 @@
+﻿ui.tsx errors=0 warnings=0
+cases.tsx errors=0 warnings=0
+clients.tsx errors=1 warnings=0
+    49:20 react-hooks/set-state-in-effect

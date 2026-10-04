@@ -1,0 +1,2 @@
+   80: const statusOf = (c: LoanCase): CaseStatus => caseStatusOf(c, tasks);
+  111: const filtered = visCases

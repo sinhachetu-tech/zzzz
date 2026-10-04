@@ -1,0 +1,5 @@
+=== npx tsc --noEmit : FAIL (exit 2) ===
+src/app/api/cases/route.ts(61,5): error TS2339: Property 'serviceLineId' does not exist on type '{ customer: string; banks: string[]; loanAmount: number; propertyValue?: number | null | undefined; stage: string; ownerId: number; source: CaseSource; partner: CasePartner | null; ... 9 more ...; channelRatePct?: number | undefined; } & NewCaseMisInput'.
+src/app/api/cases/route.ts(61,20): error TS2339: Property 'productId' does not exist on type '{ customer: string; banks: string[]; loanAmount: number; propertyValue?: number | null | undefined; stage: string; ownerId: number; source: CaseSource; partner: CasePartner | null; ... 9 more ...; channelRatePct?: number | undefined; } & NewCaseMisInput'.
+src/app/api/cases/route.ts(61,31): error TS2339: Property 'clientId' does not exist on type '{ customer: string; banks: string[]; loanAmount: number; propertyValue?: number | null | undefined; stage: string; ownerId: number; source: CaseSource; partner: CasePartner | null; ... 9 more ...; channelRatePct?: number | undefined; } & NewCaseMisInput'.
+src/components/views/shell.tsx(200,24): error TS2304: Cannot find name 'useMemo'.

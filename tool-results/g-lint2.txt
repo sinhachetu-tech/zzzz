@@ -1,0 +1,6 @@
+=== npx eslint src/components/client/ClientVaultPanel.tsx src/app/api/client-documents/route.ts src/app/client/dashboard.tsx src/app/api/client/state/route.ts : PASS (exit 0) ===
+C:\Users\Lenovo\Desktop\zzzz\src\components\client\ClientVaultPanel.tsx
+  48:3  warning  Unused eslint-disable directive (no problems were reported from 'react-hooks/set-state-in-effect')
+
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
