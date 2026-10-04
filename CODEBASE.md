@@ -35,6 +35,43 @@ the rule is worth stating once:
 - **Asked per bank → the bank leg** (a sibling `LoanCase` on `parentCaseId`). LTV per bank, that bank's RM, that bank's reference.
 - **Never add service-specific columns to `Lead`.** A lead knows who, how to reach them, what they want and roughly how much. The moment `Lead` grows a `propertyValue` or a `visaType` column it has become a Case in all but name.
 
+## Departments, offices and read-across (Phase F)
+
+Two things that used to be conflated under the word "team" are now separate, and the
+distinction matters:
+
+| | Field | Values | Answers |
+|---|---|---|---|
+| **OFFICE** | `User.team` | Dubai / Abu Dhabi / Management | *where* someone sits |
+| **DEPARTMENT** | `User.serviceLineId` → `ServiceLine` | Mortgage / Wills / Golden visa… | *what* they sell |
+
+`ServiceLine` **is** the department, so no extra table exists. Do **not** collapse the
+two into a "Dubai-Wills" value: that would need re-picking on every hire and would
+break the moment someone moves office.
+
+**Access lives on `Designation.serviceLineIds`, not on the user.** One designation can
+span lines ("Management" sees everything) while one person could in principle cover
+two, so the role is the right place for it. Stored as service-line **CODES**, matching
+`DocRule.applicableBank`; **`"[]"` means every line**, which is every designation that
+existed before Phase F — upgrading grants access rather than removing it.
+
+- **READ-ACROSS, WRITE-LOCAL.** `visibleCases()` lets a restricted role see cases in its
+  own departments **plus any case belonging to a client it already touches** (via
+  `clientId`, `secondPartyClientId`, or a `CaseParty` link). This is deliberate: a wills
+  officer must be able to read the mortgage file listing the debts their will has to
+  account for. `canEditCase()` is a **separate** check requiring department membership —
+  read-across grants visibility, never authorship.
+- `ServiceLine.headUserId` names who runs a department. **Informational only** — "works
+  in" and "runs" are different facts.
+- `RoleFlags` is declared **once** in `src/lib/domain.ts` and imported by
+  `src/lib/auth.ts`. It used to be duplicated in both files, which is precisely how the
+  two would have drifted the moment `serviceLineIds` was added to one.
+
+**Still to build:** Admin → Departments UI, per-department dashboard tabs, and the
+shared client document vault (`ClientDocument`). **Do not switch on a second department
+until the Admin screen exists** — the access rules are in place, but nothing lets you
+configure them yet.
+
 ## Multi-service architecture (Phase 1 of the service-line migration)
 
 ```
@@ -302,6 +339,8 @@ Client  ── the human (KYC, address, income, assets, liabilities)
 | **Adding a service line or product** | `prisma/schema.prisma` → seed via `scripts/seed-service-lines.cjs` → Admin → Workflow → Service lines (`src/app/api/service-lines/route.ts`, `views/admin/service-lines.tsx`). `code` is immutable once set; a line in use can be deactivated but not deleted |
 | **Add a co-borrower / co-applicant / guarantor** | `prisma/schema.prisma` `model CaseParty` → `src/lib/types.ts` (`CaseParty`, `PartyRole`, `PARTY_ROLES`) → `src/lib/ser.ts` (`serCaseParty`) → `src/lib/client-store.ts` (`partiesOfCase`/`partiesOfClient`/`roleOnCase`) → `src/app/api/state/route.ts`. **⚠️ The person is a `Client`; the role lives ONLY on `CaseParty`** — never add a role column to `Client`. **Keep `secondPartyClientId` in step** while Phase B's write path lands, or `roleOnCase`'s fallback and the new table will disagree |
 | **Reporting a number about leads** | `views/reports.tsx` reads `leads` from the store. **Lost ≠ Invalid** — keep them apart or the conversion rate is understated. Revenue masking mirrors cases (`flags.viewRevenue` nulls `intendedAmount`) |
+| **Restrict a role to certain departments** | `Designation.serviceLineIds` in `prisma/schema.prisma` → `src/lib/types.ts` (`Designation.serviceLineIds`) → `src/lib/ser.ts` (`serDesignation` — raw rows ship the JSON *string*, the client needs `string[]`) → `src/lib/auth.ts` (`parseServiceLineIds` → `RoleFlags`) → `src/lib/domain.ts` (`spansAllDepartments`, `canEditDepartment`, read-across in `visibleCases`, `canEditCase`) → `src/app/api/state/route.ts` (builds `serviceLineCodeById` so every case carries its `serviceLineCode`). **`"[]"` = every department** — never treat empty as "none" |
+| **Put someone in a department / appoint a head** | `User.serviceLineId` (department) and `ServiceLine.headUserId` (who runs it). **Office is `User.team` and must stay separate** — don't merge them into "Dubai-Wills". Neither field controls access; that is `Designation.serviceLineIds` |
 | Case-360 journey / stage drawer / transfer branch | `src/lib/workflow/registry.ts` + `stages/*.ts`, UI in `src/components/case/` (StageRail, StageDrawer, stage-parts, useStageLive, CommButton) |
 | "What is blocking this case?" / the header's primary CTA | `src/lib/case-blockers.ts` (`computeCaseBlockers` — pure projection of tasks, documents, instructions, data-sheet gaps and today's update, ranked; **stores nothing**, so it cannot drift from the tab bodies). Consumed by `CaseCommandBar` (primary button label + blocker strip) and `case-detail.tsx` (the overdue-task nudge link). Each blocker carries the `CaseTab` that can clear it. |
 | **Task completion feels slow** | `src/lib/client-store.ts` — `completeTask` / `reopenTask` / `deleteTask` are the ONLY mutations that patch local Zustand state instead of calling `hydrate()`. They apply optimistically on click, reconcile with the `task` the PATCH already returns, and **now throw on failure** (every caller has a `catch` + error toast). `reconcileTask(id)` re-reads one row to roll back a rejected write. `/api/state` returns every case, doc, chat message and product, so re-hydrating to tick one checkbox froze the UI for the whole workspace round-trip. A trailing `hydrate()` still runs off the critical path to pick up side effects (the activity row). In Case 360 the tick is one click; the ✎ beside it opens the optional-note modal. |

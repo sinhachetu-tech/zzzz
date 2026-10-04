@@ -1,0 +1,10 @@
+apply-sql: exit=0 OK
+phase6_departments.sql — 5 statements
+APPLIED — verifying…
+
+tables      : 0/0 
+columns     : 3/3 Designation.serviceLineIds, ServiceLine.headUserId, User.serviceLineId
+constraints : 2/2 ServiceLine_headUserId_fkey, User_serviceLineId_fkey
+data intact : LoanCase=41 ClientSession=4
+
+verified: every object in the SQL file is present.

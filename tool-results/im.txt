@@ -1,0 +1,5 @@
+    9: serUser, serCase, serTask, serActivity, serBank, serPartner, serStage,
+   11: serStageTransitionDto, serCaseDocument, serCaseUpdate, serProposal, serBankProduct, serClient, serCommTemplate, serPromotion, serServiceLine, serLead, serCaseParty, serCaseWith,
+  115: return serLead(l, {
+  148: const usersDto = users.map(serUser);
+  216: serviceLines: serviceLinesRaw.map((l) => serServiceLine(l, l.products)),

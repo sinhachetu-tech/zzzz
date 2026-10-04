@@ -1,0 +1,2 @@
+   22: const [users, designations, cases, tasks, stages, masters] = await Promise.all([
+  196: designations,

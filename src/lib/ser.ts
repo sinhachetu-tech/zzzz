@@ -2,7 +2,7 @@ import { parseCaseProfile } from "./case-profile";
 // Serialization: Prisma row → API DTO matching the original HFMC types.
 import type {
   Activity, BankItem, BulletinItem, CasePartner, CaseParty, PartyRole, ClientDto, CommTemplate, Instruction, LoanCase,
-  BankProduct, Proposal, CaseDocument, CaseUpdate, DocRule, FeeRule, Lead, MasterItem, PartnerItem, ProductDto, Promotion, Reply, ServiceLineDto, SlaRule, StageItem, StageTransition, StageTransitionDto, Task, User,
+  BankProduct, Proposal, CaseDocument, CaseUpdate, Designation, DocRule, FeeRule, Lead, MasterItem, PartnerItem, ProductDto, Promotion, Reply, ServiceLineDto, SlaRule, StageItem, StageTransition, StageTransitionDto, Task, User,
 } from "./types";
 import { PARTY_ROLES } from "./types";
 
@@ -19,6 +19,9 @@ export function serUser(u: PrismaUser): User {
   return {
     id: u.id, name: u.name, email: u.email, password: "", role: u.role, team: u.team,
     active: u.active, phone: (u as unknown as { phone?: string | null }).phone ?? null, createdAt: u.createdAt.toISOString(),
+    // Phase F — which DEPARTMENT this person works in. Distinct from `team`, which is
+    // the OFFICE. Null until admin assigns one, which is deliberately not a denial.
+    serviceLineId: (u as unknown as { serviceLineId?: number | null }).serviceLineId ?? null,
   };
 }
 
@@ -109,14 +112,66 @@ type PrismaCase = {
   legCount?: number;
 };
 
+// Designations (Phase F). Previously the raw Prisma rows were shipped, which meant
+// `serviceLineIds` would arrive as the JSON STRING '["MORTGAGE"]' while the client
+// type declares string[] — a silent type lie that would only surface as
+// `.includes is not a function` at runtime, in the one place that decides whether a
+// colleague can open a file. Serializing here makes the mismatch impossible.
+type PrismaDesignation = {
+  id: number; name: string; scope: string;
+  // Stored as a JSON array of service-line CODES. "[]" = every department.
+  serviceLineIds: string;
+  issueTasks: boolean; admin: boolean; super: boolean; viewRevenue: boolean;
+  editEibor: boolean; manageDocs: boolean; clientChat: boolean; builtIn: boolean;
+};
+
+export function serDesignation(
+  d: PrismaDesignation,
+): Designation {
+  let serviceLineIds: string[] = [];
+  try {
+    const parsed = JSON.parse(d.serviceLineIds || "[]");
+    if (Array.isArray(parsed)) {
+      serviceLineIds = parsed.filter((v): v is string => typeof v === "string" && v.length > 0);
+    }
+  } catch {
+    // Malformed value ⇒ unrestricted, matching parseServiceLineIds() in auth.ts.
+    serviceLineIds = [];
+  }
+  return {
+    id: d.id,
+    name: d.name,
+    scope: d.scope as Designation["scope"],
+    serviceLineIds,
+    issueTasks: d.issueTasks,
+    admin: d.admin,
+    super: d.super,
+    viewRevenue: d.viewRevenue,
+    // editEibor is intentionally NOT serialized: the client `Designation` type has
+    // never declared it, and shipping a field nothing consumes is how the next person
+    // assumes the edit screen exists. The Prisma column and the server-side flag
+    // still work — this is only about what the browser is told.
+    manageDocs: d.manageDocs,
+    clientChat: d.clientChat,
+    builtIn: d.builtIn,
+  };
+}
+
 // Service lines & products (Phase 1)
 export function serServiceLine(
-  s: { id: number; code: string; name: string; shortName: string; active: boolean; sortOrder: number; bankRaced: boolean; notes: string },
+  s: {
+    id: number; code: string; name: string; shortName: string; active: boolean;
+    sortOrder: number; bankRaced: boolean; notes: string;
+    // Phase F — department head. Optional so existing call sites keep compiling.
+    headUserId?: number | null; headName?: string | null;
+  },
   products?: ProductDto[],
 ): ServiceLineDto {
   return {
     id: s.id, code: s.code, name: s.name, shortName: s.shortName || s.name,
     active: s.active, sortOrder: s.sortOrder, bankRaced: s.bankRaced, notes: s.notes || "",
+    headUserId: s.headUserId ?? null,
+    headName: s.headName ?? null,
     products,
   };
 }
@@ -205,6 +260,12 @@ export function serCaseWith(c: PrismaCase, extra?: Partial<LoanCase>): LoanCase 
     decidedAt: c.decidedAt ? new Date(c.decidedAt).toISOString() : null,
     decidedById: c.decidedById ?? null,
     // Service line / product (Phase 1)
+    // Phase F: the department CODE rides along on every case because
+    // Designation.serviceLineIds stores codes, and comparing a case's department
+    // against a role's list must happen without a second lookup table on the client.
+    // Null for a case with no line yet — canEditDepartment() treats that as
+    // unrestricted rather than denying, so legacy rows never lock anyone out.
+    serviceLineCode: extra?.serviceLineCode ?? null,
     serviceLineId: c.serviceLineId ?? null,
     productId: c.productId ?? null,
     legCount: c.legCount,

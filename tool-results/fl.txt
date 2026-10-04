@@ -1,0 +1,4 @@
+    8: import type { RoleFlags } from "./domain";
+   21: flags: RoleFlags | null;
+  230: me: null, flags: null, users: [], designations: [], cases: [], visibleCaseIds: [], tasks: [],
+  801: const f = get().flags;

@@ -1,0 +1,9 @@
+   43: *  Designation.serviceLineIds, not from this. Null until admin appoints one. */
+   53: serviceLineId: number;
+   90: serviceLineId: number;
+  177: *  restriction. Access is controlled by Designation.serviceLineIds, not by this. */
+  178: serviceLineId?: number | null;
+  190: serviceLineIds: string[];
+  218: serviceLineId: number | null;
+  456: * A stage has NO serviceLineId of its own; scoping must go through here. Null
+  461: serviceLineId?: number | null;

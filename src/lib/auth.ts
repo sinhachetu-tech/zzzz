@@ -3,6 +3,7 @@
 import { cookies } from "next/headers";
 import bcrypt from "bcryptjs";
 import { db } from "./db";
+import type { RoleFlags } from "./domain";
 import type { User } from "./types";
 
 export const SESSION_COOKIE = "hfmc_session";
@@ -94,26 +95,66 @@ export async function requireUser(): Promise<SessionUser> {
 
 /* ---------- role flags (designation-driven, mirrors original logic) ---------- */
 
-export interface RoleFlags {
-  scope: "all" | "team" | "own";
-  issueTasks: boolean;
-  admin: boolean;
-  super: boolean;
-  viewRevenue: boolean;
-  editEibor: boolean; // may update the daily EIBOR benchmark table (granted per designation)
-  manageDocs: boolean; // may upload/verify/reject/waive/delete/compress vault documents
-  clientChat: boolean; // may reply to client & agent chats
-}
+// RoleFlags lives in domain.ts and is imported, not redeclared. It used to be
+// declared in BOTH files, which is exactly how the two drift apart: adding
+// serviceLineIds to one would have silently left the other returning objects that
+// satisfy neither type. domain.ts does not import auth.ts, so this adds no cycle.
+export type { RoleFlags } from "./domain";
 
-const SUPER_FLAGS: RoleFlags = { scope: "all", issueTasks: true, admin: true, super: true, viewRevenue: true, editEibor: true, manageDocs: true, clientChat: true };
+const SUPER_FLAGS: RoleFlags = {
+  scope: "all",
+  serviceLineIds: [], // empty = every department
+  issueTasks: true,
+  admin: true,
+  super: true,
+  viewRevenue: true,
+  editEibor: true,
+  manageDocs: true,
+  clientChat: true,
+};
+
+// The flags a user gets when their designation row has vanished (deleted while they
+// still hold a session). Matches flagsFor()'s original fall-through exactly, plus the
+// new field.
+const NO_DESIGNATION_FLAGS: RoleFlags = {
+  scope: "own",
+  serviceLineIds: [],
+  issueTasks: false,
+  admin: false,
+  super: false,
+  viewRevenue: false,
+  editEibor: false,
+  manageDocs: true,
+  clientChat: true,
+};
+
+// Designation.serviceLineIds is a JSON array of CODES ("[]" = every department).
+// A malformed value must NOT silently mean "no access" — that would lock a colleague
+// out of their own work because of one bad JSON string. Falling back to "every
+// department" matches the schema default and SUPER_FLAGS: fail open, always.
+function parseServiceLineIds(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((v): v is string => typeof v === "string" && v.length > 0);
+  } catch {
+    return [];
+  }
+}
 
 export async function flagsFor(user: SessionUser): Promise<RoleFlags> {
   if (user.role === "Super Admin") return SUPER_FLAGS;
   const d = await db.designation.findUnique({ where: { name: user.role } });
-  if (!d) return { scope: "own", issueTasks: false, admin: false, super: false, viewRevenue: false, editEibor: false, manageDocs: true, clientChat: true };
+  if (!d) return NO_DESIGNATION_FLAGS;
   return {
-    scope: d.scope as RoleFlags["scope"], issueTasks: d.issueTasks, admin: d.admin, super: d.super,
-    viewRevenue: d.viewRevenue, editEibor: (d as unknown as { editEibor?: boolean }).editEibor ?? false,
+    scope: d.scope as RoleFlags["scope"],
+    serviceLineIds: parseServiceLineIds(d.serviceLineIds),
+    issueTasks: d.issueTasks,
+    admin: d.admin,
+    super: d.super,
+    viewRevenue: d.viewRevenue,
+    editEibor: (d as unknown as { editEibor?: boolean }).editEibor ?? false,
     manageDocs: (d as unknown as { manageDocs?: boolean }).manageDocs ?? true,
     clientChat: (d as unknown as { clientChat?: boolean }).clientChat ?? true,
   };

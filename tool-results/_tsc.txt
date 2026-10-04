@@ -1,0 +1,5 @@
+src/lib/domain.ts(111,13): error TS2551: Property 'serviceLineCode' does not exist on type 'LoanCase'. Did you mean 'serviceLineId'?
+src/lib/domain.ts(111,64): error TS2551: Property 'serviceLineCode' does not exist on type 'LoanCase'. Did you mean 'serviceLineId'?
+src/lib/domain.ts(131,35): error TS2551: Property 'serviceLineCode' does not exist on type 'LoanCase'. Did you mean 'serviceLineId'?
+src/lib/ser.ts(150,5): error TS2353: Object literal may only specify known properties, and 'editEibor' does not exist in type 'Designation'.
+EXIT0  

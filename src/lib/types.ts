@@ -39,6 +39,11 @@ export interface ServiceLineDto {
   /** True only where the work is a per-provider race with ONE winner (mortgage). */
   bankRaced: boolean;
   notes: string;
+  /** Who runs this department. INFORMATIONAL — access comes from
+   *  Designation.serviceLineIds, not from this. Null until admin appoints one. */
+  headUserId?: number | null;
+  /** Denormalised for display ("Wills — Ahmed"): the head's name resolved server-side. */
+  headName?: string | null;
   products?: ProductDto[];
 }
 
@@ -166,7 +171,11 @@ export interface User {
   email: string;
   password: string;
   role: string;
+  /** OFFICE — where they sit (Dubai / Abu Dhabi / Management). NOT the department. */
   team: string;
+  /** DEPARTMENT — what they sell (Phase F). Null = not yet assigned, which is not a
+   *  restriction. Access is controlled by Designation.serviceLineIds, not by this. */
+  serviceLineId?: number | null;
   active: boolean;
   phone?: string | null; // WhatsApp / direct line — shown on client & agent portal contact cards
   createdAt: string;
@@ -176,6 +185,9 @@ export interface Designation {
   id: number;
   name: string;
   scope: "all" | "team" | "own";
+  /** Which service lines this role may TOUCH, as CODES (["MORTGAGE"]). Empty =
+   *  EVERY line — the default, which is why upgrading locks nobody out (Phase F). */
+  serviceLineIds: string[];
   issueTasks: boolean;
   admin: boolean;
   super: boolean;
@@ -204,6 +216,10 @@ export interface LoanCase {
   decidedById: number | null;
   /** Which line of business + which offering (Phase 1). null = not classified. */
   serviceLineId: number | null;
+  /** The line's stable CODE ("MORTGAGE"), denormalised by serCase. Phase F compares
+   *  departments by CODE because Designation.serviceLineIds stores codes — a code
+   *  survives a database rebuild in a way an auto-increment id does not. */
+  serviceLineCode?: string | null;
   productId: number | null;
   loanAmount: number;
   /** REAL property value; null = not captured (never derived from loanAmount). */

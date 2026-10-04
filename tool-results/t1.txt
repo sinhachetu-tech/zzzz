@@ -1,0 +1,2 @@
+   32: export interface ServiceLineDto {
+  175: export interface Designation {

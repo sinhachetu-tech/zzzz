@@ -1,0 +1,18 @@
+gen-sql: exit=0 OK
+wrote c:\Users\Lenovo\Desktop\zzzz\prisma\phase6_departments.sql
+statements: 5
+safety check: purely additive (no DROP/TRUNCATE/DELETE/ALTER TYPE)
+┌─────────────────────────────────────────────────────────┐
+│  Update available 6.19.3 -> 8.0.0-rc.19                 │
+│                                                         │
+│  This is a major update - please follow the guide at    │
+│  https://pris.ly/d/major-version-upgrade                │
+│                                                         │
+│  Run the following to update                            │
+│    npm i --save-dev prisma@latest                       │
+│    npm i @prisma/client@latest                          │
+└─────────────────────────────────────────────────────────┘
+
+destructive-scan: clean (no DROP/TRUNCATE/DELETE/ALTER TYPE)
+
+statement-count: 5

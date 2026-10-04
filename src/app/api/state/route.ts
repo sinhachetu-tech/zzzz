@@ -8,7 +8,7 @@ import {
 import {
   serUser, serCase, serTask, serActivity, serBank, serPartner, serStage,
   serMaster, serSla, serInstruction, serBulletin, serChannel, serDocRule, serFeeRule,
-  serStageTransitionDto, serCaseDocument, serCaseUpdate, serProposal, serBankProduct, serClient, serCommTemplate, serPromotion, serServiceLine, serLead, serCaseParty, serCaseWith,
+  serStageTransitionDto, serCaseDocument, serCaseUpdate, serProposal, serBankProduct, serClient, serCommTemplate, serPromotion, serServiceLine, serLead, serCaseParty, serCaseWith, serDesignation,
 } from "@/lib/ser";
 import { caseStatusOf } from "@/lib/format";
 
@@ -160,8 +160,19 @@ export async function GET() {
       firstPartyNameByCase.set(p.caseId, clientNameById.get(p.clientId) ?? "");
     }
   }
+  // Phase F: id → CODE lookup so every case can carry its department code.
+  // Built from the rows already fetched for the picker (no extra round trip), and
+  // read AFTER serviceLinesRaw is loaded. Without this the client could only compare
+  // ids while designations hold codes, so no case would ever match its role's list
+  // and every department-restricted user would see nothing.
+  const serviceLineCodeById = new Map<number, string>(
+    serviceLinesRaw.map((l) => [l.id, l.code]),
+  );
   const casesDto = cases.map((c) =>
-    serCaseWith(c, { coApplicantName: firstPartyNameByCase.get(c.id) || undefined }),
+    serCaseWith(c, {
+      coApplicantName: firstPartyNameByCase.get(c.id) || undefined,
+      serviceLineCode: (c.serviceLineId != null ? serviceLineCodeById.get(c.serviceLineId) : undefined) ?? null,
+    }),
   );
   const tasksDto = tasks.map(serTask);
   const meFull = usersDto.find((u) => u.id === me.id)!;
@@ -193,7 +204,10 @@ export async function GET() {
     me,
     flags,
     users: usersDto,
-    designations,
+    // Phase F: raw rows would ship serviceLineIds as a JSON string where the client
+    // type declares string[] — the mismatch would only surface as a runtime
+    // ".includes is not a function" inside the access check itself.
+    designations: designations.map(serDesignation),
     cases: scopedCases,
     visibleCaseIds: visible.map((c) => c.id),
     tasks: tasksDto,

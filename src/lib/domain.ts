@@ -5,6 +5,10 @@ import { caseStatusOf, commissionFor, daysBetween, primaryBank, todayISO } from 
 
 export interface RoleFlags {
   scope: "all" | "team" | "own";
+  // Which service lines this role may TOUCH (Phase F). Empty = every line, which is
+  // what super/admin and every un-upgraded designation get. Mirrored from
+  // Designation.serviceLineIds in auth.ts flagsFor().
+  serviceLineIds: string[];
   issueTasks: boolean;
   admin: boolean;
   super: boolean;
@@ -14,18 +18,125 @@ export interface RoleFlags {
   clientChat: boolean; // may reply to client & agent chats
 }
 
+/* ---------- department scoping (Phase F) ---------- */
+
+// True when this role is unrestricted across departments. Super/admin always are, and
+// so is anyone whose designation carries an empty list — which is every designation
+// that existed before Phase F, so upgrading the app grants access rather than removing it.
+export function spansAllDepartments(flags: RoleFlags | null): boolean {
+  if (!flags) return true;
+  if (flags.super || flags.admin) return true;
+  return !flags.serviceLineIds || flags.serviceLineIds.length === 0;
+}
+
+// May this role EDIT a case on this department? Read-across is deliberately wider than
+// write access: a wills officer must be able to READ the mortgage case that carries the
+// debts their will has to account for, but must not be able to change the mortgage.
+//
+// Falling open (not restricted) when a case has no service line is deliberate: every case
+// predates Phase 1 and is mortgage, and refusing edits because a legacy row is
+// unassigned would break the app for everyone on day one. Backfill set them all to
+// MORTGAGE precisely so this branch is nearly unreachable.
+export function canEditDepartment(flags: RoleFlags | null, serviceLineCode: string | null | undefined): boolean {
+  if (spansAllDepartments(flags)) return true;
+  if (!serviceLineCode) return true;
+  return !!flags && flags.serviceLineIds.includes(serviceLineCode);
+}
+
 /* ---------- visibility scoping ---------- */
 
+/** Owner / backup / advisor / party links, i.e. everyone with a working reason to see
+ *  this case. Shared by visibleCases() and canEditCase() so the two can't disagree. */
+function hasWorkingAccess(c: LoanCase, user: User, teamIds: Set<number>): boolean {
+  return (
+    c.ownerId === user.id ||
+    c.backup1Id === user.id ||
+    c.backup2Id === user.id ||
+    c.advisorId === user.id ||
+    c.vrmId === user.id ||
+    teamIds.has(c.ownerId)
+  );
+}
+
+// Clients this user already touches through ANY route — own case, backup, advisor, or
+// being a party on it. This is the set that makes read-across safe: their OTHER
+// departments become readable, which is exactly what a will needs.
+function touchedClientIds(cases: LoanCase[], user: User, teamIds: Set<number>): Set<number> {
+  const ids = new Set<number>();
+  for (const c of cases) {
+    if (!hasWorkingAccess(c, user, teamIds)) continue;
+    if (c.clientId) ids.add(c.clientId);
+    if (c.secondPartyClientId) ids.add(c.secondPartyClientId);
+  }
+  return ids;
+}
+
 export function visibleCases(cases: LoanCase[], users: User[], user: User, flags: RoleFlags): LoanCase[] {
-  if (flags.super || flags.scope === "all") return cases;
+  // Unrestricted across departments (super/admin, or a designation with no
+  // serviceLineIds — every designation that predates Phase F). Nothing changes for
+  // them: the office/ownership scope below is applied exactly as before.
+  const deptRestricted = !spansAllDepartments(flags);
+
+  if (flags.super || flags.scope === "all") {
+    if (!deptRestricted) return cases;
+    return cases.filter((c) => inDepartment(flags, c));
+  }
+
+  const teamIds = new Set(users.filter((u) => u.team === user.team).map((u) => u.id));
+
+  // READ-ACROSS (Phase F). A department-restricted role may see:
+  //   (a) cases in its own departments, and
+  //   (b) cases belonging to a CLIENT it already touches — any department.
+  // (b) is the whole point: a wills officer must be able to open the mortgage file
+  // that lists the debts their will has to account for. Without it, every will
+  // would be written blind, which is the single most common way wills go wrong.
+  const myClients = deptRestricted ? touchedClientIds(cases, user, teamIds) : new Set<number>();
+
   if (flags.scope === "team") {
-    const teamIds = new Set(users.filter((u) => u.team === user.team).map((u) => u.id));
-    return cases.filter((c) => teamIds.has(c.ownerId) || c.backup1Id === user.id || c.backup2Id === user.id);
+    return cases.filter((c) => {
+      if (teamIds.has(c.ownerId) || c.backup1Id === user.id || c.backup2Id === user.id) return true;
+      return deptRestricted && readAcross(c, myClients);
+    });
   }
   // "own" scope — the owner plus any backup staffers covering the file
   // (a backup assignment IS the authorization to open and work the case
   // while the owner is away; actions stay logged under the doer's userId).
-  return cases.filter((c) => c.ownerId === user.id || c.backup1Id === user.id || c.backup2Id === user.id);
+  return cases.filter((c) => {
+    if (c.ownerId === user.id || c.backup1Id === user.id || c.backup2Id === user.id) return true;
+    return deptRestricted && readAcross(c, myClients);
+  });
+}
+
+function inDepartment(flags: RoleFlags, c: LoanCase): boolean {
+  return !c.serviceLineCode || flags.serviceLineIds.includes(c.serviceLineCode);
+}
+
+function readAcross(c: LoanCase, myClients: Set<number>): boolean {
+  return (
+    (!!c.clientId && myClients.has(c.clientId)) ||
+    (!!c.secondPartyClientId && myClients.has(c.secondPartyClientId))
+  );
+}
+
+/**
+ * May this user EDIT this case? Two independent gates, both required:
+ *   1. department membership (Phase F) — read-across grants visibility, not authorship
+ *   2. existing office/ownership scope — unchanged from before
+ *
+ * Deliberately separate from visibleCases(): "can open the file" and "can change the
+ * file" are different permissions, and collapsing them is how read-across turns into
+ * accidental cross-department editing.
+ */
+export function canEditCase(c: LoanCase, users: User[], user: User, flags: RoleFlags): boolean {
+  if (!canEditDepartment(flags, c.serviceLineCode)) return false;
+  if (flags.super) return true;
+  // Owner / advisor / backups may always work their own file within their department.
+  if (c.ownerId === user.id || c.advisorId === user.id || c.backup1Id === user.id || c.backup2Id === user.id) return true;
+  if (flags.admin) return true;
+  if (flags.scope === "all" || flags.scope === "team") {
+    return users.some((u) => u.id === c.ownerId && u.team === user.team);
+  }
+  return false;
 }
 
 // Access guard for document routes: staff need the manageDocs designation

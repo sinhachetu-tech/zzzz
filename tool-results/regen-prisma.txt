@@ -1,0 +1,15 @@
+=== regen: PASS ===
+node processes found: 4064, 24080, 29672, 6368, 28624, 8460, 27072, 26516, 16260, 22440
+killed: 4064, 24080, 29672, 6368, 28624, 8460, 27072, 26516, 16260
+
+--- prisma generate (exit 0) ---
+Prisma schema loaded from prisma\schema.prisma
+
+✔ Generated Prisma Client (v6.19.3) to .\node_modules\@prisma\client in 2.68s
+
+Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+
+Tip: Want to turn off tips and other hints? https://pris.ly/tip-4-nohints
+
+--- client probe ---
+caseParty=yes serviceLine=yes lead=yes stageSet=yes

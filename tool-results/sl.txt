@@ -1,0 +1,15 @@
+   24: serviceLineId: (u as unknown as { serviceLineId?: number | null }).serviceLineId ?? null,
+  109: serviceLineId?: number | null;
+  116: // `serviceLineIds` would arrive as the JSON STRING '["MORTGAGE"]' while the client
+  123: serviceLineIds: string;
+  131: let serviceLineIds: string[] = [];
+  133: const parsed = JSON.parse(d.serviceLineIds || "[]");
+  135: serviceLineIds = parsed.filter((v): v is string => typeof v === "string" && v.length > 0);
+  138: // Malformed value ⇒ unrestricted, matching parseServiceLineIds() in auth.ts.
+  139: serviceLineIds = [];
+  145: serviceLineIds,
+  180: serviceLineId: number; productId: number | null; intendedAmount: number | null;
+  191: serviceLineId: l.serviceLineId, productId: l.productId ?? null,
+  260: serviceLineId: c.serviceLineId ?? null,
+  486: serviceLineId?: number | null;
+  505: serviceLineId: s.serviceLineId ?? null,

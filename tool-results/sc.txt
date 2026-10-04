@@ -1,0 +1,4 @@
+  187: extra?: Partial<Lead>,
+  215: extra?: Partial<CaseParty>,
+  238: export function serCase(c: PrismaCase): LoanCase {
+  242: export function serCaseWith(c: PrismaCase, extra?: Partial<LoanCase>): LoanCase {

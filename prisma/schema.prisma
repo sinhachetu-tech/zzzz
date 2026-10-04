@@ -16,7 +16,22 @@ model User {
   name      String
   password  String
   role      String // designation label, e.g. "Mortgage Head"
+  // OFFICE — where this person sits: Dubai / Abu Dhabi / Management. Deliberately
+  // NOT the same thing as the department below, despite both once being called
+  // "team". A person is ONE department in ONE office; pairing them into a single
+  // "Dubai-Wills" value would need re-picking on every hire and would break the
+  // moment someone moves office, which is routine.
   team      String
+  // DEPARTMENT — what this person sells. `ServiceLine` IS the department (Mortgage,
+  // Wills, Golden visa, …), so this needs no new table. Null = not yet assigned;
+  // treated as "no department restriction" rather than as a denial, because a new
+  // hire with no department set must not be locked out of everything on day one.
+  //
+  // NOT an access control: what a designation may TOUCH comes from
+  // Designation.serviceLineIds, because one designation can span lines (Management)
+  // while one user can in principle cover two. This field is informational
+  // ("who works where", department rosters, head-of-department counts).
+  serviceLineId Int?
   active    Boolean  @default(true)
   phone     String?  // WhatsApp / direct line — shown to clients (advisor card) and agents (desk card)
   // Microsoft Graph (delegated) tokens for send-mail-as-user
@@ -58,12 +73,32 @@ model User {
   createdRooms     StaffRoom[]         @relation("RoomCreator")
   staffRooms       StaffRoomMember[]
   sentStaffMessages StaffMessage[]
+  // The one department this person works in (see serviceLineId above). Named
+  // relation because ServiceLine ALSO points back at User via headUserId.
+  serviceLine ServiceLine? @relation("UserDepartment", fields: [serviceLineId], references: [id])
+  // Departments this person is head of (0 or 1 in practice, but the schema allows
+  // several so a firm can run a joint head arrangement without a migration).
+  headedDepartments ServiceLine[] @relation("DepartmentHead")
 }
 
 model Designation {
   id        Int      @id @default(autoincrement())
   name      String   @unique
   scope     String   // "all" | "team" | "own"
+  // DEPARTMENT SCOPE — which service lines this designation may TOUCH. A JSON array
+  // of ServiceLine CODES (["MORTGAGE","WILS_LEGAL"]), matching the convention of
+  // DocRule.applicableBank rather than storing ids, because a code survives a
+  // database rebuild and a backfill can reference it by name.
+  //
+  // EMPTY ARRAY = EVERY LINE. That default is what keeps all 17 existing
+  // designations working untouched: nobody is locked out of anything by upgrading.
+  //
+  // This is READ-ACROSS, WRITE-LOCAL, enforced in visibleCases()/canEditCase() in
+  // src/lib/domain.ts: a designation whose lines exclude MORTGAGE can still READ a
+  // mortgage case belonging to a client it already touches (a will must account for
+  // the debts on that file), but cannot EDIT it. Read-across without an edit lock
+  // would be the same mistake as handing everyone the login.
+  serviceLineIds String @default("[]")
   issueTasks Boolean @default(false)
   admin     Boolean  @default(false)
   super     Boolean  @default(false)
@@ -95,6 +130,12 @@ model ServiceLine {
   // does this line involve a per-bank competitive race (mortgage does; a will
   // does not)? Drives whether bank legs + legStatus are meaningful at all.
   bankRaced Boolean  @default(false)
+  // DEPARTMENT HEAD — who to ask. INFORMATIONAL ONLY, never an access control:
+  // access comes from Designation.serviceLineIds, because one designation can span
+  // lines (Management sees everything) while one user can in principle cover two.
+  // Kept separate from User.serviceLineId on purpose — "works in" and "runs" are
+  // different facts, and a firm where the head also sells should be expressible.
+  headUserId Int?
   notes     String   @default("")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -106,6 +147,12 @@ model ServiceLine {
   slaRules     SlaRule[]
   commTemplates CommTemplate[]
   leads        Lead[]
+
+  // Who runs this department. Set-on-delete is RESTRICT (the default) rather than
+  // SetNull on purpose: the schema does not choose, but a departing head should be
+  // reassigned deliberately, and the backfill/apply path is reviewed SQL anyway.
+  head     User?   @relation("DepartmentHead", fields: [headUserId], references: [id])
+  staff    User[]  @relation("UserDepartment")
 
   @@index([active, sortOrder])
 }

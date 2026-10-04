@@ -1,0 +1,3 @@
+  119: serviceLineCode?: string;
+  237: vrmId: number | null; // internal VRM (User.id, separate from owner)
+  297: advisorId: number | null;      // client-facing advisor (falls back to owner when unset)

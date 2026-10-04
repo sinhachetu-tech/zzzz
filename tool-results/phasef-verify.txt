@@ -1,0 +1,19 @@
+db-verify: OK
+{
+  "cases": 41,
+  "clients": 52,
+  "serviceLines": 6,
+  "designations": 8,
+  "users": 11,
+  "leads": 2,
+  "designationsUnrestricted": 8,
+  "designationsLocked": 0,
+  "sampleUser": {
+    "id": 1,
+    "serviceLineId": null
+  },
+  "sampleServiceLine": {
+    "code": "MORTGAGE",
+    "headUserId": null
+  }
+}

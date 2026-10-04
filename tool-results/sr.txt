@@ -1,0 +1,3 @@
+   18: export function serUser(u: PrismaUser): User {
+  113: export function serServiceLine(
+  686: export function serUserDevice(d: {
