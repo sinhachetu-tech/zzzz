@@ -813,6 +813,43 @@ button:focus-visible, a:focus-visible, [role="button"]:focus-visible, [tabindex]
 .flash-down { animation: rateFlashDown 1.6s ease-out both; }
 .flash-up { animation: rateFlashUp 1.6s ease-out both; }
 
+/* ---------- row highlight when a row's data changes ----------
+   The worklist re-sorts itself when the store hydrates or a case is saved, so
+   a row can change status or jump position while you're reading it. This is
+   the "something moved — look here" signal, reusing the same one-shot,
+   directionless approach as the EIBOR flash above.
+
+   Runs on `background-color` only, which the compositor can animate without
+   a layout pass, and it is ONE bounded animation (not a loop), so a table
+   that re-renders on every save never accumulates permanent paint cost.
+   Driven by `useChangedIds` (src/hooks/use-changed-ids.ts), which never fires
+   on first paint — otherwise every row would flash on mount.
+
+   Deliberately NOT `--gold`: the row sits on --bg, where gold is 1.9:1. This
+   is the same fill-vs-surface rule the status dots and progress bar follow. */
+@keyframes rowChanged {
+  0% { background-color: rgba(31, 106, 165, 0.16); }
+  100% { background-color: transparent; }
+}
+.tbl tbody tr.row-changed {
+  animation: rowChanged 1.6s ease-out both;
+  /* `.tbl tbody tr` sets `transition: background 0.13s` (line ~387). A
+     transition and an animation both driving `background` fight each other
+     and the flash smears. The animation wins for its duration; the normal
+     hover transition resumes the moment the class comes off. */
+  transition: none;
+}
+/* `transparent` as the end value interpolates through transparent-black on
+   some engines, which greys the row mid-fade; naming the real resting colour
+   keeps the fade clean on both card and page backgrounds. */
+[data-theme="dark"] .tbl tbody tr.row-changed {
+  animation-name: rowChangedDark;
+}
+@keyframes rowChangedDark {
+  0% { background-color: rgba(91, 176, 234, 0.2); }
+  100% { background-color: transparent; }
+}
+
 .blink { animation: tickerPulse 1.4s ease infinite; }
 .flow-line { stroke-dasharray: 5 8; animation: flowDash 1.6s linear infinite; }
 
@@ -982,3 +1019,217 @@ button:focus-visible, a:focus-visible, [role="button"]:focus-visible, [tabindex]
   );
   background-size: 200% 100%;
 }
+
+/* =====================================================================
+   HFMC brand layer — gold #E9AB3E · navy #10294A · blue #1F6AA5
+   ---------------------------------------------------------------------
+   MUST stay at the VERY END of this file.
+
+   This is an override layer, not an edit: every selector below re-states a
+   value that is ALSO defined above, and later rules of equal specificity
+   win. That is deliberate, and it is what lets the whole palette change
+   land without touching the 980 lines above it — so the AA-tuned
+   --ink-faint values, the radius/spacing scales, the shadcn token bridge
+   and the components all stay exactly as they were reviewed.
+
+   If you move this block earlier, the tokens above start winning again and
+   the brand colours silently revert. Same reason the print block at the
+   bottom of THIS layer has to stay last: `@media print` adds no
+   specificity, so the print re-assert is what stops these screen tokens
+   from leaking onto paper.
+   ===================================================================== */
+
+/* ---------- LIGHT ---------- */
+:root {
+  --gold: #e9ab3e;          /* fills only: buttons, active bars. NEVER text — 1.9:1 on --bg */
+  --gold-hover: #d99a2b;
+  --gold-ink: #10294a;      /* text on gold (7.2:1) */
+  --bg: #f4f7fb;
+  --bg2: #ffffff;
+  --surface: #ffffff;
+  --raised: #ffffff;
+  --line: #dde5ef;
+  --line-soft: #e8eef5;
+  --ink: #14233a;
+  --ink-dim: #4a5a70;
+  --amber: #8a5a0f;         /* gold AS TEXT on light: 5.9:1 on white, 5.3:1 on --amber-tint */
+  --amber-deep: #6f480c;
+  --amber-ink: #10294a;
+  --sky: #1f6aa5;           /* brand blue: links, info, focus rings */
+  --hover: rgba(16, 41, 74, 0.06);
+  --tint: rgba(16, 41, 74, 0.04);
+  --track: rgba(16, 41, 74, 0.08);
+  --amber-tint: rgba(233, 171, 62, 0.16);
+  --amber-line: rgba(233, 171, 62, 0.5);
+  --neutral: rgba(16, 41, 74, 0.18);
+  --shadow: 0 1px 2px rgba(16, 41, 74, 0.04), 0 12px 32px -20px rgba(16, 41, 74, 0.24);
+  /* shadcn bridge — re-pointed so `bg-primary`/text follow the brand */
+  --primary: var(--gold);
+  --primary-foreground: var(--gold-ink);
+  --ring: var(--sky);
+}
+
+/* ---------- DARK (also the sidebar rail, which is dark in BOTH themes) ----------
+   Mirrors the merged `[data-theme="dark"], .side-dark` rule above rather
+   than splitting the rail into its own copy — one block, no drift.
+   --ink-faint is restated here (8.4:1 on the new navy, same as the tuned
+   value above) but deliberately NOT in the light :root, which inherits the
+   tuned #55677c untouched. */
+[data-theme="dark"],
+.side-dark {
+  --bg: #0a1626;
+  --bg2: #0e1f35;
+  --surface: #132a45;
+  --raised: #1a3556;
+  --line: #2d4d78;
+  --line-soft: #1c3658;
+  --ink: #e9eff7;
+  --ink-dim: #a3b3c9;
+  --ink-faint: #9db3cc;
+  --amber: #f0b650;
+  --amber-deep: #e9ab3e;
+  --amber-ink: #10294a;
+  --sky: #5bb0ea;
+  --slate: #8ea3bd;
+  --hover: rgba(233, 239, 247, 0.065);
+  --amber-tint: rgba(240, 182, 80, 0.1);
+  --amber-line: rgba(240, 182, 80, 0.32);
+}
+
+/* ---------- primary button: gold fill, navy text, both themes ----------
+   All three original selectors are re-stated because the rules above
+   (.btn-primary, :root .btn-primary, [data-theme="dark"] .btn-primary)
+   use exactly these three — matching them is what beats the old colours. */
+.btn-primary,
+:root .btn-primary,
+[data-theme="dark"] .btn-primary { background: var(--gold); color: var(--gold-ink); }
+@media (hover: hover) and (pointer: fine) {
+  .btn-primary:hover { background: var(--gold-hover); box-shadow: 0 6px 20px -8px rgba(233, 171, 62, 0.6); transform: translateY(-1px); }
+  [data-theme="dark"] .btn-primary:hover { background: #f5c266; box-shadow: 0 6px 20px -8px rgba(240, 182, 80, 0.55); transform: translateY(-1px); }
+}
+
+/* ---------- focus = blue ----------
+   A gold focus ring would sit on top of a gold button and disappear, so
+   the brand blue doubles as the focus colour. Re-stated as `outline-color`
+   (not the `outline` shorthand) so the width/offset set above survive. */
+.input:focus, .select:focus, .textarea:focus { border-color: var(--sky); box-shadow: 0 0 0 3px rgba(31, 106, 165, 0.16); }
+[data-theme="dark"] .input:focus, [data-theme="dark"] .select:focus, [data-theme="dark"] .textarea:focus { box-shadow: 0 0 0 3px rgba(91, 176, 234, 0.22); }
+button:focus-visible, a:focus-visible, [role="button"]:focus-visible, [tabindex]:focus-visible,
+.card-hover:focus-visible, .nav-item:focus-visible, .tbl tbody tr:focus-visible { outline-color: var(--sky); }
+
+
+/* ---------- gold fills (active bar, progress sweep) ----------
+   .dot-stage-live / .dot-at-risk / .deal-burst-ring are deliberately NOT
+   listed. They are 7-10px status dots that sit directly on --bg, where
+   gold is 1.9:1 — invisible in light mode. They keep `var(--amber)`
+   (dark gold on light, bright gold on dark) and re-skin for free.
+   Do not "fix" them by adding them here. */
+.tabs-item.active::after { background: var(--gold); }
+/* `var(--amber)`, NOT `var(--gold)`: this bar sits directly on --bg, where
+   gold is 1.9:1 and effectively invisible in light mode. Same reasoning as
+   the status dots — gold is a fill colour for buttons/underlines, never for
+   a thin element on the page background. */
+.progress-bar { background: linear-gradient(90deg, transparent, var(--amber), transparent); background-size: 200% 100%; }
+@keyframes stagePulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(233, 171, 62, 0.5); } 60% { box-shadow: 0 0 0 7px rgba(233, 171, 62, 0); } }
+@keyframes pulseDotAmber { 0%, 100% { box-shadow: 0 0 0 0 rgba(233, 171, 62, 0.45); } 60% { box-shadow: 0 0 0 5px rgba(233, 171, 62, 0); } }
+
+/* ---------- ambient background, selection, scrim, select arrows ---------- */
+::selection { background: rgba(233, 171, 62, 0.35); }
+/* third (mint) radial kept from the original — it centres the page glow */
+.app-bg {
+  background:
+    radial-gradient(1100px 520px at 85% -10%, rgba(31, 106, 165, 0.07), transparent 60%),
+    radial-gradient(900px 600px at -10% 110%, rgba(233, 171, 62, 0.08), transparent 55%),
+    radial-gradient(700px 500px at 50% 50%, rgba(4, 120, 87, 0.035), transparent 60%),
+    var(--bg);
+}
+/* grid lines re-tinted off the old cold slate onto the navy ink */
+.app-bg::before {
+  background-image:
+    linear-gradient(rgba(16, 41, 74, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(16, 41, 74, 0.035) 1px, transparent 1px);
+}
+[data-theme="dark"] .app-bg {
+  background:
+    radial-gradient(1100px 520px at 85% -10%, rgba(91, 176, 234, 0.08), transparent 60%),
+    radial-gradient(900px 600px at -10% 110%, rgba(240, 182, 80, 0.06), transparent 55%),
+    radial-gradient(700px 500px at 50% 50%, rgba(67, 214, 155, 0.03), transparent 60%),
+    var(--bg);
+}
+.modal-scrim { background: rgba(5, 14, 28, 0.72); }
+/* the chevron is a data-URI, so it can't read a token — both arrows now
+   match their theme's ink-faint instead of the pre-AA #8296ab */
+.select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2355677c' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+}
+[data-theme="dark"] .select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239db3cc' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+}
+
+/* ---------- "lights on" splash (src/components/hfmc/Splash.tsx) ----------
+   One-shot overlay shown on first paint of a session, on WEB and in the
+   installed PWA alike. Mounted as the first child of <body> in layout.tsx.
+
+   Deliberately placed ABOVE the brand tokens but BELOW @media print, so the
+   print re-assert stays the last rule in the file (see its comment) — this
+   block is pure keyframes/classes and declares no tokens, so its position
+   cannot affect theming or printing.
+
+   Only `opacity`, `transform` and `stroke-dashoffset` animate, so the whole
+   thing runs on the compositor with no layout or paint per frame. Colours are
+   literal (#10294a / #E9AB3E) rather than tokens on purpose: the splash is a
+   fixed brand moment shown over BOTH themes, and it must be identical every
+   time — reading --gold here would make it re-theme with the user's toggle. */
+.hf-splash {
+  position: fixed; inset: 0; z-index: 100;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 22px; background: #10294a; cursor: pointer;
+  animation: hfOut .5s 3s ease forwards;
+}
+.hf-splash svg { width: min(70vw, 360px); height: auto; overflow: visible; }
+.hf-draw { stroke-dasharray: 1; stroke-dashoffset: 1; animation: hfDraw .9s cubic-bezier(.65, 0, .35, 1) forwards; }
+.hf-draw.b { animation-delay: .15s; }
+.hf-bar { transform-box: fill-box; transform-origin: 50% 100%; transform: scaleY(0); animation: hfGrow .6s .45s cubic-bezier(.2, .8, .2, 1) forwards; }
+.hf-bar.r { animation-delay: .6s; }
+.hf-cross { transform-box: fill-box; transform-origin: 0 50%; transform: scaleX(0); animation: hfCross .45s .85s cubic-bezier(.2, .8, .2, 1) forwards; }
+.hf-ltr { opacity: 0; transform: translateY(10px); animation: hfUp .55s cubic-bezier(.2, .8, .2, 1) forwards; }
+.hf-ltr.f { animation-delay: 1s; } .hf-ltr.m { animation-delay: 1.12s; } .hf-ltr.c { animation-delay: 1.24s; }
+.hf-lit { animation: hfLit .55s 1.9s ease-out both; }
+.hf-glow { opacity: 0; transform-box: fill-box; transform-origin: 50% 50%; transform: scale(.6); animation: hfGlow 1.1s 1.9s ease-out forwards; }
+.hf-greet { margin: 0; color: #c9d6ea; font: 500 15px/1.4 "Segoe UI", Helvetica, Arial, sans-serif; letter-spacing: .02em; opacity: 0; transform: translateY(6px); animation: hfUp .6s 2.3s ease-out forwards; }
+@keyframes hfDraw { to { stroke-dashoffset: 0; } }
+@keyframes hfGrow { to { transform: scaleY(1); } }
+@keyframes hfCross { to { transform: scaleX(1); } }
+@keyframes hfUp { to { opacity: 1; transform: none; } }
+@keyframes hfLit { 0% { opacity: .4; } 40% { opacity: 1; } 55% { opacity: .78; } 100% { opacity: 1; } }
+@keyframes hfGlow { 0% { opacity: 0; transform: scale(.6); } 35% { opacity: 1; transform: scale(1.15); } 100% { opacity: .45; transform: scale(1); } }
+@keyframes hfOut { to { opacity: 0; visibility: hidden; } }
+
+/* Reduced motion: skip the build-up and just hold the finished mark briefly.
+   These selectors out-specify the app-wide kill-switch at the top of this
+   file, so the logo stays visible instead of collapsing to its hidden state. */
+@media (prefers-reduced-motion: reduce) {
+  .hf-splash { animation: hfOut .4s 1s ease forwards; }
+  .hf-draw, .hf-bar, .hf-cross, .hf-ltr, .hf-lit, .hf-greet { animation: none !important; stroke-dashoffset: 0; transform: none; opacity: 1; }
+  .hf-glow { animation: none !important; transform: none; opacity: .35; }
+}
+/* The splash is never part of a printed page. */
+@media print { .hf-splash { display: none !important; } }
+
+
+/* ---------- print: re-assert the white palette ----------
+   MUST remain the last rule in this file. This block re-states the light
+   palette because the screen tokens above would otherwise win (media
+   queries add no specificity) and print on a tinted background. */
+@media print {
+  :root, [data-theme="dark"], .side-dark {
+    --bg: #ffffff; --bg2: #ffffff;
+    --surface: #ffffff; --raised: #ffffff;
+    --line: #cbd5e1; --line-soft: #e2e8f0;
+    --ink: #0f172a; --ink-dim: #475569; --ink-faint: #55677c;
+    --tint: #f8fafc; --hover: #f1f5f9; --track: #e2e8f0;
+    --shadow: none;
+    color-scheme: light;
+  }
+}
+

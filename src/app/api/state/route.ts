@@ -18,36 +18,50 @@ export async function GET() {
 
   const flags = await flagsFor(me);
 
-  const [
-    users, designations, cases, tasks, activities, stages, masters, banks,
-    partners, slaRules, instructions, bulletinsRaw, channels, docRules, feeRules, stageTransitions, allDocs, bankProducts, eiborRates, caseUpdates, caseProposals, emails, unmatched, clients, commTemplates, promotions,
-  ] = await Promise.all([
+  // ── Batch 1: core entities (people, cases, tasks, workflow) ──────────────
+  const [users, designations, cases, tasks, stages, masters] = await Promise.all([
     db.user.findMany({ orderBy: { id: "asc" } }),
     db.designation.findMany({ orderBy: { id: "asc" } }),
     db.loanCase.findMany({ orderBy: { id: "asc" } }),
     db.task.findMany({ orderBy: { id: "asc" } }),
-    db.activity.findMany({ orderBy: { at: "desc" }, take: 200 }),
-    db.stageItem.findMany({ orderBy: { sortOrder: "asc" } }),
+    db.stageItem.findMany({ orderBy: { sortOrder: "asc" }, include: { steps: { orderBy: { sortOrder: "asc" } } } }),
     db.masterItem.findMany({ orderBy: { id: "asc" } }),
+  ]);
+
+  // ── Batch 2: reference data ───────────────────────────────────────────────
+  const [banks, partners, channels, slaRules, docRules, feeRules] = await Promise.all([
     db.bankItem.findMany({ orderBy: { id: "asc" } }),
     db.partnerItem.findMany({ orderBy: { id: "asc" } }),
-    db.slaRule.findMany({ orderBy: { id: "asc" } }),
-    db.instruction.findMany({ orderBy: { id: "asc" }, include: { replies: true } }),
-    db.bulletinItem.findMany({ orderBy: { id: "asc" }, include: { targets: true, replies: true } }),
     db.channelItem.findMany({ orderBy: { id: "asc" } }),
+    db.slaRule.findMany({ orderBy: { id: "asc" } }),
     db.docRule.findMany({ orderBy: { id: "asc" } }),
     db.feeRule.findMany({ orderBy: [{ emirate: "asc" }, { sortOrder: "asc" }] }),
+  ]);
+
+  // ── Batch 3: activity & comms ─────────────────────────────────────────────
+  const [activities, instructions, bulletinsRaw, commTemplates, eiborRates] = await Promise.all([
+    db.activity.findMany({ orderBy: { at: "desc" }, take: 200 }),
+    db.instruction.findMany({ orderBy: { id: "asc" }, include: { replies: true } }),
+    db.bulletinItem.findMany({ orderBy: { id: "asc" }, include: { targets: true, replies: true } }),
+    db.commTemplate.findMany({ orderBy: [{ sortOrder: "asc" }, { id: "asc" }] }),
+    db.eiborRate.findMany(),
+  ]);
+
+  // ── Batch 4: case-level data ──────────────────────────────────────────────
+  const [stageTransitions, allDocs, caseUpdates, caseProposals] = await Promise.all([
     db.stageTransition.findMany({ orderBy: { at: "desc" }, take: 400, include: { user: { select: { name: true } } } }),
     db.caseDocument.findMany({ orderBy: [{ caseId: "asc" }, { sortOrder: "asc" }] }),
-    db.bankProduct.findMany({ orderBy: [{ bankId: "asc" }, { id: "asc" }], include: { bank: { select: { name: true } } } }),
-    db.eiborRate.findMany(),
     db.caseUpdate.findMany({ orderBy: [{ date: "desc" }, { createdAt: "desc" }], take: 1000, include: { author: { select: { name: true } } } }),
     db.proposal.findMany({ orderBy: { version: "desc" }, include: { author: { select: { name: true } } } }),
+  ]);
+
+  // ── Batch 5: extras (tolerate missing tables) ─────────────────────────────
+  const [bankProducts, emails, unmatched, clients, promotions] = await Promise.all([
+    db.bankProduct.findMany({ orderBy: [{ bankId: "asc" }, { id: "asc" }], include: { bank: { select: { name: true } } } }),
     db.emailLog.findMany({ orderBy: { receivedAt: "desc" }, take: 100 }).catch(() => []),
     db.unmatchedEmail.findMany({ where: { status: "Pending" }, orderBy: { receivedAt: "desc" } }).catch(() => []),
     db.client.findMany({ orderBy: { id: "asc" } }),
-    db.commTemplate.findMany({ orderBy: [{ sortOrder: "asc" }, { id: "asc" }] }),
-    db.promotion.findMany({ orderBy: [{ validFrom: "desc" }, { id: "asc" }] }).catch(() => []), // additive — tolerate pre-push DBs
+    db.promotion.findMany({ orderBy: [{ validFrom: "desc" }, { id: "asc" }] }).catch(() => []),
   ]);
 
   const usersDto = users.map(serUser);
@@ -91,6 +105,7 @@ export async function GET() {
     stages: stages.map(serStage),
     whyPending: masters.filter((m) => m.kind === "whyPending").map(serMaster),
     waitingFor: masters.filter((m) => m.kind === "waitingFor").map(serMaster),
+    milestoneDates: masters.filter((m) => m.kind === "milestoneDate").map(serMaster),
     banks: banksDto,
     channels: channelsDto,
     partners: partners.map(serPartner),

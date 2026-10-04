@@ -25,6 +25,31 @@ export async function POST(req: NextRequest) {
       createdBy: me.id,
     },
   });
+
+  // FREEZE THE NUMBERS. A proposal is a record of what the client was told, so it
+  // must never re-read live rates: if the bank repriced tomorrow, this document
+  // still shows today's figures. The snapshot is what makes the document defensible
+  // in a dispute, and it also records which pricing floor and EIBOR curve produced it.
+  if (body.snapshot && typeof body.snapshot === "object") {
+    const s = body.snapshot as Record<string, unknown>;
+    await db.proposalSnapshot.upsert({
+      where: { proposalId: item.id },
+      create: {
+        proposalId: item.id,
+        inputsJson: JSON.stringify(s.inputs ?? {}),
+        eiborCurveJson: JSON.stringify(s.eibor ?? {}),
+        resultsJson: JSON.stringify(s.results ?? []),
+        floorJson: JSON.stringify(s.floor ?? {}),
+        overlaysJson: JSON.stringify(s.overlays ?? []),
+        exceptionsJson: JSON.stringify(s.exceptions ?? []),
+        eiborCapturedAt: String(s.eiborCapturedAt ?? ""),
+      },
+      update: {},
+    }).catch(() => {
+      // Never fail a save because the optional snapshot could not be written.
+    });
+  }
+
   const fresh = await db.proposal.findUnique({ where: { id: item.id }, include: { author: { select: { name: true } } } });
   return NextResponse.json({ item: serProposal(fresh!) });
 }

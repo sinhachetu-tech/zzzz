@@ -1,30 +1,35 @@
 "use client";
 import { CaseProfileEditor } from "@/components/views/case-profile-editor";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useHfmcStore } from "@/lib/client-store";
 import type { LoanCase, Reply, Task } from "@/lib/types";
 import {
   caseStatusOf, fmtDate, fmtDateTime, fmtDue, fmtMoney, inDaysISO, isOverdueDue, parseTaskDue, relTime,
 } from "@/lib/format";
+import { computeCaseBlockers } from "@/lib/case-blockers";
 import { Avatar, Chip, DueChip, Modal, StatusChip } from "@/components/hfmc/ui";
-import { CaseStateChip, CommissionPanel, ConfirmModal, SourceChip, WaButtons, waClientLink } from "@/components/hfmc/bits";
-import { DocVault } from "@/components/views/doc-vault";
-import { StageJourney } from "@/components/case/StageJourney";
+import { CaseStateChip, CommissionPanel, ConfirmModal, SourceChip, waClientLink } from "@/components/hfmc/bits";
+import { DocVault, isDocOutstanding } from "@/components/views/doc-vault";
+import { StageRail } from "@/components/case/StageRail";
 import { StageDrawer } from "@/components/case/StageDrawer";
-import { CaseHero } from "@/components/case/CaseHero";
+import { CaseCommandBar } from "@/components/case/CaseCommandBar";
+import { CaseTabBar } from "@/components/case/CaseTabBar";
+import { CaseDetailsSheet, PeoplePanel } from "@/components/case/CaseDetailsSheet";
 import { ProfileStrip } from "@/components/case/ProfileStrip";
-import { DocActionRow } from "@/components/case/DocActionRow";
+import { CollectPanel } from "@/components/case/CollectPanel";
+import { PersonDataSheet } from "@/components/person/PersonDataSheet";
+import { seedPersonSheet } from "@/lib/person-sheet";
 import type { StageKey } from "@/lib/workflow/types";
 import type { CaseTab } from "@/components/case/stage-parts";
+import type { ProfileSubTab } from "@/components/views/case-profile-editor";
 import { DailyMisTab } from "@/components/views/daily-mis";
 import { BankMatchPanel } from "@/components/views/bank-match";
 import { ProposalHistory } from "@/components/views/proposal-history";
 import { ChatPanel } from "@/components/chat/ChatPanel";
-import {
-  IArrowR, IBank, ICheck, IChevronL, IEye, IFlag, IHistory, IPlus, IRobot, ISparkles, ITrash, IWhatsapp,
-} from "@/components/icons";
+import { IBank, ICheck, IHistory, IFlag, IPlus, IRobot, ISparkles, ITrash, IWhatsapp, IChevronL, IArrowR, IPencil } from "@/components/icons";
+import { ContactLine, KycChip, resolveContact } from "@/components/case/ContactBits";
 
 function ReplyThread({ replies, onSend }: { replies: Reply[]; onSend: (text: string) => void }) {
   const { userById } = useHfmcStore();
@@ -540,31 +545,88 @@ function FolPanel({ c }: { c: LoanCase }) {
 
 /* ---------------- Case Detail ---------------- */
 
+/** Every value the `#/<tab>` hash may take. Declared once so the tab bar, the
+ *  hash reader and the hashchange listener cannot disagree about what a legal
+ *  tab is — the failure mode being a URL that silently renders nothing. */
+const CASE_TABS: CaseTab[] = ["now", "client", "documents", "money", "chat", "activity"];
+
 export default function CaseDetail({ id }: { id: number }) {
-  const { cases, tasks, activities, stages, banks, users, instructions, me, nav, userById, caseById, updateCase, deleteCase, completeTask, deleteTask, toast, flags, canInstruct } = useHfmcStore();
+  const {
+    cases, tasks, activities, stages, users, instructions, clients, caseDocuments, caseUpdates,
+    me, nav, userById, caseById, updateCase, deleteCase, completeTask, deleteTask, toast, flags,
+  } = useHfmcStore();
   const c = caseById(id);
-  const [caseTab, setCaseTab] = useState<CaseTab>(() => {
-    // stage-aware default: a fresh lead opens on its profile (that IS the lead's
-    // work); every other stage opens on the daily workspace
-    return c?.stage === "Lead" ? "profile" : "daily";
+
+  /* TAB IN THE URL.
+   *
+   * The old tab state was component-local, which meant three real bugs: a refresh
+   * threw you back on Daily no matter where you were, the browser Back button
+   * exited the case entirely instead of stepping back through the workspace, and
+   * a teammate could not send you to "the documents tab of case 41" in a
+   * message. `#/documents` fixes all three.
+   *
+   * READ IN THE INITIALISER, not in an effect. Seeding state from
+   * window.location in a lazy useState keeps this to zero extra renders; doing it
+   * in an effect would mean mounting the wrong tab and immediately correcting it,
+   * which is the cascading-render pattern React's compiler rules warn about (and
+   * is visible as a flash of the wrong workspace).
+   *
+   * WRITTEN with replaceState rather than a pushed history entry on purpose: a
+   * tab click inside a case is not a place the user expects Back to return to,
+   * and pushing an entry per click makes Back feel broken. The hashchange
+   * listener below still handles an explicit Back or a hand-edited URL. */
+  const [caseTab, setCaseTabRaw] = useState<CaseTab>(() => {
+    if (typeof window === "undefined") return c?.stage === "Lead" ? "client" : "now";
+    const fromHash = window.location.hash.replace(/^#\/?/, "");
+    return CASE_TABS.includes(fromHash as CaseTab)
+      ? (fromHash as CaseTab)
+      : c?.stage === "Lead" ? "client" : "now";
   });
-  const [profileSubTab, setProfileSubTab] = useState<"primary" | "property" | "joint">("primary");
-  const [showInspector, setShowInspector] = useState(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("hfmc.caseInspectorOpen");
-      if (saved !== null) return saved === "true";
-    }
-    return true;
-  });
-  const toggleInspector = () => {
-    setShowInspector((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem("hfmc.caseInspectorOpen", String(next));
-      } catch { }
-      return next;
-    });
-  };
+  const [profileSubTab, setProfileSubTab] = useState<ProfileSubTab>("primary");
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const want = `#/${caseTab}`;
+    if (window.location.hash !== want) window.history.replaceState(null, "", want);
+  }, [caseTab]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onHash = () => {
+      const next = window.location.hash.replace(/^#\/?/, "") as CaseTab;
+      if (CASE_TABS.includes(next)) setCaseTabRaw(next);
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+
+  // UNSAVED-CHANGES GUARD on the data sheet. The sheet holds an unsaved draft, so
+  // switching tab or walking away would silently drop it. A ref rather than state
+  // because the guard only has to READ the flag at the moment of navigation.
+  const sheetDirtyRef = useRef(false);
+  const [pendingTab, setPendingTab] = useState<CaseTab | null>(null);
+
+  const setCaseTab = useCallback((t: CaseTab) => {
+    if (sheetDirtyRef.current && t !== "client") { setPendingTab(t); return; }
+    setCaseTabRaw(t);
+  }, [setCaseTabRaw]);
+
+  // Browser-level guard: a refresh or back-navigation loses the draft too.
+  useEffect(() => {
+    const beforeUnload = (e: BeforeUnloadEvent) => {
+      if (!sheetDirtyRef.current) return;
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", beforeUnload);
+    return () => window.removeEventListener("beforeunload", beforeUnload);
+  }, []);
+
+  /* DETAILS SHEET, not a column. The old inspector was a persisted 340px rail
+   * with three separate toggles; now it is an overlay with one button, which is
+   * why there is no localStorage flag to migrate — the old key is simply left
+   * unread (and documented below so nobody goes looking for it). */
+  const [showDetails, setShowDetails] = useState(false);
   const [showAddTask, setShowAddTask] = useState(false);
   const [showStage, setShowStage] = useState(false);
   const [showOutcome, setShowOutcome] = useState(false);
@@ -579,6 +641,34 @@ export default function CaseDetail({ id }: { id: number }) {
   const caseInstr = useMemo(() => instructions.filter((i) => i.caseId === id), [instructions, id]);
   const stageList = useMemo(() => [...stages].sort((a, b) => a.sortOrder - b.sortOrder), [stages]);
 
+  /* BLOCKERS — one ranked list feeding BOTH the command bar's primary button and
+   * its one-line strip. Derived from the same task/document/sheet rows the tab
+   * bodies render, using the vault's own outstanding rule, so the button can
+   * never promise something the tab it opens will contradict.
+   *
+   * Declared ABOVE the "case no longer exists" early return so hook order is
+   * unconditional — a hook below a return is a rules-of-hooks violation and it
+   * only shows up when a case is deleted mid-session, which is exactly when you
+   * do not want a white screen. */
+  const blockers = useMemo(() => {
+    if (!c) return [];
+    const docs = caseDocuments.filter((d) => d.caseId === id);
+    const outstanding = docs.filter((d) => isDocOutstanding(d.status, !!d.fileName));
+    return computeCaseBlockers({
+      c,
+      tasks: caseTasks,
+      outstandingDocs: outstanding,
+      clients,
+      instructions: caseInstr,
+      updatedOn: caseUpdates.filter((u) => u.caseId === id).map((u) => u.date),
+    });
+  }, [c, id, caseTasks, caseDocuments, clients, caseInstr, caseUpdates]);
+
+  /* Stage-conditional money panels. Pre-approval and FOL figures only become
+   * relevant once the case has reached those stages — the same rule the
+   * inspector used, with fewer things left to hide. */
+  const activeStages = useMemo(() => stageList.filter((s) => s.active), [stageList]);
+
   if (!c) {
     return (
       <div className="card p-8 text-center">
@@ -591,128 +681,102 @@ export default function CaseDetail({ id }: { id: number }) {
   const status = caseStatusOf(c, tasks);
   const openTasks = caseTasks.filter((t) => t.status === "Open");
   const doneTasks = caseTasks.filter((t) => t.status === "Done");
-  const owner = userById(c.ownerId);
-  // 2) STICKY ACTION HEADER — Next Best Action = oldest open task by exact due instant.
-  const nextBest = [...openTasks].sort((a, b) => (parseTaskDue(a.dueDate)?.getTime() ?? 0) - (parseTaskDue(b.dueDate)?.getTime() ?? 0))[0] ?? null;
-  const waNudge = nextBest && c.whatsapp ? waClientLink(c.whatsapp, c.caseNumber, c.customer, me?.name ?? "") : null;
-  const currentStageIdx = stageList.findIndex((s) => s.label === c.stage);
-  const canEdit = flags?.super || flags?.admin || c.ownerId === me?.id;
-  const activeStages = stageList.filter((s) => s.active);
+  const canDelete = !!(flags?.admin || flags?.super);
+
   const activeIdx = activeStages.findIndex((s) => s.label === c.stage);
   const preApprovalIdx = activeStages.findIndex((s) => s.label === "Pre-Approval");
   const folIdx = activeStages.findIndex((s) => s.label === "FOL + Loan Booking");
   const showPreApproval = preApprovalIdx >= 0 && activeIdx >= preApprovalIdx;
   const showFol = folIdx >= 0 && activeIdx >= folIdx;
 
-  return (
-    <div className="space-y-4">
-      {/* 2) STICKY ACTION HEADER — context + primary CTA stay visible while scrolling the 360 */}
-      <div className="case-stickybar flex flex-wrap items-center gap-2 p-2 bg-[var(--bg2)]">
-        <button className="btn btn-ghost btn-sm !px-2 shrink-0" onClick={() => nav({ name: "dashboard" })} title="Back to pipeline">
-          <IChevronL size={14} />
-        </button>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 min-w-0 flex-wrap">
-            <span className="mono text-[11.5px] shrink-0 truncate" style={{ color: "var(--amber)" }}>{c.caseNumber}</span>
-            <span className="text-[13.5px] font-disp font-semibold truncate">{c.customer}</span>
-            {c.caseStatus === "Active" ? <StatusChip status={status} /> : <CaseStateChip state={c.caseStatus} />}
-            <span className="chip hidden md:inline" style={{ fontSize: 10, background: "rgba(242,176,76,0.1)", color: "var(--amber)", borderColor: "rgba(242,176,76,0.3)" }}>{c.stage}</span>
-            <span className="mono text-[12px] text-[var(--ink-dim)] hidden sm:inline">{fmtMoney(c.loanAmount)}</span>
-          </div>
-          {nextBest ? (
-            <p className="text-[11.5px] m-0 mt-0.5 truncate" style={{ color: "var(--ink-dim)" }}>
-              <span style={{ color: "var(--amber)" }}>⚡ {fmtDue(nextBest.dueDate)}:</span> {nextBest.description}
-            </p>
-          ) : (
-            <p className="text-[11.5px] m-0 mt-0.5" style={{ color: "var(--mint)" }}>✓ No open tasks — file is clean.</p>
-          )}
-        </div>
-        <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
-          {waNudge && (
-            <a className="btn btn-mint btn-sm !px-2.5" href={waNudge} target="_blank" rel="noreferrer" title={`Nudge ${c.customer} about: ${nextBest?.description ?? ""}`}>
-              <IWhatsapp size={14} /><span className="hidden lg:inline">Nudge</span>
-            </a>
-          )}
-          <button className="btn btn-ghost btn-sm !px-2.5 mt-1 sm:mt-0" onClick={() => setShowAddTask(true)} title="Add a task"><IPlus size={14} /><span className="hidden lg:inline">Task</span></button>
-          <button className="btn btn-ghost btn-sm !px-2.5 mt-1 sm:mt-0" onClick={() => setShowStage(true)} title="Move stage"><IArrowR size={14} /><span className="hidden lg:inline">Stage</span></button>
-          <button className="btn btn-ghost btn-sm !px-2.5 mt-1 sm:mt-0" onClick={() => setCaseTab("banks")} title="Run bank match"><IBank size={14} /><span className="hidden lg:inline">Match</span></button>
-          <button
-            className="btn btn-ghost btn-sm !px-2.5 mt-1 sm:mt-0"
-            onClick={toggleInspector}
-            title={showInspector ? "Hide case details inspector" : "Show case details inspector"}
-            style={showInspector ? { color: "var(--amber)", background: "rgba(242,176,76,0.12)" } : undefined}
-          >
-            <IEye size={14} /><span className="hidden lg:inline">{showInspector ? "Hide Details" : "Details"}</span>
-          </button>
-        </div>
-      </div>
+  /* WhatsApp "nudge about the thing you owe" link. It belongs beside the task it
+   * refers to rather than in the header, because a header Nudge button could
+   * only ever be about *some* task and the header cannot say which. */
+  const overdueKey = blockers.find((b) => b.key.startsWith("task-"))?.key ?? null;
+  const overdueTask = overdueKey ? caseTasks.find((t) => `task-${t.id}` === overdueKey) ?? null : null;
+  const waNudge = overdueTask && c.whatsapp
+    ? waClientLink(c.whatsapp, c.caseNumber, c.customer, me?.name ?? "")
+    : null;
 
-      {/* hero — case no + customer + chips + action buttons merged in */}
-      <CaseHero
+  /* One-click completion. The store writes optimistically, so this resolves on
+   * click — the only await is the PATCH, and a failure rolls the row back and
+   * says so rather than leaving a task that looks done and isn't. */
+  const completeNow = async (t: Task) => {
+    try {
+      await completeTask(t.id, "");
+      toast("success", `“${t.description}” marked done.`);
+    } catch {
+      toast("error", "Could not mark that done — try again.");
+    }
+  };
+
+  const completeWithNote = async (t: Task, remarks: string) => {
+    try {
+      await completeTask(t.id, remarks);
+      setDoneTarget(null);
+      toast("success", `“${t.description}” marked done.`);
+    } catch {
+      toast("error", "Could not mark that done — try again.");
+    }
+  };
+
+  return (
+    <div className="space-y-3.5">
+      {/* ONE header. It carries the identity, the contact actions, the single
+          primary button (the top blocker) and the one-line answer to "what is
+          owed". Nothing below it repeats any of that — which is the whole point,
+          since the old screen said all of it twice. */}
+      <CaseCommandBar
         c={c}
         status={status}
-        actions={
-          <>
-            <WaButtons c={c} agentName={me?.name ?? ""} />
-            {c.caseStatus === "Active" && (
-              <button className="btn btn-primary btn-sm" onClick={() => setShowOutcome(true)}>Set outcome</button>
-            )}
-            {(flags?.admin || flags?.super) && (
-              <button
-                className="btn btn-ghost btn-sm !px-2"
-                title="Delete permanently (admin) — accidental creations only; use Set outcome → Lost otherwise"
-                onClick={() => setDelCaseOpen(true)}
-                style={{ color: "var(--coral)" }}
-              >
-                <ITrash size={14} />
-              </button>
-            )}
-          </>
-        }
-      />
-
-      {/* overview card — profile strip (hidden if profile tab active) + stage journey */}
-      <div className="card p-5 anim-fade-up">
-        {/* brief profile — click a card to jump into Profile tab */}
-        {caseTab !== "profile" && (
-          <ProfileStrip
-            c={c}
-            onEdit={(tab, subTab) => {
-              setCaseTab(tab);
-              if (subTab) setProfileSubTab(subTab);
-            }}
-          />
-        )}
-
-        {/* journey — 5 stage cards (click for Now / To-do / Procedure / Actions) */}
-        <div className={caseTab !== "profile" ? "mt-4" : ""}>
-          <StageJourney c={c} onOpen={setJourneyKey} />
-        </div>
-        {journeyKey && (
-          <StageDrawer c={c} stageKey={journeyKey} onClose={() => setJourneyKey(null)} onTab={setCaseTab} />
-        )}
-      </div>
-
-      {/* workspace navigation bar — prominent switcher anchoring the workspace below */}
-      <DocActionRow
-        c={c}
-        active={caseTab}
+        blockers={blockers}
+        onBack={() => nav({ name: "dashboard" })}
         onTab={setCaseTab}
-        showInspector={showInspector}
-        onToggleInspector={toggleInspector}
+        onAddTask={() => setShowAddTask(true)}
+        onMoveStage={() => setShowStage(true)}
+        onSetOutcome={() => setShowOutcome(true)}
+        onDeleteCase={() => setDelCaseOpen(true)}
+        onOpenDetails={() => setShowDetails(true)}
+        canDelete={canDelete}
       />
 
-      <div className={`grid grid-cols-1 ${showInspector ? "xl:grid-cols-[1fr_340px]" : ""} gap-4 items-start`}>
-        {/* left: stage-aware tabs — DocActionRow above is the primary tab navigation */}
-        <div className="space-y-4">
-          {/* profile */}
-          {(caseTab === "profile") && <CaseProfileEditor c={c} initialTab={profileSubTab} />}
+      {/* Stage rail: one line, current stage is the button, prev/next are the
+          affordances that used to require hunting for "Stage". */}
+      <StageRail c={c} onOpen={setJourneyKey} onMove={() => setShowStage(true)} />
 
-          {/* daily MIS */}
-          {(caseTab === "daily") && <DailyMisTab c={c} />}
+      {/* The stage drawer hangs off the rail rather than off a tab body, so it is
+          reachable from every workspace — it is about the STAGE, not the tab. */}
+      {journeyKey && (
+        <StageDrawer c={c} stageKey={journeyKey} onClose={() => setJourneyKey(null)} onTab={setCaseTab} />
+      )}
 
-          {/* tasks */}
-          {(caseTab === "tasks") && (<><div className="card anim-fade-up anim-reveal">
+      {/* Workspace switcher: four tabs + More. */}
+      <CaseTabBar c={c} active={caseTab} onTab={setCaseTab} />
+
+      <div className="space-y-4">
+        {/* NOW — today's work. Tasks, instructions and the daily update are one
+            workspace now; the Nudge link sits with the task it is about. */}
+        {(caseTab === "now") && (<>
+          {/* Nudge — deliberately attached to the overdue task, not to the
+              header. A header-level "Nudge" could only ever mean "nudge about
+              something"; this one names the thing. */}
+          {overdueTask && waNudge && (
+            <div className="card px-4 py-3 flex flex-wrap items-center gap-2 anim-fade-up"
+              style={{ borderLeft: "3px solid var(--coral)" }}>
+              <IWhatsapp size={15} />
+              <span className="text-[12.5px] min-w-0 flex-1" style={{ color: "var(--ink-dim)" }}>
+                <strong style={{ color: "var(--ink)" }}>{overdueTask.description}</strong>{" "}
+                <span className="mono text-[11px]" style={{ color: "var(--coral)" }}>{fmtDue(overdueTask.dueDate)}</span>
+              </span>
+              <a className="btn btn-mint btn-sm" href={waNudge} target="_blank" rel="noreferrer"
+                title={`Nudge ${c.customer} about ${overdueTask.description}`}>
+                Nudge client
+              </a>
+            </div>
+          )}
+
+          <div className="card anim-fade-up anim-reveal">
+      {/* Tasks card header — the opening block of the Now workspace. */}
             <div className="flex items-center justify-between p-4 border-b" style={{ borderColor: "var(--line-soft)" }}>
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="font-disp font-semibold text-[14px] m-0">Tasks</h3>
@@ -758,10 +822,40 @@ export default function CaseDetail({ id }: { id: number }) {
                       {isOpen ? <DueChip dueISO={t.dueDate} /> : <span className="mono text-[11px] text-[var(--ink-faint)]">{t.completedAt ? fmtDateTime(t.completedAt) : "—"}</span>}
                       <div className="flex gap-1">
                         {isOpen && canTouch && (
-                          <button className="btn btn-mint btn-sm !px-2 !py-1" title="Mark done" onClick={() => setDoneTarget(t)}><ICheck size={12} /></button>
+                          /* ONE CLICK, not two.
+                           *
+                           * This used to open a modal, because completing a task
+                           * took so long that asking "what happened?" felt like a
+                           * reasonable thing to do while you waited. It wasn't:
+                           * remarks are optional, the vast majority are empty,
+                           * and the modal turned the most frequent action in the
+                           * app into a two-step form.
+                           *
+                           * So the tick completes immediately (the store applies
+                           * it optimistically, so the row moves on click) and the
+                           * NOTE button next to it opens the same modal for the
+                           * minority who want to record what happened. */
+                          <>
+                            <button
+                              className="btn btn-mint btn-sm !px-2 !py-1"
+                              title="Mark done"
+                              aria-label={`Mark "${t.description}" done`}
+                              onClick={() => completeNow(t)}
+                            >
+                              <ICheck size={12} />
+                            </button>
+                            <button
+                              className="btn btn-ghost btn-sm !px-1.5 !py-1"
+                              title="Mark done with a note"
+                              aria-label={`Mark "${t.description}" done with a note`}
+                              onClick={() => setDoneTarget(t)}
+                            >
+                              <IPencil size={11} />
+                            </button>
+                          </>
                         )}
                         {canTouch && (
-                          <button className="btn btn-ghost btn-sm !px-2 !py-1" title="Delete task" onClick={() => setDelTarget(t)}><ITrash size={12} /></button>
+                          <button className="btn btn-ghost btn-sm !px-2 !py-1" title="Delete task" aria-label={`Delete task "${t.description}"`} onClick={() => setDelTarget(t)}><ITrash size={12} /></button>
                         )}
                       </div>
                     </div>
@@ -807,10 +901,66 @@ export default function CaseDetail({ id }: { id: number }) {
 
           </>)}
 
-          {/* documents */}
-          {(caseTab === "documents") && <DocVault c={c} />}
+          {/* WHAT TO COLLECT lives inside Documents now, where it belongs: it was
+              on the shared overview purely because the Documents tab was not the
+              place you were already standing. Two copies of the same list on one
+              screen is how people tick the wrong one. */}
+          {(caseTab === "documents") && (
+            <div className="space-y-4 anim-fade-up">
+              <CollectPanel c={c} onOpenVault={() => undefined} />
+              <DocVault c={c} />
+            </div>
+          )}
 
-          {/* chat */}
+          {/* CLIENT — the person, all of it. Profile and the bank-application data
+              sheet were two tabs describing one subject; the sheet only needed its
+              own tab because it used to live in a collapsed rail. */}
+          {(caseTab === "client") && (
+            <div className="space-y-4 anim-fade-up">
+              <ProfileStrip
+                c={c}
+                onEdit={(subTab) => {
+                  setProfileSubTab(subTab);
+                  document.getElementById("case-client-profile")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                }}
+              />
+              <div id="case-client-profile">
+                <CaseProfileEditor c={c} initialTab={profileSubTab} />
+              </div>
+
+              {/* THE APPLICATION DATA SHEET. Its unsaved-draft guard still runs —
+                  see setCaseTab — but the badge that shouts "16 needed" now lives
+                  on the Client tab itself, where the sheet is, rather than on a
+                  tab of its own that split the person in two. */}
+              <PersonSheetCard
+                c={c}
+                clientId={c.clientId}
+                role="Main applicant"
+                onDirtyChange={(d) => { sheetDirtyRef.current = d; }}
+              />
+              {c.secondPartyClientId && (
+                <PersonSheetCard c={c} clientId={c.secondPartyClientId} role="Co-applicant / Co-borrower" />
+              )}
+            </div>
+          )}
+
+          {/* MONEY — every number about the deal in one place: match, proposals,
+              commission, the stage-conditional offer figures and bank tracking.
+              The last two used to live in the inspector, which is precisely why
+              bank tracking was "rarely edited" and never trusted. */}
+          {(caseTab === "money") && (
+            <div className="space-y-4 anim-fade-up">
+              <BankMatchPanel c={c} />
+              <ProposalHistory c={c} />
+              <CommissionPanel c={c} />
+              {showPreApproval && <PreApprovalPanel c={c} />}
+              {showFol && <FolPanel c={c} />}
+              <MisPanel c={c} />
+            </div>
+          )}
+
+          {/* CHAT — read-mostly, so it lives behind More rather than taking a permanent
+              tab slot next to "what I am doing right now". */}
           {(caseTab === "chat") && (
             <div className="card h-[600px] overflow-hidden anim-fade-up">
               <ChatPanel
@@ -822,12 +972,6 @@ export default function CaseDetail({ id }: { id: number }) {
               />
             </div>
           )}
-
-          {/* banks + proposals: match panel followed by proposal history */}
-          {(caseTab === "banks") && <>
-            <BankMatchPanel c={c} />
-            <ProposalHistory c={c} />
-          </>}
 
           {/* activity: stage history + activity log */}
           {(caseTab === "activity") && (
@@ -860,218 +1004,154 @@ export default function CaseDetail({ id }: { id: number }) {
             </>)}
         </div>
 
-        {/* right: collapsible details inspector */}
-        {showInspector && (
-          <div className="space-y-4 xl:w-[340px] shrink-0 anim-fade-in">
-            <div className="flex items-center justify-between px-1">
-              <span className="mono text-[10.5px] uppercase tracking-wider font-bold text-[var(--ink-faint)]">
-                Case Details
-              </span>
-              <button
-                type="button"
-                onClick={toggleInspector}
-                className="btn btn-ghost btn-sm !py-0.5 !px-1.5 text-[11px] text-[var(--ink-faint)] hover:text-[var(--ink)]"
-                title="Collapse details panel"
-              >
-                Hide ×
-              </button>
-            </div>
-            {/* People — owner, VRM (with inline edit), advisor, backups, partner */}
-            <div className="card p-4">
-              <h3 className="font-disp font-semibold text-[13.5px] m-0 mb-3">People</h3>
-              <div className="space-y-2.5">
-                {/* Owner */}
-                <div className="flex items-center gap-2.5">
-                  <Avatar name={owner?.name ?? "?"} size={28} />
-                  <div>
-                    <div className="text-[12.5px] font-medium">{owner?.name ?? "—"}</div>
-                    <div className="text-[11px] text-[var(--ink-faint)]">{c.ownerId === me?.id ? "you" : "case owner"} · {owner?.role}</div>
-                  </div>
-                </div>
-                {/* VRM — display + inline edit in one place */}
-                <div className="flex items-center gap-2.5">
-                  <span style={{ opacity: c.vrmId ? 1 : 0.4 }}>
-                    <Avatar name={c.vrmId ? (userById(c.vrmId)?.name ?? "?") : "?"} size={28} />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[12.5px] font-medium">{c.vrmId ? (userById(c.vrmId)?.name ?? "—") : "—"}</div>
-                    <div className="text-[11px] text-[var(--ink-faint)]">VRM{c.vrmId ? ` · ${userById(c.vrmId)?.role ?? ""}` : " · unassigned"}</div>
-                  </div>
-                  {canEdit && (
-                    <select className="select !w-auto !py-1 text-[11px]" value={c.vrmId ? String(c.vrmId) : ""}
-                      title="Assign VRM"
-                      onChange={async (e) => {
-                        await updateCase(c.id, { vrmId: e.target.value ? parseInt(e.target.value, 10) : null });
-                        toast("success", e.target.value ? "VRM assigned." : "VRM removed.");
-                      }}>
-                      <option value="">— none —</option>
-                      {users.filter((u) => u.active).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                    </select>
-                  )}
-                </div>
-                {/* Bank RM — display only (edited in Bank Tracking panel) */}
-                {c.bankRm && (
-                  <div className="flex items-center gap-2.5">
-                    <Avatar name={c.bankRm} size={28} />
-                    <div>
-                      <div className="text-[12.5px] font-medium">{c.bankRm}</div>
-                      <div className="text-[11px] text-[var(--ink-faint)]">bank relationship manager</div>
-                    </div>
-                  </div>
-                )}
-                {/* Co-applicant */}
-                {c.coApplicantName && (
-                  <div className="flex items-center gap-2.5">
-                    <Avatar name={c.coApplicantName} size={28} />
-                    <div>
-                      <div className="text-[12.5px] font-medium">{c.coApplicantName}</div>
-                      <div className="text-[11px] text-[var(--ink-faint)]">co-applicant</div>
-                    </div>
-                  </div>
-                )}
-                {/* Client-facing advisor — may differ from the owner who runs the file */}
-                {(() => {
-                  const advId = c.advisorId ?? c.ownerId;
-                  const adv = userById(advId);
-                  const canAssignAdvisor = flags?.super || flags?.admin || c.ownerId === me?.id;
-                  return (
-                    <div className="flex items-center gap-2.5">
-                      <Avatar name={adv?.name ?? "?"} size={28} />
-                      <div className="min-w-0 flex-1">
-                        <div className="text-[12.5px] font-medium">{adv?.name ?? "—"}</div>
-                        <div className="text-[11px] text-[var(--ink-faint)]">advisor · {adv?.role}</div>
-                      </div>
-                      {canAssignAdvisor && (
-                        <select className="select !w-auto !py-1 text-[11px]" value={String(advId)}
-                          title="Appoint the client-facing advisor"
-                          onChange={async (e) => {
-                            await updateCase(c.id, { advisorId: Number(e.target.value) });
-                            toast("success", "Advisor appointed.");
-                          }}>
-                          {users.filter((u) => u.active && u.role !== "Head of Company" && u.role !== "PA to HoC").map((u) => (
-                            <option key={u.id} value={u.id}>{u.name}</option>
-                          ))}
-                        </select>
-                      )}
-                    </div>
-                  );
-                })()}
-                {/* Backups — Backup 1 / Backup 2 labeling (consistent; no B1/B2 shorthand) */}
-                {([1, 2] as const).map((n) => {
-                  const bid = n === 1 ? c.backup1Id : c.backup2Id;
-                  const bUser = bid ? userById(bid) : undefined;
-                  const canAssign = flags?.super || flags?.admin || c.ownerId === me?.id;
-                  return (
-                    <div key={n} className="flex items-center gap-2.5" style={{ opacity: bid ? 1 : 0.6 }}>
-                      <span className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-[10.5px] font-disp font-bold"
-                        style={{ background: bid ? "var(--amber-tint)" : "var(--tint)", color: bid ? "var(--amber)" : "var(--ink-faint)" }}>
-                        {n}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-[12.5px] font-medium">{bUser?.name ?? "—"}</div>
-                        <div className="text-[11px] text-[var(--ink-faint)]">{bid ? `Backup ${n} · covering · ${bUser?.role ?? ""}` : `Backup ${n} — not set`}</div>
-                      </div>
-                      {canAssign && (
-                        <select className="select !w-auto !py-1 text-[11px]" value={bid ? String(bid) : ""}
-                          title={`Appoint backup ${n}`}
-                          onChange={async (e) => {
-                            const val = e.target.value ? Number(e.target.value) : null;
-                            await updateCase(c.id, n === 1 ? { backup1Id: val } : { backup2Id: val });
-                            toast("success", val ? `Backup ${n} appointed — they can now open and work this file.` : `Backup ${n} removed.`);
-                          }}>
-                          <option value="">— none —</option>
-                          {users.filter((u) => u.active && u.id !== c.ownerId && (n === 1 ? u.id !== c.backup2Id : u.id !== c.backup1Id)).map((u) => (
-                            <option key={u.id} value={u.id}>{u.name}</option>
-                          ))}
-                        </select>
-                      )}
-                    </div>
-                  );
-                })}
-                {c.profileClientVerifiedAt && (
-                  <div className="flex items-center gap-2 text-[11px]" style={{ color: "var(--mint)" }}>
-                    <ICheck size={12} /> Client verified their own data sheet on {fmtDate(c.profileClientVerifiedAt.slice(0, 10))}
-                  </div>
-                )}
-                {c.partner && (
-                  <div className="flex items-center gap-2.5">
-                    <Avatar name={c.partner.name} size={28} />
-                    <div>
-                      <div className="text-[12.5px] font-medium">{c.partner.name}</div>
-                      <div className="text-[11px] text-[var(--ink-faint)]">{c.partner.kind}{flags?.viewRevenue ? ` · ${c.partner.sharePct}% of our commission` : ""}</div>
-                      {c.partnerRm && <div className="text-[11px] text-[var(--ink-dim)]">RM: {c.partnerRm}</div>}
-                    </div>
-                  </div>
-                )}
-
-                {/* Client Connection & Notification Overrides */}
-                <div className="pt-2.5 mt-2 border-t" style={{ borderColor: "var(--line-soft)" }}>
-                  <div className="flex items-center justify-between text-[11px] mb-1.5">
-                    <span className="font-semibold text-[var(--ink-dim)]">Client Channel Overrides</span>
-                    <span className="text-[10.5px] text-[var(--ink-faint)]">3-tier hierarchy</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    {(["push", "whatsapp", "email"] as const).map((ch) => {
-                      const overrides = (c.notificationOverrides as Record<string, boolean> | null) || {};
-                      const isExplicitOff = overrides[ch] === false;
-                      const isOn = ch === "email" ? overrides[ch] === true : !isExplicitOff;
-                      return (
-                        <button
-                          key={ch}
-                          type="button"
-                          className="chip text-[10.5px] px-2 py-0.5"
-                          style={
-                            isOn
-                              ? { background: "rgba(16,185,129,0.12)", color: "var(--mint)", borderColor: "rgba(16,185,129,0.4)" }
-                              : { background: "rgba(244,63,94,0.1)", color: "var(--coral)", borderColor: "rgba(244,63,94,0.3)" }
-                          }
-                          title={`Click to toggle ${ch}`}
-                          onClick={async () => {
-                            const updated = { ...overrides, [ch]: !isOn };
-                            await updateCase(c.id, { notificationOverrides: updated });
-                            toast("info", `${ch.toUpperCase()} notification for this client set to ${!isOn ? "ON" : "OFF"}`);
-                          }}
-                        >
-                          {ch === "whatsapp" ? "WhatsApp" : ch === "push" ? "Push" : "Email"}: {isOn ? "ON ✓" : "OFF ✕"}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            </div>
-            {/* Client file */}
-            <ClientFileCard c={c} />
-            {/* Pre-approval (stage-conditional) */}
-            {showPreApproval && <PreApprovalPanel c={c} />}
-            {/* FOL (stage-conditional) */}
-            {showFol && <FolPanel c={c} />}
-            {/* Commission */}
-            <CommissionPanel c={c} />
-            {/* AI Copilot */}
-            <CaseCopilot caseId={c.id} />
-            {/* Bank Tracking (collapsed by default — rarely edited) */}
-            <MisPanel c={c} />
-          </div>
-        )}
-      </div>
+      {/* DETAILS SHEET. Replaces the persistent 340px inspector rail: one button,
+          one overlay, Escape to close. People / client file / copilot are the
+          groups it holds; the money panels went to the Money tab instead, because
+          they were only ever in the rail because there was nowhere else. */}
+      {showDetails && (
+        <CaseDetailsSheet
+          c={c}
+          onClose={() => setShowDetails(false)}
+          people={<PeoplePanel c={c} />}
+          clientFile={<ClientFileCard c={c} />}
+          assistant={<CaseCopilot caseId={c.id} />}
+        />
+      )}
 
       {showAddTask && <AddTaskModal open={showAddTask} onClose={() => setShowAddTask(false)} caseId={c.id} />}
       {showStage && <StageUpdateModal open={showStage} onClose={() => setShowStage(false)} caseId={c.id} />}
       {showOutcome && <OutcomeModal open={showOutcome} onClose={() => setShowOutcome(false)} caseId={c.id} />}
       {doneTarget && (
-        <DoneModal t={doneTarget} onClose={() => setDoneTarget(null)} onDone={async (remarks) => { await completeTask(doneTarget.id, remarks); toast("success", `“${doneTarget.description}” marked done.`); }} />
+        <DoneModal
+          t={doneTarget}
+          onClose={() => setDoneTarget(null)}
+          onDone={(remarks) => completeWithNote(doneTarget, remarks)}
+        />
       )}
       {delTarget && (
         <ConfirmModal open={!!delTarget} onClose={() => setDelTarget(null)} title="Delete task?" body={<>Permanently delete <strong>{delTarget.description}</strong>?</>} confirmLabel="Delete"
           onConfirm={async () => { await deleteTask(delTarget.id); toast("success", "Task deleted."); }} />
       )}
+      {/* Unsaved-changes guard. Deliberately a hard block rather than a silent
+          auto-save: the broker typed a partial value, and storing it as if it were
+          complete is worse than asking. */}
+      {pendingTab && (
+        <ConfirmModal
+          open
+          onClose={() => setPendingTab(null)}
+          title="Save before leaving the data sheet?"
+          body={<>You have unsaved changes on the application data sheet. Leaving now will <strong>discard them</strong>.</>}
+          confirmLabel="Discard and leave"
+          onConfirm={() => {
+            const t = pendingTab;
+            setPendingTab(null);
+            sheetDirtyRef.current = false;
+            setCaseTabRaw(t);
+          }}
+        />
+      )}
+
       {delCaseOpen && (
         <ConfirmModal open onClose={() => setDelCaseOpen(false)} title={`Delete ${c.caseNumber}?`}
           body={<>Permanently delete the case for <strong>{c.customer}</strong> — including its tasks, documents, proposals and history? Only for accidental creations; use <strong>Set outcome → Lost</strong> otherwise.</>}
           confirmLabel="Delete permanently"
           onConfirm={async () => { await deleteCase(c.id); }} />
       )}
+    </div>
+  );
+}
+
+/* PersonSheetCard — binds PersonDataSheet to one person on a case, and owns the
+ * "Request from client" action.
+ *
+ * The chase is a Task with waitingFor "Client" rather than a bespoke mechanism:
+ * the portal already renders client tasks, so this adds no new concept.
+ *
+ * SELF-EMPLOYED FIELDS are hidden unless the person's employmentProfile says so,
+ * which is why the shareholding-percentage question only appears for the people
+ * it actually applies to.
+ */
+
+function PersonSheetCard({ c, clientId, role, onDirtyChange }: {
+  c: LoanCase;
+  clientId: number | null;
+  role: string;
+  onDirtyChange?: (dirty: boolean) => void;
+}) {
+  const { clients, savePersonData, addTask, toast } = useHfmcStore();
+  const client = clientId ? clients.find((cl) => cl.id === clientId) ?? null : null;
+
+  // Seed from what we ALREADY know, so the sheet never presents as empty and
+  // staff never "request from client" something the file already holds. The seed
+  // is first-write-wins, so anything already answered survives it.
+  //
+  // Hooks run BEFORE the `if (!client)` early return below — a hook after an early
+  // return is a rules-of-hooks violation, and this one was written that way first.
+  const seeded = useMemo(
+    () =>
+      client
+        ? seedPersonSheet(client.personData ?? {}, {
+            fullName: client.fullName,
+            eidNo: client.eidNo ?? undefined,
+            passportNo: client.passportNo ?? undefined,
+            dob: client.dob ?? undefined,
+            nationality: client.nationality ?? undefined,
+            phone: client.phone || undefined,
+            email: client.email ?? undefined,
+            employmentProfile: client.employmentProfile,
+            companyName: client.companyName ?? undefined,
+            monthlySalary: client.monthlySalary,
+            variableIncome: client.variableIncome,
+            rentalIncome: client.rentalIncome,
+            existingEmis: client.existingEmis,
+            creditCardLimits: client.creditCardLimits,
+          })
+        : {},
+    [client],
+  );
+
+  if (!client) {
+    return (
+      <div className="card p-4 anim-fade-up">
+        <div className="flex items-center gap-2">
+          <span className="font-disp font-semibold text-[13px]">{role}</span>
+          <Chip tone="slate">not linked to a client yet</Chip>
+        </div>
+        <p className="text-[11.5px] text-[var(--ink-faint)] m-0 mt-1.5">
+          Link this person from the case profile and their data sheet appears here — and carries across to every
+          other case they appear on.
+        </p>
+      </div>
+    );
+  }
+
+  const selfEmployed = client.employmentProfile === "Self-Employed";
+
+  const request = (missing: { path: string; label: string }[]) => {
+    const summary = missing.map((f) => f.label).join(", ");
+    void addTask(c.id, {
+      description: `Please complete your application data sheet: ${summary}`,
+      ownerId: c.ownerId,
+      waitingFor: "Client",
+      whyPending: "Client to complete",
+      dueDate: new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10),
+    });
+    toast("info", `Asked the client for ${missing.length} field${missing.length > 1 ? "s" : ""} — they can fill these in their portal.`);
+  };
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-1.5 px-1">
+        <span className="text-[11px] uppercase tracking-[0.1em] font-disp font-semibold text-[var(--ink-faint)]">{role}</span>
+      </div>
+      <PersonDataSheet
+        data={seeded}
+        selfEmployed={selfEmployed}
+        secondParty={role !== "Main applicant"}
+        onChange={(next) => savePersonData(client.id, next)}
+        onRequest={request}
+        onDirtyChange={onDirtyChange}
+      />
     </div>
   );
 }
@@ -1097,13 +1177,19 @@ function ClientFileCard({ c }: { c: LoanCase }) {
       </div>
       <div className="flex items-center gap-2.5">
         <Avatar name={client.fullName} size={34} />
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="text-[13px] font-medium truncate">{client.fullName}</div>
-          <div className="text-[10.5px] text-[var(--ink-faint)]">
-            {client.phone ? `+${client.phone}` : "no phone"} · {client.residency}
-            {client.eidNo ? " · EID on record" : ""}
+          {/* Contact links, not raw text — the whole point of this card is
+              being able to reach the person from inside the file. Falls back
+              to the client master's own fields when the case profile is thin. */}
+          <div className="mt-0.5">
+            <ContactLine contact={resolveContact(c, client)} size={11} />
           </div>
         </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5 mt-2">
+        <Chip tone="slate">{client.residency}</Chip>
+        <KycChip contact={resolveContact(c, client)} />
       </div>
       {(client.monthlySalary > 0 || client.employmentProfile) && (
         <div className="mt-2.5 pt-2.5 text-[11.5px] text-[var(--ink-dim)]" style={{ borderTop: "1px dashed var(--line)" }}>
@@ -1134,11 +1220,31 @@ function ClientFileCard({ c }: { c: LoanCase }) {
 
 function DoneModal({ t, onClose, onDone }: { t: Task; onClose: () => void; onDone: (remarks: string) => void }) {
   const [remarks, setRemarks] = useState("");
+  const [busy, setBusy] = useState(false);
+  const submit = () => {
+    if (busy) return;
+    setBusy(true);
+    onDone(remarks);
+  };
   return (
-    <Modal title="Complete task" sub={t.description} onClose={onClose} width={440}
-      footer={<><button className="btn btn-ghost" onClick={onClose}>Not yet</button><button className="btn btn-mint" onClick={() => onDone(remarks)}><ICheck size={15} /> Mark done</button></>}>
-      <label className="label">Remarks (optional)</label>
-      <textarea className="textarea" rows={3} placeholder="What happened?" value={remarks} onChange={(e) => setRemarks(e.target.value)} autoFocus />
+    <Modal title="Mark done with a note" sub={t.description} onClose={onClose} width={440}
+      footer={
+        <>
+          {/* "Not yet" first and ghost: escaping should never be the thing your
+              cursor lands on by muscle memory. */}
+          <button className="btn btn-ghost" onClick={onClose} disabled={busy}>Cancel</button>
+          <button className="btn btn-mint" onClick={submit} disabled={busy}>
+            <ICheck size={15} /> {busy ? "Saving…" : "Mark done"}
+          </button>
+        </>
+      }>
+      <label className="label">What happened? (optional)</label>
+      <textarea className="textarea" rows={3} placeholder="e.g. client paid the valuation fee" value={remarks}
+        onChange={(e) => setRemarks(e.target.value)} autoFocus
+        onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit(); }} />
+      <p className="text-[11px] m-0 mt-2" style={{ color: "var(--ink-faint)" }}>
+        Skipping this is fine — the ✎ button on the task is only for when the detail is worth keeping.
+      </p>
     </Modal>
   );
 }

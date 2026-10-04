@@ -36,7 +36,7 @@ function Kpi({ label, value, format, tone, sub }: { label: string; value: number
 }
 
 export default function Dashboard() {
-  const { cases, tasks, activities, stages, banks, whyPending, waitingFor, users, me, nav, userById, visibleCases, visibleTasks, escalations, bulletin, visibleCaseIds, visibleTaskIds, flags, completeTask, toast } = useHfmcStore();
+  const { cases, tasks, activities, stages, banks, bankProducts, whyPending, waitingFor, users, me, nav, userById, visibleCases, visibleTasks, escalations, bulletin, visibleCaseIds, visibleTaskIds, flags, completeTask, toast } = useHfmcStore();
   useTick(30000);
 
   // deps must include the data arrays (cases/visibleCaseIds/tasks/visibleTaskIds)
@@ -54,6 +54,31 @@ export default function Dashboard() {
   );
 
   const openTasks = visTasks.filter((t) => t.status === "Open");
+
+  // Bank Products card counts. `bankProducts` is already in the hydrated store, so
+  // this costs no extra request on the dashboard. Only APPROVED + active products
+  // count, because that is exactly what the Products page will list.
+  const liveProducts = useMemo(
+    () => bankProducts.filter((p) => p.status === "approved" && p.active),
+    [bankProducts],
+  );
+  const bankProductCount = liveProducts.length;
+  const bankCount = useMemo(
+    () => new Set(liveProducts.map((p) => p.bankName).filter(Boolean)).size,
+    [liveProducts],
+  );
+  // a rate line per quote, not per product — the Products list is built this way
+  const rateLineCount = useMemo(
+    () => liveProducts.reduce((n, p) => {
+      try {
+        const parsed = JSON.parse(p.pricingJson || "{}");
+        return n + (Array.isArray(parsed.quotes) ? parsed.quotes.length : 0);
+      } catch {
+        return n; // unparseable pricing JSON counts as zero, not as a crash
+      }
+    }, 0),
+    [liveProducts],
+  );
 
   const whyRows = whyPending
     .map((w) => ({ label: w.label, value: openTasks.filter((t) => t.whyPending === w.label).length, color: TONE_HEX.amber }))
@@ -188,6 +213,39 @@ export default function Dashboard() {
           <Spark points={spark} width={130} height={34} />
         </div>
       </div>
+
+      {/* Bank Products entry — the pricing catalogue is a work tool, not a report,
+          so it gets a card rather than a line in the header. Counts come from the
+          store's already-hydrated bankProducts; no extra request on the dashboard. */}
+      <button
+        className="w-full text-left card p-4 anim-fade-up transition-all hover:brightness-[1.03]"
+        style={{ borderLeft: "3px solid var(--mint)", cursor: "pointer" }}
+        onClick={() => nav({ name: "products" })}
+        title="Browse every live bank rate line — filter by employment, residency, transaction, rate and LTV"
+      >
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="font-disp font-semibold text-[14px] flex items-center gap-2">
+              Bank products
+              <IArrowR size={13} />
+            </div>
+            <p className="text-[11.5px] m-0" style={{ color: "var(--ink-faint)" }}>
+              Every live rate line across {bankProductCount} bank product{bankProductCount === 1 ? "" : "s"} — who each one is for,
+              what it costs, and what else it charges. Filter by employment, residency, transaction, rate and LTV.
+            </p>
+          </div>
+          <div className="flex items-center gap-4 shrink-0">
+            <div className="text-right">
+              <div className="mono text-[20px] font-bold" style={{ color: "var(--mint)" }}>{rateLineCount}</div>
+              <div className="text-[10.5px]" style={{ color: "var(--ink-faint)" }}>rate lines</div>
+            </div>
+            <div className="text-right">
+              <div className="mono text-[20px] font-bold" style={{ color: "var(--amber)" }}>{bankCount}</div>
+              <div className="text-[10.5px]" style={{ color: "var(--ink-faint)" }}>banks</div>
+            </div>
+          </div>
+        </div>
+      </button>
 
       {/* Mobile: a 2-up grid so every KPI is visible without sideways scrolling
           (a horizontal strip hid 5 of 7 tiles behind a swipe). From md up it

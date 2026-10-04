@@ -4,7 +4,29 @@ import { Chip } from "@/components/hfmc/ui";
 import { ICheck } from "@/components/icons";
 import { fmtDate, fmtMoney } from "@/lib/format";
 
-export type CaseTab = "profile" | "daily" | "tasks" | "documents" | "banks" | "activity" | "chat";
+/** The Case 360 workspace tabs.
+ *
+ *  REDUCED from eight to four primaries plus a More menu. The old set
+ *  (Profile / Daily / Vault / Tasks / Banks / Chat / Data Sheet / Activity) had
+ *  two of them describing THE SAME PERSON (Profile and Data Sheet) and two of
+ *  them describing THE SAME MONEY (Banks & Proposal and a bank-tracking panel
+ *  that lived in a collapsed rail nobody opened). Eight peer tabs with badges
+ *  is not navigation, it is a wall.
+ *
+ *  now       — today's work: the current stage's drawer, tasks, instructions,
+ *              daily update. The landing tab, because "what do I do" outranks
+ *              "what do I know".
+ *  client    — the person: structured profile AND the bank-application data
+ *              sheet, one tab, two sections. They were separate only because
+ *              the sheet first shipped hidden in a rail.
+ *  documents — the vault, opened on the outstanding list.
+ *  money     — bank match, proposals, commission, pre-approval/FOL figures and
+ *              bank tracking. All the numbers, in one place.
+ *  chat / activity — real tabs, reached through More rather than given a
+ *              permanent slot. They are read-mostly surfaces; nobody needs
+ *              them one click away all day.
+ */
+export type CaseTab = "now" | "client" | "documents" | "money" | "chat" | "activity";
 
 export function StageHead({ title, owner, branch }: { title: string; owner: string; branch: string | null }) {
   return (

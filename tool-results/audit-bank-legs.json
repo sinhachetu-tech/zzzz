@@ -1,0 +1,72 @@
+﻿{
+  "summary": {
+    "totalCases": 41,
+    "engagements": 39,
+    "multiLegEngagements": 1,
+    "legsStillLiveOnAWonDeal": 0,
+    "pipelineExposureOnThose": 0,
+    "multipleBookedLegs": 0,
+    "wonBankConflicts": 0,
+    "unsplitLegacyRows": 9
+  },
+  "findings": {
+    "multiLeg": [
+      {
+        "caseNumber": "HFMC-0910",
+        "customer": "sfsfsf",
+        "legs": [
+          "Emirates Islamic",
+          "NBF",
+          "Al Hilal"
+        ],
+        "liveCount": 3,
+        "bookedCount": 0,
+        "pipelineExposure": 4500000,
+        "stageSpread": [
+          "Document Collection"
+        ]
+      }
+    ],
+    "multipleWinners": [],
+    "multipleLive": [],
+    "wonBankConflict": [],
+    "unsplitLegacy": [
+      {
+        "caseNumber": "HFMC-0003",
+        "banks": "Mashreq+HSBC"
+      },
+      {
+        "caseNumber": "HFMC-0008",
+        "banks": "UAB+RAK Bank"
+      },
+      {
+        "caseNumber": "HFMC-0016",
+        "banks": "ENBD+Sharjah Islamic Bank"
+      },
+      {
+        "caseNumber": "HFMC-0017",
+        "banks": "Sharjah Islamic Bank+Ajman Bank+Emirates Islamic+Bank of Baroda"
+      },
+      {
+        "caseNumber": "HFMC-0012",
+        "banks": "HSBC+ADCB"
+      },
+      {
+        "caseNumber": "HFMC-0007",
+        "banks": "ADIB+ENBD"
+      },
+      {
+        "caseNumber": "HFMC-0005",
+        "banks": "SCB+CBD"
+      },
+      {
+        "caseNumber": "HFMC-0001",
+        "banks": "ENBD+ADCB"
+      },
+      {
+        "caseNumber": "HFMC-0010",
+        "banks": "NBF+FAB"
+      }
+    ]
+  }
+}

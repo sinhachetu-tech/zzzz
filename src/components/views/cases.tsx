@@ -5,25 +5,42 @@
    row for the full Case 360. Dashboard is analytics; this is where work
    actually gets picked up. */
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useHfmcStore } from "@/lib/client-store";
 import type { CaseStatus, LoanCase } from "@/lib/types";
-import { ageDays, caseStatusOf, fmtMoney } from "@/lib/format";
+import { ageDays, caseStatusOf, fmtDate, fmtMoney } from "@/lib/format";
 import { Avatar, Chip, EmptyState, StatusChip, Tabs } from "@/components/hfmc/ui";
 import { BankChips, CaseStateChip, SourceChip } from "@/components/hfmc/bits";
+import { BankLogo } from "@/components/case/ContactBits";
+import { useChangedIds } from "@/hooks/use-changed-ids";
 import { IBriefcase, IInbox } from "@/components/icons";
 
 const STATE_TABS: ("Active" | "Booked" | "Lost" | "All")[] = ["Active", "Booked", "Lost", "All"];
+
+/* Row-highlight fingerprint. Module scope, not inline, so the identity is
+   stable across renders — an inline arrow would be a new reference every
+   render, and `useChangedIds` would re-run its effect (and re-flash rows) on
+   every store tick. */
+const rowKey = (c: LoanCase) => c.id;
+/* Only the things a broker would actually notice moving: the derived status
+   (On Track → At Risk → Overdue), the stage, and ownership. Amount/age churn
+   on their own are NOT included — a row that only ticks a counter must not
+   flash, or the table strobes. */
+const rowFingerprint = (c: LoanCase) => `${c.stage}|${c.ownerId ?? ""}|${c.caseStatus}`;
 
 const SAVED_VIEWS: { label: string; apply: (patch: { stateTab: (typeof STATE_TABS)[number]; stage: string; status: string; owner: string; sort: string }) => { stateTab: (typeof STATE_TABS)[number]; stage: string; status: string; owner: string; sort: string } }[] = [
   { label: "My overdue", apply: () => ({ stateTab: "Active", stage: "All", status: "Overdue", owner: "mine", sort: "urgency" }) },
   { label: "High value >1M", apply: () => ({ stateTab: "Active", stage: "All", status: "All", owner: "All", sort: "amount" }) },
   { label: "No action 3d+", apply: () => ({ stateTab: "Active", stage: "All", status: "No Action", owner: "All", sort: "urgency" }) },
   { label: "Unassigned", apply: () => ({ stateTab: "Active", stage: "All", status: "All", owner: "unassigned", sort: "newest" }) },
+  // The conversion stamp makes this view possible: it separates files that
+  // arrived as a website/agent lead from ones created straight into the
+  // pipeline, which is the question the funnel report cannot answer on its own.
+  { label: "From lead", apply: () => ({ stateTab: "Active", stage: "All", status: "All", owner: "All", sort: "newest" }) },
 ];
 
 export default function Cases() {
-  const { cases, stages, users, me, nav, userById, visibleCases, flags, tasks } = useHfmcStore();
+  const { cases, stages, users, me, nav, userById, visibleCases, flags, tasks, banks } = useHfmcStore();
   const [search, setSearch] = useState("");
   const [stage, setStage] = useState("All");
   const [status, setStatus] = useState("All");
@@ -56,6 +73,21 @@ export default function Cases() {
   const visCases = useMemo(() => visibleCases(), [visibleCases, cases]);
   const statusOf = (c: LoanCase): CaseStatus => caseStatusOf(c, tasks);
 
+  /* Flash the row when its status/stage/owner actually changes, so a row that
+     moved under you is findable instead of silently re-sorted. Uses `statusOf`
+     too — status is DERIVED from tasks (never stored), so a task completing
+     elsewhere flips On Track → No Action with no write to the case at all.
+     That invisible transition is exactly the one worth seeing. */
+  const statusById = useMemo(
+    () => new Map(visCases.map((c) => [c.id, caseStatusOf(c, tasks)])),
+    [visCases, tasks],
+  );
+  const changedIds = useChangedIds(
+    visCases,
+    rowKey,
+    useCallback((c: LoanCase) => `${rowFingerprint(c)}|${statusById.get(c.id) ?? ""}`, [statusById]),
+  );
+
   const scope =
     me?.role === "Head of Company" || me?.role === "PA to HoC" || me?.role === "Mortgage Head" || me?.role === "Super Admin"
       ? "all teams"
@@ -76,9 +108,17 @@ export default function Cases() {
       if (status !== "All" && statusOf(c) !== status) return false;
       // High value view reuses amount sort + 1M floor
       if (activeView === "High value >1M" && c.loanAmount < 1_000_000) return false;
+      // "From lead" = carries a conversion stamp. Cases created directly into
+      // the pipeline (never a Lead) have convertedAt === null.
+      if (activeView === "From lead" && !c.convertedAt) return false;
       if (search) {
         const q = search.toLowerCase();
-        if (!c.customer.toLowerCase().includes(q) && !c.caseNumber.toLowerCase().includes(q) && !c.banks.some((b) => b.toLowerCase().includes(q))) return false;
+        if (
+          !c.customer.toLowerCase().includes(q) &&
+          !c.caseNumber.toLowerCase().includes(q) &&
+          !c.banks.some((b) => b.toLowerCase().includes(q)) &&
+          !c.whatsapp.toLowerCase().includes(q)
+        ) return false;
       }
       return true;
     })
@@ -106,7 +146,11 @@ export default function Cases() {
             Cases · <span style={{ color: "var(--amber)" }}>{scope}</span>
           </h1>
           <p className="text-[13px] text-[var(--ink-dim)] mt-0.5 mb-0">
-            The worklist — every engagement past the lead stage. Click a row for the full 360 view.
+            The worklist — every engagement past the lead stage. Click a row for the full 360 view.{" "}
+            <span style={{ color: "var(--ink-faint)" }}>
+              Read-only here: re-owning a file or shopping it to another bank is done in the Leads tab, so there is one
+              place that decides where a deal sits.
+            </span>
           </p>
         </div>
       </div>
@@ -201,7 +245,11 @@ export default function Cases() {
                   const note = c.statusNote?.trim() ?? "";
                   const noteShort = note.length > 40 ? `${note.slice(0, 39)}…` : note;
                   return (
-                    <tr key={c.id} onClick={() => nav({ name: "case", id: c.id })}>
+                    <tr
+                      key={c.id}
+                      className={changedIds.has(c.id) ? "row-changed" : undefined}
+                      onClick={() => nav({ name: "case", id: c.id })}
+                    >
                       <td className="mono text-[12.5px]" style={{ color: "var(--amber)" }}>{c.caseNumber}</td>
                       <td className="font-medium">
                         <div className="flex items-center gap-1.5">
@@ -215,6 +263,25 @@ export default function Cases() {
                             </span>
                           )}
                           <span className="truncate" style={{ maxWidth: 200 }}>{c.customer}</span>
+                        </div>
+                        {/* Contact + conversion status — the row a broker scans
+                            before dialling. Phone doubles as the search target. */}
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5">
+                          {c.whatsapp && (
+                            <span className="mono text-[10.5px]" style={{ color: "var(--ink-faint)" }}>{c.whatsapp}</span>
+                          )}
+                          {c.convertedAt && (
+                            <span
+                              className="chip"
+                              title={`Converted from a lead on ${fmtDate(c.convertedAt.slice(0, 10))}${c.convertedById ? ` by ${userById(c.convertedById)?.name ?? "staff"}` : ""}`}
+                              style={{ color: "var(--mint)", background: "rgba(16,185,129,0.12)", borderColor: "rgba(16,185,129,0.35)", padding: "1px 6px", fontSize: "9.5px" }}
+                            >
+                              Converted {(() => {
+                                const d = ageDays(c.convertedAt);
+                                return d <= 0 ? "today" : `${d}d ago`;
+                              })()}
+                            </span>
+                          )}
                         </div>
                         {c.partner && (<span className="block text-[10.5px] text-[var(--ink-faint)]">{c.partner.name}{flags?.viewRevenue ? ` · ${c.partner.sharePct}%` : ""}</span>)}
                       </td>
@@ -261,14 +328,35 @@ export default function Cases() {
             const st = statusOf(c);
             return (
               <button key={c.id} className="w-full text-left px-3.5 py-3 flex items-center gap-3 active:bg-[var(--tint)]" onClick={() => nav({ name: "case", id: c.id })}>
-                <Avatar name={userById(c.ownerId)?.name ?? "?"} size={32} />
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-1.5">
-                    <span className="text-[13px] font-semibold truncate">{c.customer}</span>
-                    {c.onHold && <span className="chip shrink-0" style={{ color: "var(--amber)", background: "rgba(242,176,76,0.12)", borderColor: "rgba(242,176,76,0.4)", padding: "1px 6px", fontSize: "9px" }}>HOLD</span>}
+                <div className="flex items-start gap-3">
+                  {(() => {
+                    // Bank mark leads on mobile: "which bank is this with" is the
+                    // first question on a phone; the customer name is right there.
+                    const b = banks.find((x) => x.name === (c.wonBank ?? c.banks[0]));
+                    return b ? <BankLogo bank={b} size={30} /> : <Avatar name={c.customer} size={30} />;
+                  })()}
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-1.5">
+                      <span className="text-[13px] font-semibold truncate">{c.customer}</span>
+                      {c.onHold && <span className="chip shrink-0" style={{ color: "var(--amber)", background: "rgba(242,176,76,0.12)", borderColor: "rgba(242,176,76,0.4)", padding: "1px 6px", fontSize: "9px" }}>HOLD</span>}
+                      {c.convertedAt && (
+                        <span
+                          className="chip shrink-0"
+                          title={`Converted from a lead on ${fmtDate(c.convertedAt.slice(0, 10))}`}
+                          style={{ color: "var(--mint)", background: "rgba(16,185,129,0.12)", borderColor: "rgba(16,185,129,0.35)", padding: "1px 6px", fontSize: "9px" }}
+                        >
+                          CONVERTED
+                        </span>
+                      )}
+                    </span>
+                    {/* Phone is the number a broker dials from the worklist on a
+                        phone — it belongs on the card, not behind a tap. */}
+                    {c.whatsapp && (
+                      <span className="block mono text-[11px] mt-0.5 truncate" style={{ color: "var(--ink-dim)" }}>{c.whatsapp}</span>
+                    )}
+                    <span className="block mono text-[10.5px] text-[var(--ink-faint)] mt-0.5 truncate">{c.caseNumber} · {fmtMoney(c.loanAmount)} · {c.stage} · {ageDays(c.createdAt)}d</span>
                   </span>
-                  <span className="block mono text-[10.5px] text-[var(--ink-faint)] mt-0.5">{c.caseNumber} · {fmtMoney(c.loanAmount)} · {c.stage} · {ageDays(c.createdAt)}d</span>
-                </span>
+                </div>
                 {c.caseStatus === "Active" ? <StatusChip status={st} /> : <CaseStateChip state={c.caseStatus} />}
               </button>
             );

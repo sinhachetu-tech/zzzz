@@ -28,10 +28,52 @@ function make(node: ReactNode) {
   };
 }
 
+/* ---------- HFMC brand marks (official artwork) ----------
+   Traced from the official vector in `public/brand/` (hfmc_mark_*.svg /
+   hfmc_logo_*.svg). The previous mark here was a hand-drawn rounded-square
+   "pulse" glyph that shared no geometry with the real logo; this is the
+   actual house + gold H.
+
+   The house strokes use `currentColor`, NOT a fixed white. The brand rule is
+   "charcoal on light, white on navy" — inheriting the surrounding text colour
+   satisfies that automatically in both themes, and keeps the gold H as the one
+   fixed brand colour. Hard-coding #FFFFFF here would have made the mark
+   invisible on the login page's light panel. */
+
 export const LogoMark = ({ size = 26, className = "" }: IconProps) => (
-  <svg width={size} height={size} viewBox="0 0 32 32" className={className} aria-hidden="true">
-    <rect width="32" height="32" rx="8" fill="#F2B04C" fillOpacity="0.12" stroke="#F2B04C" strokeOpacity="0.4" />
-    <path d="M7 16h4l3-7 4 14 3-7h4" stroke="#F2B04C" strokeWidth="2.2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+  <svg width={size} height={size} viewBox="46 40 312 308" className={className} aria-hidden="true" fill="none">
+    <g stroke="currentColor" strokeWidth={24} strokeLinecap="square">
+      <path d="M76 322V188L206 64l46 42" />
+      <path d="M334 142V322H160" />
+    </g>
+    <g fill="#E9AB3E">
+      <rect x="108" y="176" width="30" height="162" />
+      <rect x="108" y="205" width="192" height="28" />
+      <rect x="270" y="98" width="30" height="192" />
+    </g>
+  </svg>
+);
+
+/* Full lockup (mark + HFMC wordmark). Only use where there is room for the
+   brand's 120px minimum width — in the 228px sidebar and the mobile headers
+   the mark plus the existing wordmark text reads better and keeps the
+   "Mortgage · UAE" line. Sized by HEIGHT because the lockup is ~3:1 wide. */
+export const LogoLockup = ({ size = 30, className = "" }: IconProps) => (
+  <svg height={size} viewBox="40 30 970 320" className={className} aria-hidden="true" fill="none">
+    <g stroke="currentColor" strokeWidth={24} strokeLinecap="square">
+      <path d="M76 322V188L206 64l46 42" />
+      <path d="M334 142V322H160" />
+    </g>
+    <g fill="#E9AB3E">
+      <rect x="108" y="176" width="30" height="162" />
+      <rect x="108" y="205" width="192" height="28" />
+      <rect x="270" y="98" width="30" height="192" />
+    </g>
+    <g stroke="currentColor" strokeWidth={28} strokeLinecap="square">
+      <path d="M399 128V335M385 142H518M399 232H506" />
+      <path d="M983 174A90 90 0 1 0 983 290" />
+    </g>
+    <polygon fill="currentColor" points="560,335 560,128 594,128 664,252 734,128 769,128 769,335 741,335 741,184 676,298 652,298 588,184 588,335" />
   </svg>
 );
 

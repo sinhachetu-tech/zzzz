@@ -78,7 +78,11 @@ type PrismaCase = {
   settlementDate?: string | null;
   transferDate?: string | null;
   titleDeedDate?: string | null;
+  stageDataJson?: string | null;
   profileJson?: string | null;
+  // Lead → case conversion stamp (null = never a lead)
+  convertedAt?: Date | null;
+  convertedById?: number | null;
   // Client master links
   clientId?: number | null;
   secondPartyClientId?: number | null;
@@ -87,6 +91,12 @@ type PrismaCase = {
   backup2Id?: number | null;
   profileClientVerifiedAt?: Date | string | null;
   notificationOverrides?: string | null;
+  /** REAL property value (nullable) — added so the engine can report an LTV data
+   *  gap instead of fabricating one from the loan amount. */
+  propertyValue?: number | null;
+  // per-bank journey identity
+  bankRef?: string | null;
+  parentCaseId?: number | null;
 };
 
 export function serCase(c: PrismaCase): LoanCase {
@@ -98,7 +108,12 @@ export function serCase(c: PrismaCase): LoanCase {
   }
   return {
     id: c.id, caseNumber: c.caseNumber, customer: c.customer, banks, wonBank: c.wonBank,
-    loanAmount: c.loanAmount, stage: c.stage, caseStatus: c.caseStatus as LoanCase["caseStatus"],
+    // Per-bank journey identity (the bank's own reference + sibling linkage)
+    bankRef: c.bankRef ?? null,
+    parentCaseId: c.parentCaseId ?? null,
+    loanAmount: c.loanAmount,
+    propertyValue: c.propertyValue ?? null,
+    stage: c.stage, caseStatus: c.caseStatus as LoanCase["caseStatus"],
     closedDate: c.closedDate, ownerId: c.ownerId, source: c.source as LoanCase["source"],
     partner, whatsapp: c.whatsapp, waGroup: c.waGroup,
     createdAt: c.createdAt.toISOString(), updatedAt: c.updatedAt.toISOString(),
@@ -118,6 +133,9 @@ export function serCase(c: PrismaCase): LoanCase {
     holdReason: c.holdReason ?? null,
     holdUntil: c.holdUntil ?? null,
     lostReason: c.lostReason ?? null,
+    // Lead → case conversion stamp (nullable: never a lead)
+    convertedAt: c.convertedAt ? c.convertedAt.toISOString() : null,
+    convertedById: c.convertedById ?? null,
     // Bank submission
     employmentProfile: c.employmentProfile, propertyType: c.propertyType, residency: c.residency,
     // FINAL PROPERTY CLASSIFICATION — canonical dims (UNKNOWN-safe defaults pre-push)
@@ -168,6 +186,11 @@ export function serCase(c: PrismaCase): LoanCase {
       if (!c.notificationOverrides) return null;
       try { return JSON.parse(c.notificationOverrides); } catch { return null; }
     })(),
+    stageDataJson: (() => {
+      const raw = (c as unknown as { stageDataJson?: string | null }).stageDataJson;
+      if (!raw) return {};
+      try { return typeof raw === "string" ? JSON.parse(raw) : raw; } catch { return {}; }
+    })(),
   };
 }
 
@@ -178,17 +201,27 @@ type PrismaClientRow = {
   phone: string; email: string | null; dob: string | null; nationality: string | null;
   residency: string; emirate: string | null; employmentProfile: string; companyName: string | null;
   monthlySalary: number; variableIncome: number; rentalIncome: number; existingEmis: number;
-  creditCardLimits: number; notes: string; createdAt: Date;
+  creditCardLimits: number; notes: string; createdAt: Date; personJson?: string | null;
 };
 
 export function serClient(c: PrismaClientRow): ClientDto {
+  // The answer sheet is stored as JSON text. A malformed or absent value must
+  // degrade to {} rather than throwing — one bad blob on one client must not
+  // take down /api/state for the whole workspace.
+  let personData: Record<string, unknown> = {};
+  try {
+    const parsed = JSON.parse(c.personJson ?? "{}");
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      personData = parsed as Record<string, unknown>;
+    }
+  } catch { personData = {}; }
   return {
     id: c.id, fullName: c.fullName, eidNo: c.eidNo, passportNo: c.passportNo,
     phone: c.phone, email: c.email, dob: c.dob, nationality: c.nationality,
     residency: c.residency, emirate: c.emirate, employmentProfile: c.employmentProfile,
     companyName: c.companyName, monthlySalary: c.monthlySalary, variableIncome: c.variableIncome,
     rentalIncome: c.rentalIncome, existingEmis: c.existingEmis, creditCardLimits: c.creditCardLimits,
-    notes: c.notes, createdAt: c.createdAt.toISOString(),
+    notes: c.notes, personData, createdAt: c.createdAt.toISOString(),
   };
 }
 
@@ -275,10 +308,40 @@ export function serPartner(p: PrismaPartner): PartnerItem {
   return { id: p.id, kind: p.kind as PartnerItem["kind"], name: p.name, defaultSharePct: p.defaultSharePct, active: p.active, contacts };
 }
 
-type PrismaStage = { id: number; label: string; active: boolean; sortOrder: number };
-export function serStage(s: PrismaStage): StageItem {
-  return { id: s.id, label: s.label, active: s.active, sortOrder: s.sortOrder };
+type PrismaStageStep = {
+  id: number; stageId: number; stepNumber: string; label: string; hint: string;
+  sortOrder: number; active: boolean; isGate: boolean; checkType: string; checkTarget: string;
+};
+function serStep(s: PrismaStageStep): import("./types").StageStep {
+  return {
+    id: s.id, stageId: s.stageId, stepNumber: s.stepNumber, label: s.label, hint: s.hint,
+    sortOrder: s.sortOrder, active: s.active, isGate: s.isGate,
+    checkType: s.checkType as import("./types").StageStep["checkType"],
+    checkTarget: s.checkTarget,
+  };
 }
+
+type PrismaStage = {
+  id: number; label: string; active: boolean; sortOrder: number;
+  ownerRole: string; exitGateSummary: string; sopJson: string; commsJson: string;
+  steps?: PrismaStageStep[];
+};
+export function serStage(s: PrismaStage): import("./types").StageItem {
+  let sop: string[] = [];
+  let comms: string[] = [];
+  try { sop = JSON.parse(s.sopJson ?? "[]"); } catch { sop = []; }
+  try { comms = JSON.parse(s.commsJson ?? "[]"); } catch { comms = []; }
+  const steps = (s.steps ?? [])
+    .filter((x) => x.active)
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map(serStep);
+  return {
+    id: s.id, label: s.label, active: s.active, sortOrder: s.sortOrder,
+    ownerRole: s.ownerRole ?? "", exitGateSummary: s.exitGateSummary ?? "",
+    sopJson: sop, commsJson: comms, steps,
+  };
+}
+
 
 type PrismaMaster = { id: number; kind: string; label: string; active: boolean };
 export function serMaster(m: PrismaMaster): MasterItem {
@@ -414,7 +477,8 @@ export function serUnmatchedEmail(u: PrismaUnmatchedEmail): UnmatchedEmailDto {
 type PrismaDocRuleRow = {
   id: number; code: string; name: string; category: string; validityDays: number; warnDays: number;
   verifyNotes: string; applicableEmployment: string; applicablePropertyType: string;
-  applicableTransaction: string; applicableResidency: string; mandatory: boolean;
+  applicableTransaction: string; applicableResidency: string; applicableBank?: string;
+  mandatory: boolean;
   visibleToClient: boolean; clientCanUpload: boolean; expiryTrackingRequired: boolean; active: boolean;
 };
 
@@ -435,6 +499,9 @@ export function serDocRule(d: PrismaDocRuleRow): DocRule {
     applicablePropertyType: parseVec(d.applicablePropertyType),
     applicableTransaction: parseVec(d.applicableTransaction),
     applicableResidency: parseVec(d.applicableResidency),
+    // Pre-migration rows have no applicableBank column; "any" keeps every
+    // existing rule applying to every bank exactly as it did before.
+    applicableBank: parseVec(d.applicableBank ?? '["any"]'),
     mandatory: d.mandatory, visibleToClient: d.visibleToClient,
     clientCanUpload: d.clientCanUpload, expiryTrackingRequired: d.expiryTrackingRequired,
     active: d.active,
@@ -442,7 +509,7 @@ export function serDocRule(d: PrismaDocRuleRow): DocRule {
 }
 
 type PrismaCaseDocumentRow = {
-  id: number; caseId: number; templateId: number | null; title: string; category: string;
+  id: number; caseId: number; templateId: number | null; copiedFromId?: number | null; title: string; category: string;
   status: string; mandatory: boolean; visibleToClient: boolean; clientCanUpload: boolean;
   rejectionReason: string; notes: string; fileName: string | null; fileType: string | null;
   fileSize: number | null; expiryDate: string | null; uploadedByKind: string;
@@ -456,7 +523,7 @@ type PrismaCaseDocumentRow = {
 export function serCaseDocument(d: PrismaCaseDocumentRow): CaseDocument {
   const hasFile = !!d.storageKey || d.fileData != null;
   return {
-    id: d.id, caseId: d.caseId, templateId: d.templateId, title: d.title, category: d.category,
+    id: d.id, caseId: d.caseId, templateId: d.templateId, copiedFromId: d.copiedFromId ?? null, title: d.title, category: d.category,
     status: d.status as CaseDocument["status"], mandatory: d.mandatory,
     visibleToClient: d.visibleToClient, clientCanUpload: d.clientCanUpload,
     rejectionReason: d.rejectionReason, notes: d.notes, fileName: d.fileName,

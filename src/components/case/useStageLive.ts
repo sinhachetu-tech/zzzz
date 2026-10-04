@@ -75,6 +75,28 @@ export function useStageLive(c: LoanCase) {
       transferEmail: !!c.transferDate || has(/transfer.*(email|sent|scheduled)|transfer date/),
       titleDeed: !!c.titleDeedDate || has(/title deed/),
     };
+    // Dynamic evaluation for all stage sub-steps defined in DB
+    const caseRec = c as unknown as Record<string, unknown>;
+    const stageData = ((c as unknown as { stageDataJson?: Record<string, unknown> }).stageDataJson ?? {}) as Record<string, unknown>;
+    for (const stg of (useHfmcStore.getState ? useHfmcStore.getState().stages : [])) {
+      for (const st of (stg.steps ?? [])) {
+        const target = st.checkTarget;
+        if (!target) continue;
+        if (st.checkType === "date_field" || st.checkType === "boolean_field") {
+          if (checks[target] === undefined) {
+            checks[target] = !!caseRec[target] || !!stageData[target];
+          }
+        } else if (st.checkType === "doc_category") {
+          if (checks[target] === undefined) {
+            checks[target] = (byCat([target]).length > 0) && (blocked.filter((d) => d.category === target).length === 0);
+          }
+        }
+        if (checks[st.stepNumber] === undefined && checks[target] !== undefined) {
+          checks[st.stepNumber] = checks[target];
+        }
+      }
+    }
+
     return {
       docs, updates, openTasks, bankTasks, oldestTask, transitions,
       mandatory, blocked, heuristic,

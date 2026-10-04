@@ -143,10 +143,25 @@ export interface JointAffordabilitySummary {
 }
 
 /** Create a clean default profile pre-populated from basic case fields if available */
+/** Read a REAL property value out of a stored profileJson, if one was captured.
+ *  Returns null when absent so callers can report "not captured" rather than guess. */
+function legacyProfilePropertyValue(c?: { profileJson?: string | null } | null): number | null {
+  if (!c?.profileJson) return null;
+  try {
+    const v = JSON.parse(c.profileJson)?.property?.propertyValue;
+    return typeof v === "number" && v > 0 ? v : null;
+  } catch {
+    return null;
+  }
+}
+
 export function defaultCaseProfile(c?: {
   customer?: string;
   whatsapp?: string;
   loanAmount?: number;
+  /** REAL property value. Null/undefined = not captured — never derived. */
+  propertyValue?: number | null;
+  profileJson?: string | null;
   employmentProfile?: string;
   residency?: string;
   propertyType?: string;
@@ -184,9 +199,13 @@ export function defaultCaseProfile(c?: {
       emirate: c?.propertyLocation ?? "Dubai",
     },
     property: {
-      propertyValue: c?.loanAmount ? Math.round(c.loanAmount / 0.8) : 0,
+      // NEVER fabricate property value as loanAmount/0.8. That invented an 80% LTV
+      // and fed it to every LTV/affordability verdict. A case that hasn't captured
+      // it reports 0, which bank-match treats as "not captured" (see MatchResult.
+      // dataGaps) instead of a confident wrong number.
+      propertyValue: c?.propertyValue ?? Number(legacyProfilePropertyValue(c)) ?? 0,
       loanAmount: c?.loanAmount ?? 0,
-      downPayment: c?.loanAmount ? Math.round(c.loanAmount / 0.8) - c.loanAmount : 0,
+      downPayment: c?.propertyValue ? Math.max(0, c.propertyValue - (c.loanAmount ?? 0)) : 0,
       transactionType: c?.transactionType ?? "Resale",
       propertyType: (c?.propertyType === "Off-Plan") ? "Off-Plan" : "Ready",
       propertyLocation: c?.propertyLocation ?? "Dubai",

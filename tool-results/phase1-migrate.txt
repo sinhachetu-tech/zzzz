@@ -1,0 +1,215 @@
+EXIT 130
+--- stdout ---
+Prisma schema loaded from prisma\schema.prisma
+Datasource "db": PostgreSQL database "postgres", schema "public" at "aws-0-ap-south-1.pooler.supabase.com:5432"
+
+Drift detected: Your database schema is not in sync with your migration history.
+
+The following is a summary of the differences between the expected database schema given your migrations files, and the actual schema of the database.
+
+It should be understood as the set of changes to get from the expected schema to the actual schema.
+
+If you are running this the first time on an existing database, please make sure to read this documentation page:
+https://www.prisma.io/docs/guides/database/developing-with-prisma-migrate/troubleshooting-development
+
+[+] Added tables
+  - Activity
+  - AffordabilityCheck
+  - AppSetting
+  - AuditLog
+  - BankItem
+  - BankProduct
+  - BulletinItem
+  - BulletinTarget
+  - CaseDocument
+  - CaseUpdate
+  - ChannelItem
+  - ChatMessage
+  - Client
+  - ClientDocument
+  - ClientSession
+  - CommTemplate
+  - DealException
+  - Designation
+  - DocRule
+  - EiborRate
+  - EmailLog
+  - FeeRule
+  - InstrReply
+  - Instruction
+  - LoanCase
+  - MasterItem
+  - PartnerItem
+  - Project
+  - ProjectProduct
+  - Promotion
+  - Proposal
+  - ProposalSnapshot
+  - Reply
+  - Session
+  - SlaRule
+  - StageItem
+  - StageStep
+  - StageTransition
+  - Task
+  - UnmatchedEmail
+  - User
+  - UserDevice
+
+[*] Changed the `Activity` table
+  [+] Added foreign key on columns (caseId)
+  [+] Added foreign key on columns (userId)
+
+[*] Changed the `AffordabilityCheck` table
+  [+] Added foreign key on columns (createdBy)
+
+[*] Changed the `AuditLog` table
+  [+] Added index on columns (at)
+  [+] Added index on columns (entity, at)
+
+[*] Changed the `BankItem` table
+  [+] Added unique index on columns (name)
+
+[*] Changed the `BankProduct` table
+  [+] Added foreign key on columns (bankId)
+
+[*] Changed the `BulletinItem` table
+  [+] Added foreign key on columns (caseId)
+  [+] Added foreign key on columns (issuedBy)
+
+[*] Changed the `BulletinTarget` table
+  [+] Added foreign key on columns (bulletinId)
+  [+] Added foreign key on columns (userId)
+
+[*] Changed the `CaseDocument` table
+  [+] Added foreign key on columns (caseId)
+  [+] Added foreign key on columns (copiedFromId)
+
+[*] Changed the `CaseUpdate` table
+  [+] Added foreign key on columns (authorId)
+  [+] Added foreign key on columns (caseId)
+
+[*] Changed the `ChannelItem` table
+  [+] Added unique index on columns (name)
+
+[*] Changed the `ChatMessage` table
+  [+] Added index on columns (caseId, threadType, sentAt)
+  [+] Added foreign key on columns (caseId)
+  [+] Added foreign key on columns (senderId)
+
+[*] Changed the `Client` table
+  [+] Added unique index on columns (eidNo)
+  [+] Added index on columns (passportNo)
+  [+] Added index on columns (phone)
+
+[*] Changed the `ClientDocument` table
+  [+] Added foreign key on columns (caseId)
+
+[*] Changed the `ClientSession` table
+  [+] Added foreign key on columns (caseId)
+
+[*] Changed the `CommTemplate` table
+  [+] Added unique index on columns (key)
+
+[*] Changed the `DealException` table
+  [+] Added foreign key on columns (caseId)
+
+[*] Changed the `Designation` table
+  [+] Added unique index on columns (name)
+
+[*] Changed the `EmailLog` table
+  [+] Added unique index on columns (messageId)
+  [+] Added foreign key on columns (caseId)
+
+[*] Changed the `FeeRule` table
+  [+] Added index on columns (emirate, txnType)
+
+[*] Changed the `InstrReply` table
+  [+] Added foreign key on columns (instructionId)
+  [+] Added foreign key on columns (userId)
+
+[*] Changed the `Instruction` table
+  [+] Added foreign key on columns (assignedTo)
+  [+] Added foreign key on columns (caseId)
+  [+] Added foreign key on columns (issuedBy)
+
+[*] Changed the `LoanCase` table
+  [+] Added unique index on columns (caseNumber)
+  [+] Added foreign key on columns (advisorId)
+  [+] Added foreign key on columns (backup1Id)
+  [+] Added foreign key on columns (backup2Id)
+  [+] Added foreign key on columns (clientId)
+  [+] Added foreign key on columns (convertedById)
+  [+] Added foreign key on columns (ownerId)
+  [+] Added foreign key on columns (parentCaseId)
+  [+] Added foreign key on columns (secondPartyClientId)
+  [+] Added foreign key on columns (vrmId)
+
+[*] Changed the `MasterItem` table
+  [+] Added unique index on columns (kind, label)
+
+[*] Changed the `PartnerItem` table
+  [+] Added unique index on columns (kind, name)
+
+[*] Changed the `Project` table
+  [+] Added unique index on columns (name)
+
+[*] Changed the `ProjectProduct` table
+  [+] Added index on columns (bankProductId)
+  [+] Added unique index on columns (projectId, bankProductId)
+  [+] Added foreign key on columns (bankProductId)
+  [+] Added foreign key on columns (projectId)
+
+[*] Changed the `Promotion` table
+  [+] Added foreign key on columns (bankProductId)
+
+[*] Changed the `Proposal` table
+  [+] Added foreign key on columns (caseId)
+  [+] Added foreign key on columns (createdBy)
+
+[*] Changed the `ProposalSnapshot` table
+  [+] Added unique index on columns (proposalId)
+  [+] Added foreign key on columns (proposalId)
+
+[*] Changed the `Reply` table
+  [+] Added foreign key on columns (bulletinId)
+  [+] Added foreign key on columns (userId)
+
+[*] Changed the `Session` table
+  [+] Added foreign key on columns (userId)
+
+[*] Changed the `StageItem` table
+  [+] Added unique index on columns (label)
+
+[*] Changed the `StageStep` table
+  [+] Added foreign key on columns (stageId)
+
+[*] Changed the `StageTransition` table
+  [+] Added foreign key on columns (caseId)
+  [+] Added foreign key on columns (userId)
+
+[*] Changed the `Task` table
+  [+] Added foreign key on columns (caseId)
+  [+] Added foreign key on columns (createdBy)
+  [+] Added foreign key on columns (ownerId)
+
+[*] Changed the `UnmatchedEmail` table
+  [+] Added unique index on columns (messageId)
+
+[*] Changed the `User` table
+  [+] Added unique index on columns (email)
+
+[*] Changed the `UserDevice` table
+  [+] Added index on columns (caseId)
+  [+] Added unique index on columns (pushEndpoint)
+  [+] Added index on columns (userId)
+  [+] Added foreign key on columns (caseId)
+  [+] Added foreign key on columns (userId)
+
+We need to reset the "public" schema at "aws-0-ap-south-1.pooler.supabase.com:5432"
+
+You may use prisma migrate reset to drop the development database.
+All data will be lost.
+
+--- stderr ---
+Environment variables loaded from .env

@@ -97,6 +97,21 @@ async function fullSeed() {
       data: {
         caseNumber: c.caseNumber,
         customer: c.customer,
+        // KNOWN LIMITATION — this is why some seeded cases list more than one
+        // bank. The per-bank model is "one LoanCase per bank", and the app
+        // enforces it: POST /api/cases splits a multi-bank selection into
+        // sibling cases via its perBank loop, and /api/cases/:id/add-bank does
+        // the same when a bank is added later. The seed bypasses BOTH — it
+        // writes this array straight through, so a fixture listing 3 banks
+        // produces one row listing 3 banks, which is exactly the shape the
+        // model exists to prevent.
+        //
+        // It is left as-is deliberately: "fixing" it would change the seeded
+        // case count and every case number, which is destructive to a database
+        // that has already been seeded. Rows created through the app are always
+        // correct. Use scripts/split-multi-bank-cases.js to repair the legacy
+        // ones, or leave them — BankChips renders every listed bank with its
+        // logo rather than silently truncating.
         banks: JSON.stringify(c.banks),
         wonBank: c.wonBank,
         loanAmount: c.loanAmount,

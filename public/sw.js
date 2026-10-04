@@ -7,7 +7,7 @@
 //   - navigation (HTML) → network-first, fall back to cached "/" shell so the app
 //                      loads instantly on a flaky connection (the PWA payoff)
 const VERSION = "hfmc-v1";
-const APP_SHELL = ["/", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png", "/favicon-32.png"];
+const APP_SHELL = ["/", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png", "/icons/favicon-32.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -81,8 +81,8 @@ self.addEventListener("push", (event) => {
     const title = data.title || "HFMC Mortgage";
     const options = {
       body: data.body || "New update available",
-      icon: data.icon || "/icon-192.png",
-      badge: "/icon-192.png",
+      icon: data.icon || "/icons/icon-192.png",
+      badge: "/icons/icon-192.png",
       vibrate: [120, 60, 120],
       data: { url: data.url || "/" },
     };
@@ -92,7 +92,7 @@ self.addEventListener("push", (event) => {
     event.waitUntil(
       self.registration.showNotification("HFMC Mortgage", {
         body: text,
-        icon: "/icon-192.png",
+        icon: "/icons/icon-192.png",
       })
     );
   }

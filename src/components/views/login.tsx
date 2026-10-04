@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useHfmcStore } from "@/lib/client-store";
 import { TONE_HEX } from "@/lib/format";
 import { BarList, useCountUp } from "@/components/hfmc/charts";
-import { LogoMark } from "@/components/icons";
+import { LogoLockup, LogoMark } from "@/components/icons";
 import { ThemeToggle } from "@/components/hfmc/ui";
 
 const DEMOS = [
@@ -78,11 +78,14 @@ export default function Login() {
       </div>
 
       <div className="hidden lg:flex flex-col justify-center px-14 py-12 border-r relative overflow-hidden" style={{ borderColor: "var(--line-soft)" }}>
+        {/* Full lockup (mark + wordmark) — the widest surface in the app, so it
+            meets the brand's 120px minimum width. currentColor makes it
+            charcoal here on the light panel; the sidebar/login on navy picks up
+            white automatically. */}
         <div className="flex items-center gap-3 mb-10">
-          <LogoMark size={38} />
+          <LogoLockup size={34} />
           <div>
-            <div className="font-disp font-bold text-[20px] tracking-[0.04em] leading-none">HFMC</div>
-            <div className="text-[10.5px] uppercase tracking-[0.22em] text-[var(--ink-faint)] mt-1">Mortgage Case Tracker · UAE</div>
+            <div className="text-[10.5px] uppercase tracking-[0.22em] text-[var(--ink-faint)]">Mortgage Case Tracker · UAE</div>
           </div>
         </div>
         <p className="text-[12px] uppercase tracking-[0.16em] text-[var(--amber)] font-disp font-semibold mb-3 flex items-center gap-2">

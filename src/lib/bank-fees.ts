@@ -2,6 +2,7 @@
 // Every field that previously lived only as free text in BankProduct.fees/insurance
 // is now a structured, computable number. The Admin Fee Editor saves to feesJson;
 // the bank-match engine reads from here; the proposal print page also reads here.
+import { todayISO } from "@/lib/format";
 
 /* --------------- Core types --------------- */
 
@@ -9,6 +10,16 @@ export interface BankFees {
   processing: {
     /** % of loan amount (default segment, e.g. 1.05 means 1.05%) */
     default?: number;
+    /**
+     * The STANDARD fee, used whenever no promotion is live. Kept separate from
+     * `default` because a promotional 0% was previously written straight into
+     * `default`, so nothing reverted it when the window passed — 11 DIB products
+     * were still quoting Free months after the promo ended. If a product has a promo
+     * it should set `defaultPct` (the real fee) and `promo` (the temporary one).
+     */
+    defaultPct?: number;
+    /** A time-boxed promotional rate. Only applied inside its own window. */
+    promo?: { default?: number | null; validFrom?: string | null; validTo?: string | null; note?: string } | null;
     /** % for equity-release / cashout portion */
     equityRelease?: number;
     /** % for buyout / balance transfer */
@@ -129,43 +140,108 @@ export function slabFeePct(fees: BankFees | null, loanAmount: number): number | 
   return null;
 }
 
+/**
+ * Is a promotional fee live on a given date?
+ *
+ * WHY this exists: a `default: 0` processing fee with a note reading "Q1-Q3 2026
+ * promo: zero processing (first-time buyer promo)" is a TEMPORARY rate that was
+ * written into the permanent slot. When the window passes nothing reverts it, so the
+ * bank keeps quoting Free forever — and the client is misled about what they owe.
+ * That exact case exists in production today on 11 DIB products.
+ *
+ * A promo with no dates is treated as LIVE, not as expired: we never silently invent
+ * an expiry for a fee someone filed deliberately. What we do instead is surface it,
+ * so `feePromoNeedsReview` flags it rather than hiding it.
+ */
+export function isPromoLive(
+  promo: { validFrom?: string | null; validTo?: string | null } | null | undefined,
+  on: string,
+): boolean {
+  if (!promo) return true;
+  if (promo.validFrom && promo.validFrom > on) return false;
+  if (promo.validTo && promo.validTo < on) return false;
+  return true;
+}
+
+/** A promotional fee with no recorded dates — it cannot be trusted to expire. */
+export function feePromoNeedsReview(
+  fees: BankFees | null,
+  on: string,
+): boolean {
+  const promo = fees?.processing?.promo;
+  if (!promo) return false;
+  return !isPromoLive(promo, on);
+}
+
 /** Processing fee % for a transaction. Slab schedules win when a slab fits the
- *  loan amount; otherwise falls back from segment to default. */
-export function processingFeePct(fees: BankFees | null, txn: string, loanAmount?: number): number | null {
-  if (!fees?.processing) return null;
+ *  loan amount; otherwise falls back from segment to default.
+ *
+ *  A promotional `default` is used ONLY inside its own window — an expired promo
+ *  falls back to the standard `defaultPct`, and if that was never filed the result
+ *  is null (a reported data gap) rather than 0. Returning 0 would tell a client
+ *  their processing fee is Free when we simply do not know it.
+ *
+ *  `bankDefaultPct` is the LAST resort, after every product-level source: the Bank
+ *  Defaults screen is the inherited layer, and this is the one place the fallback
+ *  lives so the grid, the engine and the proposal can never disagree about a
+ *  number the admin has already seen. Without it the grid could show 0.525%
+ *  "inherited from bank" while the engine quoted null. */
+export function processingFeePct(
+  fees: BankFees | null,
+  txn: string,
+  loanAmount?: number,
+  on: string = todayISO(),
+  bankDefaultPct: number | null = null,
+): number | null {
+  if (!fees?.processing) return bankDefaultPct;
   if (loanAmount != null && loanAmount > 0) {
     const slab = slabFeePct(fees, loanAmount);
     if (slab != null) return slab;
   }
-  if ((txn === "Equity Release" || txn === "Buyout + Equity Release") && fees.processing.equityRelease != null)
-    return fees.processing.equityRelease;
-  if (txn.startsWith("Buyout") && fees.processing.buyout != null)
-    return fees.processing.buyout;
-  return fees.processing.default ?? null;
+  const p = fees.processing;
+  // Three cases, and the legacy one must behave byte-identically to before:
+  //   no promo object  -> `default` IS the fee (legacy, unchanged)
+  //   promo live       -> the promo rate
+  //   promo expired    -> the explicitly filed standard (`defaultPct`), else a
+  //                       reported gap — never 0.
+  const effectiveDefault = p.promo == null
+    ? (p.default ?? null)
+    : isPromoLive(p.promo, on)
+      ? (p.promo.default ?? p.default ?? null)
+      : (p.defaultPct ?? null);
+  if ((txn === "Equity Release" || txn === "Buyout + Equity Release") && p.equityRelease != null)
+    return p.equityRelease;
+  if (txn.startsWith("Buyout") && p.buyout != null) return p.buyout;
+  // An expired promo that filed no `defaultPct` must not inherit the bank default
+  // either — that would resurrect a fee we already knew had a different standard.
+  if (effectiveDefault == null && p.promo != null && !isPromoLive(p.promo, on)) return null;
+  return effectiveDefault ?? bankDefaultPct;
 }
 
 /** Processing fee in AED for a loan amount. Respects minFee and maxFee.
  *  Component-split deals (buyout+equity) charge per-portion % when a split is
- *  filed and the equity portion is known; otherwise the single % applies. */
+ *  filed and the equity portion is known; otherwise the single % applies.
+ *  `bankDefaultPct` follows the same inheritance rule as processingFeePct. */
 export function processingFeeAed(
   fees: BankFees | null, txn: string, loanAmount: number, equityPortionAed?: number,
+  bankDefaultPct: number | null = null,
 ): number | null {
   const split = fees?.processing?.componentSplit;
   const eqPortion = equityPortionAed ?? fees?.processing?.equityPortionAed ?? null;
   if (split && (txn === "Buyout + Equity Release" || txn === "Buyout") && eqPortion != null && eqPortion > 0 && eqPortion < loanAmount) {
     const buyoutPortion = loanAmount - eqPortion;
-    const buyoutPct = split.buyoutPortion ?? processingFeePct(fees, "Buyout", buyoutPortion) ?? 0;
-    const equityPct = split.equityPortion ?? processingFeePct(fees, "Equity Release", eqPortion) ?? 0;
+    const buyoutPct = split.buyoutPortion ?? processingFeePct(fees, "Buyout", buyoutPortion, todayISO(), bankDefaultPct) ?? 0;
+    const equityPct = split.equityPortion ?? processingFeePct(fees, "Equity Release", eqPortion, todayISO(), bankDefaultPct) ?? 0;
     let aed = Math.round((buyoutPortion * buyoutPct + eqPortion * equityPct) / 100);
-    if (fees!.processing.minFee != null) aed = Math.max(aed, fees!.processing.minFee);
-    if (fees!.processing.maxFee != null) aed = Math.min(aed, fees!.processing.maxFee);
+    if (fees?.processing?.minFee != null) aed = Math.max(aed, fees!.processing.minFee);
+    if (fees?.processing?.maxFee != null) aed = Math.min(aed, fees!.processing.maxFee);
     return aed;
   }
-  const pct = processingFeePct(fees, txn, loanAmount);
+  const pct = processingFeePct(fees, txn, loanAmount, todayISO(), bankDefaultPct);
   if (pct == null) return null;
   let aed = Math.round((loanAmount * pct) / 100);
-  if (fees!.processing.minFee != null) aed = Math.max(aed, fees!.processing.minFee);
-  if (fees!.processing.maxFee != null) aed = Math.min(aed, fees!.processing.maxFee);
+  if (fees?.processing?.minFee != null) aed = Math.max(aed, fees!.processing.minFee);
+  if (fees?.processing?.maxFee != null) aed = Math.min(aed, fees!.processing.maxFee);
   return aed;
 }
 

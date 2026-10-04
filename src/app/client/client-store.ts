@@ -1,6 +1,7 @@
 "use client";
 
 import { create } from "zustand";
+import { confirmDiscard, setUnsavedChanges } from "@/lib/leave-guard";
 
 interface ClientUser {
   caseId: number;
@@ -41,7 +42,14 @@ export const useClientStore = create<ClientState>((set, get) => ({
       set({ ...data, loaded: true });
     } catch { set({ me: null, loaded: true }); }
   },
-  switchCase: async (caseId) => { await get().hydrate(caseId); },
+  // Switching to the client's OTHER bank journey re-hydrates the whole portal, so
+  // an unsaved draft on the current one would vanish. Same guard as the staff
+  // store's `nav`.
+  switchCase: async (caseId) => {
+    if (!confirmDiscard("changes on this form")) return;
+    setUnsavedChanges(false);
+    await get().hydrate(caseId);
+  },
   logout: async () => {
     await fetch("/api/client/logout", { method: "POST" }).catch(() => {});
     set({ me: null, case: null, loaded: true });

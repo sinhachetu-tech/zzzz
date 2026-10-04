@@ -11,8 +11,10 @@ import Tasks from "@/components/views/tasks";
 import Bulletin from "@/components/views/bulletin";
 import Calculator from "@/components/views/calculator";
 import Reports from "@/components/views/reports";
+import { Products } from "@/components/views/products";
 import Admin from "@/components/views/admin";
 import Leads from "@/components/views/leads";
+import Clients from "@/components/views/clients";
 import { ChatBubble } from "@/components/chat/ChatBubble";
 import { PwaInstallBanner } from "@/components/pwa/PwaInstallBanner";
 
@@ -82,11 +84,13 @@ function renderRoute(route: Route) {
     case "dashboard": return <Dashboard />;
     case "cases": return <Cases />;
     case "leads": return <Leads />;
+    case "clients": return <Clients />;
     case "case": return <CaseDetail id={route.id} />;
     case "tasks": return <Tasks />;
     case "bulletin": return <Bulletin />;
     case "calculator": return <Calculator />;
     case "reports": return <Reports />;
+    case "products": return <Products />;
     case "admin": return <Admin />;
     default: return <Dashboard />;
   }

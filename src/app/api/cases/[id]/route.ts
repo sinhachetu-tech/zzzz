@@ -38,6 +38,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (body.stage && body.stage !== existing.stage) {
     data.stage = body.stage;
     actions.push(`stage → ${body.stage}`);
+    // Conversion stamp — written ONLY on the transition out of "Lead", and only
+    // if it was never stamped before. A case dragged back to Lead and forward
+    // again keeps its ORIGINAL conversion date, because the question this
+    // answers is "how long has this been a live file", not "when was the stage
+    // last touched". A manually-created case (never a Lead) stays null, which
+    // is what makes the "From lead" saved view honest.
+    if (existing.stage === "Lead" && !existing.convertedAt) {
+      data.convertedAt = new Date();
+      data.convertedById = me.id;
+      actions.push("converted from lead");
+    }
   }
   if (body.caseStatus && body.caseStatus !== existing.caseStatus) {
     data.caseStatus = body.caseStatus;
@@ -55,8 +66,56 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const u = await db.user.findUnique({ where: { id: body.ownerId } });
     actions.push(`owner → ${u?.name ?? body.ownerId}`);
   }
+  // Declared up here because the BANKS block below also sets it — `banks` is a
+  // document-rule axis now, so changing it re-syncs the vault too.
+  let profileChanged = false;
+
   if (body.banks !== undefined) {
-    data.banks = JSON.stringify(body.banks);
+    // ONE BANK PER CASE — enforced, not merely conventional.
+    //
+    // A multi-bank deal is modelled as SIBLING cases (see POST /api/cases and
+    // /api/cases/:id/add-bank), because each bank has its own case number, its
+    // own document rules and its own stage. Writing several banks onto one row
+    // recreates exactly the shape that model exists to prevent, and it silently
+    // breaks the per-bank document axis: DocRule.applicableBank is evaluated
+    // against this array, so "Mashreq or Emirates" can never be resolved to a
+    // single bank's checklist.
+    //
+    // This guard is what stopped the 9 legacy seeded rows from growing. They
+    // predate it and are untouched — it only rejects NEW writes, so
+    // scripts/split-multi-bank-cases.js is unaffected.
+    const incoming = body.banks;
+    if (Array.isArray(incoming) && incoming.length > 1) {
+      return NextResponse.json(
+        {
+          error:
+            "A case holds one bank. Adding another opens a separate case for it — use “Add bank” (POST /api/cases/:id/add-bank) so the new bank gets its own case number, documents and stage.",
+        },
+        { status: 400 },
+      );
+    }
+    // The bank is now a document-rule axis, so a re-shop can legitimately pull
+    // in new required documents. Additive sync only — it never deletes, so a
+    // document already collected for the previous bank is never destroyed.
+    const before = (() => { try { return JSON.parse(existing.banks) as string[]; } catch { return []; } })();
+    const after = Array.isArray(incoming) ? (incoming as string[]) : [];
+    const same = before.length === after.length && before.every((b) => after.includes(b));
+    if (!same) {
+      data.banks = JSON.stringify(after);
+      const fmt = (l: string[]) => (l.length ? l.join(", ") : "none");
+      actions.push(`banks: ${fmt(before)} → ${fmt(after)}`);
+      profileChanged = true;
+    }
+  }
+  // The bank's own case / application number — distinct from our HFMC-xxxx, and
+  // the number the bank quotes back to us on every follow-up.
+  if (body.bankRef !== undefined) {
+    const next = (body.bankRef === null ? "" : String(body.bankRef)).trim();
+    const prev = (existing.bankRef ?? "").trim();
+    if (next !== prev) {
+      data.bankRef = next || null;
+      actions.push(next ? `bank ref → ${next}` : "cleared bank ref");
+    }
   }
   if (body.source !== undefined) data.source = body.source;
   if (body.partner !== undefined) {
@@ -66,7 +125,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
   if (body.statusNote !== undefined) data.statusNote = body.statusNote;
   // Document Vault profile vectors — changing any of them re-syncs the checklist
-  let profileChanged = false;
   if (body.employmentProfile !== undefined && body.employmentProfile !== existing.employmentProfile) {
     data.employmentProfile = body.employmentProfile;
     profileChanged = true;
@@ -128,6 +186,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (body.notificationOverrides !== undefined) {
     data.notificationOverrides = body.notificationOverrides ? JSON.stringify(body.notificationOverrides) : null;
   }
+  if (body.fileSubmittedDate !== undefined) data.fileSubmittedDate = body.fileSubmittedDate;
   if (body.preApprovalDate !== undefined) data.preApprovalDate = body.preApprovalDate;
   if (body.preApprovalAmount !== undefined) data.preApprovalAmount = body.preApprovalAmount;
   if (body.preApprovalTenure !== undefined) data.preApprovalTenure = body.preApprovalTenure;
@@ -164,9 +223,48 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (body.waGroup !== undefined) data.waGroup = body.waGroup;
   if (body.customer !== undefined) data.customer = body.customer;
   if (body.loanAmount !== undefined) data.loanAmount = body.loanAmount;
+  // REAL property value. Explicitly settable so the LTV data gap can be closed
+  // once someone captures it — the engine no longer fabricates it.
+  if (body.propertyValue !== undefined) {
+    data.propertyValue = body.propertyValue === null || body.propertyValue === "" ? null : Number(body.propertyValue);
+  }
   // structured profile (income, liabilities, KYC ids, second party) — persisted
   // verbatim; each case keeps its own snapshot of the applicant as filed
   if (body.profileJson !== undefined) data.profileJson = body.profileJson;
+
+  // Flexible stage data (dynamic custom milestone dates & fields defined by admin)
+  let stageDataChanged = false;
+  let stageDataMap: Record<string, unknown> = {};
+  try {
+    const raw = (existing as unknown as { stageDataJson?: string | null }).stageDataJson;
+    stageDataMap = raw ? JSON.parse(raw) : {};
+  } catch {}
+
+  if (body.stageDataJson !== undefined) {
+    try {
+      const incoming = typeof body.stageDataJson === "string" ? JSON.parse(body.stageDataJson) : body.stageDataJson;
+      stageDataMap = { ...stageDataMap, ...incoming };
+      stageDataChanged = true;
+    } catch {}
+  }
+
+  // Auto-absorb any custom date fields sent directly by name (e.g. developerNocDate)
+  for (const [k, v] of Object.entries(body)) {
+    if (
+      k.endsWith("Date") &&
+      (data as Record<string, unknown>)[k] === undefined &&
+      k !== "preApprovalDate" &&
+      k !== "fileSubmittedDate" &&
+      k !== "folDate"
+    ) {
+      stageDataMap[k] = v === "" ? null : v;
+      stageDataChanged = true;
+    }
+  }
+
+  if (stageDataChanged) {
+    (data as Record<string, unknown>).stageDataJson = JSON.stringify(stageDataMap);
+  }
 
   const updated = await db.loanCase.update({ where: { id: caseId }, data });
 

@@ -1,4 +1,496 @@
-# 2026-09-22 — Multi-axis pricing engine + property classification + promotion layer
+# 2026-10-02 (cont. 3) -- + Add row, and the row UI bug that was real
+
+**1. There was no way to add a row to a master.** Masters were created, edited,
+re-filed, closed, reopened, verified and batch-edited — but never *extended*. Rows
+only existed because an importer had left them behind, so a bank publishing a new
+transaction type or a second term had nowhere to put it.
+
+New **+ Add row** on the master header → modal → `PUT kind: "slot-add"`. It files
+the axes and creates the line **EMPTY, with no rate** — the honest state for "the
+bank offers this, we have not been told the price". It lands flagged `no rate filed
+yet`, never as a 0% you have to explain. The price is then filed through the normal
+one-field-at-a-time card edit.
+
+Duplicate axes are refused with 409 (matched on the SET fields the engine reads, so
+`["Resale"]` vs `["Resale","Buyout"]` are correctly different), a reason is required,
+and it audits as `create`. It targets the master's first non-closed product — a
+master can span product rows and a rate line must land on the one owning the family.
+
+**2. The row UI was structurally broken, not just untidy.** Three separate defects:
+
+- **`Cell`, `StressCell` and `VerifyCell` were `<button>`s rendered directly inside
+  `<tr>`** — no `<td>`. Invalid HTML; the browser boxes orphan buttons unpredictably,
+  which is why columns drifted out from under their headers. Every cell is now a real
+  `<td>`.
+- **The CLOSED row's `colSpan={6}` produced 10 cells in a 9-column table.** I had
+  miscounted that colSpan in an earlier pass. Corrected to 5, with the count written
+  down next to it.
+- **One chip per issue** meant a four-flag row shoved its own action cell past the
+  column edge. Replaced by `RowFlags` — a single dot + count, full list in the
+  tooltip, coral if any issue is a misprice and amber otherwise.
+
+Plus: column-group hairlines (`Applies to | DBR 1/2/3 | floor & processing | status`),
+`EMPTY` rows tinted amber with a dashed leading edge and an explicit "no rate filed
+yet" label (a bare dash reads as 0% or as data loss), and the actions column pinned
+at 168px so the Close button stops shifting.
+
+**3. The axes picker is now shared** (`AxesFields`) between re-file and add-row, so
+the transaction vocabulary and the summary line cannot drift between the two.
+
+Files: `admin/rate-cards.tsx`, `admin/rate-desk/route.ts`.
+Verified: `tsc` clean · eslint clean on both · **107/107 tests pass**.
+Still not clicked in a browser.
+
+---
+
+**1. "How do I add a master?"** There was no way. The only path was importing a
+policy sheet and approving its rows — masters were a by-product of imports, which
+is the derived-not-declarative problem stated exactly. Now a **+ New master**
+button beside the bank selector opens a declaration dialog (bank + employment /
+residency / type / property, name DERIVED the same way as master-axes, duplicate
+families refused with 409, reason required, audited as `create`). It writes one
+draft `BankProduct` with a starter EMPTY quote — and **the grid now shows drafts**,
+flagged `draft — not quoted to clients`, so the new family is visible but the
+client engine (`bank-match.ts`, still `status: "approved"` only) never sees it.
+
+**2. One bank at a time.** The grid defaulted to ALL banks (218 cards, 14 families).
+Now the bank selector defaults to the first bank, persisted per admin in
+localStorage, and after creating a master the grid lands on the bank that owns
+it. "All banks" is still one click away; it is no longer the default you edit in.
+
+**3. Panels are modals now.** All six inline panels (field edit, stress, slot
+axes, slot close/reopen, verify, bulk) plus both master panels render inside the
+house `Modal` (`.modal-scrim` + `.modal-pop`, body-level portal — the same
+primitive every other dialog uses, so it cannot open misplaced or drift below
+the page). Each got a `bare` mode: the Modal owns the title, the panel owns the
+form — no card-inside-a-card, no repeated headers.
+
+Files: `rate-cards.tsx` (7 call sites), `master-axes.tsx` (bare + `MasterCreatePanel`),
+`rate-desk/route.ts` (`kind: "master-create"`), `rate-cards.ts` (drafts visible,
+`status` on `CardProduct`).
+Verified: `tsc` clean · eslint clean on all four files · **107/107 tests pass**.
+Known: the eslint `pickBank`-before-declaration notice is a useCallback ordering
+false positive (it must be declared before `load()` because load calls it);
+kept as-is with a comment rather than restructured.
+
+---
+# 2026-10-02 (cont.) -- Colour discipline in the pricing grid
+
+**Emoji out of the grid.** The admin grid used emoji circles as status marks
+(`red circles monthly / amber yearly / green on negotiation`, plus green/amber/red/white
+for verification). Two problems: three red circles sat directly above three ordinary
+rate columns, so the header read as three alarms; and a font-rendered emoji cannot be
+themed, so in light mode the "muted" legend looked identical to the loud one.
+
+Replaced with a 6px tonal `Dot` using the house palette (`--coral` / `--amber` /
+`--mint` / `--ink-faint`). **Colour is now reserved for things that are actually
+wrong** -- a stale verification is coral, an ordinary monthly-moving number is coral
+only because it deserves a glance, and the legend matches the cells exactly.
+
+Also: the warning-triangle prefixes on "no cushion" and "defaults never confirmed"
+are gone. The rows were already amber; the glyph was decoration on top of a signal,
+and it rendered inconsistently across the fonts the app loads.
+
+Files: `src/components/views/admin/rate-cards.tsx`. No logic touched -- purely
+presentation. 107/107 tests, tsc + eslint clean.
+
+---
+# 2026-10-02 (cont.) -- Axes CRUD, staleness, and the importer crash
+
+**Rate UI: the grid was unreadable.** Two causes, both fixed in
+`admin/rate-cards.tsx`.
+
+1. It grouped by PRODUCT NAME (free text). Bank 1 has ~10 products all called
+   'Salaried / Resident / Conventional' differing only by sheet suffix, so one true
+   family split into fake groups. Now grouped by the PINNED axes
+   (bankId | employment | residency | mortgageType) -- the real identity. The header
+   states WHO the master serves; free-text names drop to a 'from N product rows'
+   subtitle.
+2. Four identity columns (Transaction/Term/STL/Profile) read 'Any / 3y / either /
+   any' on most rows. MEASURED why: **0 quotes carry a profile**, 281 carry no
+   transaction. Columns for axes the data does not hold imply precision that is not
+   there. Replaced with ONE composed 'Applies to' cell showing only what is FILED
+   (term as anchor), and the numbers became columns headed **DBR 1 (rate) / DBR 2
+   (after fixed) / DBR 3 (qualifies at)** in the order a broker thinks.
+
+**Axes are now CRUD, at both levels.**
+  - `SlotAxesPanel` (click 'Applies to') re-files transaction set, rate type, term,
+    EIBOR basis and STL on ONE line. Writes the SET fields and CLEARS the legacy
+    scalars -- **299 quotes carry the legacy `stl` boolean**, and leaving it behind
+    would let a stale scalar out-vote the new set (that is exactly why the old
+    column showed 'either' for rows that meant 'STL only'). Also stamps verifiedAt:
+    re-reading the policy sheet is what confirms the line.
+  - `MasterAxesPanel` (`admin/master-axes.tsx`, click the master header) edits the
+    pinned family axes. Employment and residency change the RULES (Mashreq 85%/15k
+    salaried vs 75%/25k self-employed; DIB self-employed 65%), so a master cannot
+    hold two. Saving rewrites the typed column AND the derived name together and
+    audits once per row, so a name can never disagree with its own axes.
+
+**Staleness -- `verifyAfterMonths: 12` was defined in LAW_NORMS and NEVER READ.**
+`verifiedAt` on RateQuote + `staleness()` -> fresh/aging/stale/never. `never` (an
+import) and `stale` (someone DID confirm it, long ago -- ADCB's stress note still
+says Nov 2022) are distinct states needing different responses. Verified column with
+a dot + months, VerifyPanel per-line or whole-master (the norm: a bank sends ONE
+confirmation). Checking is deliberately separate from editing.
+
+`RateSchedule.eiborAtComputation` bakes in the curve DBR 2/3 were computed against,
+so a later EIBOR move cannot silently reprice an old verdict. This IS the
+worst-case-EIBOR answer: snapshotting is the fix; inventing a hypothetical higher
+EIBOR would be inventing policy.
+
+**BUG FOUND + FIXED: `scripts/import-huspy.mjs --apply` CRASHED.** It spread `...p`
+(which carries a `bank` STRING) into Prisma, which expects the relation via bankId.
+Fixed by destructuring the name out. Verified: 5 drafts created, 16 projects
+registered, 18 banks.
+
+**What the import revealed, measured:** of 43 drafts, **30 have 0 rate lines** --
+13 are pointer products ('Same as above' / 'Rates same as normal'), 4 are blank,
+13 have prose rates the FEED never structured ('2 Yr - 2.89% Fixed'). The importer
+reads only the feed's structured columns, so producing no quote is CORRECT -- it
+must not invent a rate from prose. Those now render as EMPTY (dashed, 'no rate
+filed') instead of silently vanishing, and are re-filable via SlotAxesPanel.
+
+Verified: tsc clean, eslint clean, tests 107/107, check-rate-cards 218 cards from
+59 approved products.
+
+# 2026-10-02 -- Rate UI cleanup + staleness
+
+**The mess:** the grid grouped by free-text product NAME, so bank 1's ~10 products
+all called "Salaried - Resident - Conventional" (with cosmetic sheet suffixes) split
+ONE true family into fake groups. And the columns read "Interest rate / After fixed /
+Minimum / Processing / Qualifies at" -- every row re-stated transaction+term but hid
+STL and profile in the header, so a row couldn't be told apart and nobody knew which
+number was which DBR.
+
+**What changed:**
+1. Groups are now keyed bankId|employment||residency||mortgageType (the PINNED axes,
+   the real identity). The header states WHO the master serves; the free-text names
+   drop to a "from N product rows" subtitle. Names can no longer split a family.
+2. Numbers are now columns headed DBR 1 (rate) / DBR 2 (after fixed) / DBR 3
+   (qualifies at) -- the order a broker thinks. STL and customerProfile moved ONTO
+   the row as identity columns, because a master holds many products and they
+   genuinely vary. Cell tooltips name the DBR explicitly.
+3. verifiedAt on RateQuote + staleness() next to LAW_NORMS: fresh/aging/stale/never,
+   unused-since-written verifyAfterMonths=12 finally wired. Verified column: green/amber/
+   red/grey dot + months. VerifyPanel confirm is per-line or whole-master (the norm --
+   a bank sends ONE confirmation), optional note, audited. rowIssues flags stale/never
+   (CLOSED exempt: flags on an unquotable slot would cry wolf). One price-move and one
+   check-confirm are deliberately separate actions so they can't be confused.
+4. RateSchedule carries eiborAtComputation -- DBR 2/3 depend on the market, so the curve
+   they were computed against travels with the verdict. A later EIBOR move cannot
+   silently reprice an old quote. (This IS the worst-case-EIBOR answer: snapshotting the
+   curve is the fix; inventing a hypothetical higher EIBOR would be inventing policy.)
+5. CODEBASE hygiene: deleted rate-desk.tsx's two stale rows (one task row pointed at the
+   deleted file), removed its file-list row (the file is gone), rewrote the rate-cards.tsx
+   file-list row for the master grouping + slot states + Verified column + bulk.
+   Read-the-whole-card / close-slot / verify-confirmation have task->files index rows.
+
+Verified: tsc clean, eslint clean on touched paths, tests 107/107, check-rate-cards:
+59 approved products (97 total, 38 drafts) -> 218 cards, 132 variable resolve off live EIBOR 3.62.
+
+Still pending: masters as DECLARATIVE axes (today grouping is DERIVED -- same visible
+result, but axes still live on 59 rows instead of one master row); stress at a hypothetical
+worst-case EIBOR is deliberately NOT built (would be inventing policy -- stressBufferPct
+plus snapshot IS the answer); browser click-through of VerifyPanel/CLOSED rendering.
+
+# 2026-10-01 — Slot states: EMPTY / FILLED / CLOSED
+
+**What changed:** a deliberately-not-offered slot is now a first-class fact, not an
+empty cell. `RateQuote` carries `status` (`OPEN`/`CLOSED`), `closedReason`,
+`closedAt`; `quoteMatches()` returns false for CLOSED before checking anything
+else, so a closed line can never match a client case whatever its axes say.
+`RateCard` carries `slotState` (EMPTY/FILLED/CLOSED): EMPTY = no rate filed yet
+(chase the bank), CLOSED = greyed + struck through with the reason where a rate
+would be (done, never re-fill).
+
+Closing needs TWO pieces of text — the slot reason (shown in the grid, e.g.
+"product withdrawn") and the audit reason (who decided, on what basis) — because
+without the first, "closed" becomes a dumping ground for unfinished work.
+Reopening returns the slot to EMPTY and never invents a rate. All-or-nothing
+atomicity was kept: the close/reopen API refuses double-close and reopen-of-open.
+A closed line is excluded from row-issue flags (a slot asserting nothing quotable
+has nothing to warn about).
+
+**Tests:** 93/93 (`quoteMatches` CLOSED-never-matches + legacy-undefined-still-
+matches). tsc clean. Harness fix: `build-pricing-tests.mjs` now re-wires the
+bank-pricing → taxonomy import instead of stripping all imports (worked before
+only because the new slot tests actually exercise `quoteMatches`, which needs
+`setMatches`).
+
+# 2026-09-30 — Rate cards, bank defaults, and the two fee fixes
+
+Owner said pricing was still confusing, and after an honest look, it was: nine separate
+places to touch pricing, added across sessions, with no single screen. Plus a trap:
+Admin → Marketplace → Banks & rates shows a column headed **"Rate"** that is *commission*,
+not an interest rate.
+
+**The shape of this session: one row = one CARD.** A bank does not change "a rate". It
+moves a rate, a follow-on margin, a floor and a processing fee together — which used to
+live in pricingJson / feesJson / a 900-line modal. `src/lib/rate-cards.ts` builds one
+card per quote line, with every field resolved (`product ?? bank default ?? norm`) and
+its source recorded; the grid (`admin/rate-cards.tsx`) groups them into product families.
+
+Editing is **one field at a time by default** (owner: banks routinely send a new rate and
+nothing else; `applyWholeCard` is opt-in). Volatility dots on the headers (🔴 monthly ·
+🟡 yearly) say where attention belongs. Inherited fields print `* from bank`, so a
+default and a one-off can never be mistaken. The old Rate Desk is superseded.
+
+**Bank Defaults screen** (`admin/bank-defaults.tsx` + `api/admin/bank-defaults`) — the
+inherited layer. Fields were MEASURED: max tenor was 14/14 consistent, and six engine
+inputs (dbrPct, cardRulePct, bonusPct, rentalIncomePct, maxAgeSalaried, serviceMonthsMin)
+were recorded on ZERO products, so the engine was silently guessing them. Every default
+prints how many products override it — the blast radius — plus a last-confirmed date,
+because an un-confirmed "constant" is a guess.
+
+**Law constants** (`LAW_NORMS`): DBR 50%, VAT 5% (bank fees only — place fees are quoted
+inclusive), early-settlement cap 1%/AED 10,000. These are CBUAE rules, not settings, so
+they are not per-bank fields.
+
+**FIX 1 — promotional fees that outlive their window.** 11 DIB products quoted 0%
+processing after their Q1-Q3 2026 promo ended, because the 0 was written into the
+permanent slot. `BankFees.processing.promo` now holds `{default, validFrom, validTo}`;
+used ONLY inside the window, falling back to `defaultPct`, and a gap with nothing to
+fall back to reports "unknown", never 0.
+
+**APPLIED** (`scripts/migrate-promo-fees.mjs --apply`): 11 products migrated.
+`scripts/check-promo-resolution.mjs` proves the outcome — on 2026-09-30 (the promo's
+own last day) all 11 still resolve 0%, which is correct; from 2026-10-01 **3 revert to
+1.25% and 8 become honest "unknown"** instead of a silent Free. Before this, all 11
+would have stayed 0% indefinitely. Eight are gaps, not guesses: the note records no
+standard fee for them, so the honest answer is "not recorded" — someone has to ask DIB.
+
+A mirror test in `tests/pricing-floor.test.ts` guards all three cases (live → promo,
+expired → standard, expired + nothing → null); it also caught a regression where the
+legacy no-promo path lost its `default`, so that path is now asserted unchanged.
+
+**FIX 2 — bank fees filed in the place-fee table.** 12 rows ("Bank Processing Fee",
+"Valuation Fee" under Dubai AND Abu Dhabi) made bank fees vary with the emirate AND
+double-count against feesJson. Removed via `scripts/clean-misfiled-bank-fees.mjs`
+(verified: every emirate/transaction still has 3–7 real place fees). The API now rejects
+any such label (`src/lib/fee-scope.ts` is the single predicate), on both create and
+update, and the fee editor shows the same rejection in-app.
+
+**FIX 3 — "Rate" that was commission.** Admin → Marketplace → Banks & rates showed a
+column headed **Rate** containing `BankItem.ratePct`, which is *commission* as a % of the
+loan. It now reads **"Our commission"** with "of loan · not an interest rate" beneath it.
+That mislabel is the most likely reason pricing felt ambiguous — an admin reading "Rate"
+there and "Interest rate" on the card grid had no way to tell they were different things.
+
+Verification: `npx tsc --noEmit` clean · eslint clean on every touched path · `npm run
+test:pricing` **58/58** · `node scripts/check-rate-cards.mjs` → 216 cards, 131 resolving
+live off EIBOR 3.62% · `check-promo-resolution.mjs` → all 11 promos self-correct.
+
+**Known gap after this session:** the grid, Bank Defaults and the card edit panel all
+typecheck and their data paths are proven against live rows, but none has been clicked
+through in a browser. The unverified path is the card PUT end-to-end.
+
+---
+
+
+The last two pieces: pricing below your own floor, and getting the 2,449-row Huspy feed in
+without wrecking the catalogue.
+
+**Tier 3 — deal exceptions.** Super-admin only, in the tab AND in the API (two independent guards
+on purpose — one being bypassable is not a guard). Every requirement is a *visible checklist* next
+to the form rather than an error after the user has typed everything: a case, a written reason
+(8+ chars), a mandatory expiry, and a **second approver who is not you**. Super-admin only is
+deliberate: this is the one control that lets the firm price below what it has decided is the
+minimum, so it should be annoying. The engine does **not** read this table — an exception applies
+to a saved proposal snapshot, so it can never quietly change what the standard engine quotes to
+anyone else. Everything is audited, and an exception can be ended early but never silently
+extended.
+
+**The Huspy importer.** Two safety decisions before any data question:
+
+1. **Dry run by default.** `--apply` is required to write anything, to production.
+2. **Everything lands as `status: "draft"`.** The engine only reads `status: "approved"`, so a
+   wrong import is not merely hidden — it is *unquotable*. Review happens in Admin → Bank Rules.
+
+What the dry run reveals, measured not assumed:
+
+```
+raw records       2449
+raw banks           36
+after aliasing      26 real banks      (15 were "X - Business Banking" clones of an existing bank)
+distinct products  694                 (the feed repeats one product per transaction, 3.5x on average)
+distinct projects   25
+LTV bands parsed   490
+```
+
+**Three bugs I found by writing the tests and the report, not by eyeballing the output:**
+
+- *Every* fixed line came out with no follow-on recipe (1,979 of them), because I computed the
+  EIBOR benchmark and the margin only for variable rows. A fixed line's follow-on reverts to
+  EIBOR too — without that recipe the engine has no stressed rate and the product is unusable.
+  Gating `basis`/`margin` on `!fixed` was the whole bug; fixed to 0.
+- The `profile` classifier could not read `FTV - 61% - 70%` (20 real records): the regex wanted
+  `61 - 70%` and the string is `61% - 70%`. It fell through to "segment", which would have put an
+  LTV band into a *customer-profile pricing axis* — and since a quote only matches when the case
+  value is in the set, **every quote on those products would have silently stopped matching.** The
+  unit test caught it; fix recovered 60 more bands (430 → 490).
+- I initially wrote project names into the `profiles` axis, which is precisely the pollution the
+  classification exists to prevent. A project is an *availability* restriction → `isExclusive` +
+  a `Project` row. Corrected.
+
+**What is deliberately NOT imported:** `maxLtv`. The feed's `loan_to_value_ratio` is 0 in **100%**
+of records — not one non-zero value — so importing it would have written 694 zeroes into the exact
+columns that drive every LTV verdict. LTV is left null (a reported data gap) and the real bands
+come from the `profile` field instead. The feed's rate arithmetic, by contrast, is clean:
+zero internal contradictions across all 2,449 rows, which is why its rate figures ARE trusted.
+
+Verification: `npx tsc --noEmit` clean · eslint 0 errors on every touched path ·
+`npm run test:pricing` **38/38** (up from 27 — the profile classifier is now covered) ·
+importer dry-run verified against the live file.
+
+---
+
+
+Second half of the pricing work: the staff-facing catalogue. New route `{ name: "products" }`
+(nav item between Calculator and Reports), reachable from a new Dashboard card that reports the
+live counts straight off the already-hydrated store — no extra request on the dashboard.
+
+**A row is a RATE LINE, not a product.** This was the key structural decision. One BankProduct
+publishes many rates (1y/3y/5y, STL/NSTL, each with its own follow-on recipe and fees), and the
+thing a broker scans for — the axis signature — belongs to the rate, not the product. So the
+list flattens product × quote and each card leads with the signature
+(`Islamic ∙ STL ∙ UAE Resident ∙ Salaried ∙ Standard ∙ Buyout`) above the bank logo, rate,
+term, fee and follow-on. That ordering is the whole point: **who it's for before what it costs.**
+
+**Two pagination rules I got wrong first time round.** The page opens on active products with
+*no filter applied* — a filter left over from the last session is exactly how someone quotes a
+stale shortlist. And any filter change resets to page 1, because otherwise the old page number
+lands out of range and the user is looking at an empty list wondering whether they broke it.
+10/page is deliberate: enough to compare, few enough that the best offer never falls off the
+bottom.
+
+**Detail sheet, grouped in the order a broker thinks.** 1. Who it suits (axes, LTV caps,
+minimums, tenure, age caps) → 2. What it costs (every rate line resolved against *today's*
+EIBOR, with a worked EMI **before and after** the fixed period) → 3. What else it charges
+(processing, valuation, early settlement, insurance) → 4. Timeline & validity → 5. Source &
+provenance, with the bank's original text behind a toggle for when a field above is wrong.
+
+Everything reads `pricingJson`/`feesJson`/`insuranceJson` — the same sources the pricing engine
+reads — so **the sheet can never disagree with what the engine will quote.** A missing field
+prints "not recorded" in amber; it never prints a plausible-looking guess. `minSalary` under
+1,000 flags as implausible in red, because the seed data contains real `minSalary: 8` rows from
+a tenure being scraped into the wrong column.
+
+**Kept out of scope deliberately:** editing from the detail sheet. Rate changes go through the
+Rate Desk, which is effective-dated and audited. A detail page that could silently PATCH a live
+rate is the exact thing the Rate Desk was built to prevent.
+
+**Verified against the live DB** (`scripts/check-products.mjs`): 59 approved+active products →
+**216 rate lines across 14 banks**, **0 products with no quotes, 0 unparseable `pricingJson`**.
+37 fixed lines have no follow-on recipe — surfaced as a per-row "no follow-on" flag in the
+browser, which is one of the real failure modes behind a wrong client quote. 14 banks have
+logos uploaded.
+
+Verification: `npx tsc --noEmit` clean · eslint clean on every touched path (0 errors) ·
+`npm run test:pricing` still 27/27 · schema pushed (one additive nullable-free boolean,
+`BankProduct.isExclusive`).
+
+---
+
+
+Owner asked for three things: a three-tier pricing model with an admin-controlled minimum
+rate, an admin UI that makes changing a rate painless, and the right information on the
+client-facing side. All three are done, plus a live bug found along the way.
+
+**THE BUG (highest severity thing found in this codebase).** `LoanCase` had no
+`propertyValue` column, and `defaultCaseProfile` in `case-profile.ts` back-derived one as
+`Math.round(loanAmount / 0.8)` whenever it was missing. That **invents an 80% LTV** and feeds
+it to every LTV verdict, every affordability cap, and every "LTV exceeds cap" rejection. A
+client asking 1.5M on a 3.25M property (54% LTV) was reported as 80% LTV.
+
+`scripts/check-propertyvalue.mjs` measured the live exposure: **28 of 33 cases**, including
+4 at Pre-Approval, 2 at Valuation and 2 at Final Approval. Real values were sitting inside
+`profileJson` (14 cases) because the Case 360 form captured them there and nothing copied
+them to a real column. Backfilled 13 (one was below its own loan amount, so the guard
+rejected it); 18 cases are now honestly reported as data gaps instead of confidently wrong.
+`null` is now the only honest answer to "property value not captured", and the proposal prints
+a ⚠ rather than a fabricated LTV.
+
+**Tier-0 norms — and the mistake worth recording.** `UAE_NORMS` + `resolveNorm()` give every
+bank a default for DBR, card rule, bonus, rental and age caps, with explicit override. The
+important part is the ORDERING: the norm fills a `null` but never overwrites a bank's own
+value. My first instinct was to treat CBUAE-50%-DBR as an authority layer above the banks —
+that would have destroyed DIB's 2% card-limit rule and ENBD's 50% bonus rule, i.e. exactly
+the facts that win cases. Tests assert the bank wins. Related: `MAX_DBR` turned out to be a
+**dead constant** (the engine already used `p.dbrPct ?? 50`), so a 65% private-banking product
+was never actually clipped. It now carries a comment saying so, so nobody "fixes" it back.
+
+**Tier-1 floor.** `applyFloor()` inside `resolveQuote()` is the only enforcement point:
+`minFixedRatePct` raises a fixed quote, `minMarginBps` raises a variable margin, `hardStopPct`
+refuses to price at all. Stored as one JSON blob in the existing `AppSetting` table and read on
+every `/api/bank-match` and `/api/proposal`, so changing the floor reprices the whole book with
+no product edits and no deploy. Fail-open on a corrupt value: a broken floor must never crash
+pricing or accidentally hard-stop everything. Comparison is in basis points with a half-bp
+tolerance so 3.895 vs 3.89 doesn't false-trip.
+
+**Rate Desk.** Changing a rate was six steps: pick a bank, find the product, open a ~900-line
+modal, find the quote row, click Revise, edit a number, then save the whole product in place.
+Now it's two. One row per live rate line, inline rate editing, a pre-commit floor check, and a
+required reason. The commit closes the old line the day before the effective date and appends
+a new dated one — never an in-place mutation. Per-row attention flags mark the actual failure
+modes behind a wrong client quote: `no follow-on rate`, `no floor`, `no stress buffer`.
+
+**Audit trail.** New `AuditLog` model + `src/lib/audit.ts`. `approvedBy` only ever recorded
+WHO last approved a version, never what changed — so "what did we quote this client in
+March?" was unanswerable. Now every BankProduct patch, version, promotion change, rate
+revision and floor save writes before/after + actor + timestamp, readable at Admin → Change
+log. `audit()` swallows its own errors on purpose: an audit failure must never block a save an
+admin already confirmed.
+
+**Explaining the engine.** `resolveCaps()` replaces the scattered `Math.min(...)` with one
+function returning `{ eligibleLoan, boundBy, boundNote, caps }`, so "why is this client only
+eligible for 1.2M?" has an answer. A `null` cap is skipped, never treated as zero (that would
+have made a missing LTV cap the tightest cap and silently zeroed eligibility). Also
+distinguished an *unrecorded* stress buffer from a real zero — using 0 for a missing buffer was
+qualifying clients with no cushion, and the proposal now labels the figure "assumed — confirm
+with the bank".
+
+Corrected an earlier claim of mine: `setMatches` is already fail-closed (a null case value on a
+constrained axis does NOT match), so the only genuine silent pass was `nationalityAllowed`.
+That one is now surfaced via `MatchResult.verifyNeeded` rather than inventing a rejection we
+can't justify.
+
+**New rules the engine can finally see.** `serviceMonthsMin`, `propertyAgeYearsMax` and
+`firstPropertyOnly` were free text in `eligibility` that nothing read. Verified: all 8
+canonical property columns had **zero reads** in the three engine files. They're now typed
+columns the engine enforces, and `propertyStage` / `transactionPurpose` /
+`propertyTypeCanonical` are threaded through new `stages`/`purposes`/`propertyTypes` axes on
+`RateQuote`. Off-plan and handover products filter correctly for the first time.
+
+**Client side.** The reference proposal the owner shared shows "3.89% fixed for 3 years" with
+ONE monthly figure on an 8-year loan. I worked the arithmetic: balance after 36 payments
+1,288,600, follow-on EIBOR 3M 4.345 + 1.89 = 6.235%, so the payment goes 23,669 → ~25,050.
+**A 5.8% jump the document never mentions.** The engine already computed `followOnEmi`; it
+just wasn't printed. `PaymentReveal`, `RateStory` and `WhyQualifies` now show the intro payment,
+the year-N+1 payment, the step-up percentage, the minimum rate, the rate we qualify on, and
+which cap actually bound. `ProposalSnapshot` freezes the numbers so a proposal sent last month
+still shows what the client was told.
+
+**Testing.** `bun` isn't on PATH in this shell, so `scripts/build-pricing-tests.mjs`
+transpiles just the pure functions with the TypeScript compiler already in the project and runs
+them under node — no new dependency, no DB. `npm run test:pricing` → **27 passed, 0 failed**:
+empty floor is a perfect no-op, floor raises but never lowers, hard stop blocks rather than
+raises, half-bp float tolerance, tightest cap wins, null cap skipped not zeroed, norm
+inherits but never overwrites a bank deviation, unknown-axis third state. `tsconfig.json` now
+excludes `tests/` (those specifiers are rewritten at build time).
+
+**Added but not yet surfaced in UI:** `Project` / `ProjectProduct` (the 382 Huspy
+`is_exclusive` products are an availability restriction, not a customer segment — a separate
+layer keeps them out of the segment vocabulary) and `DealException` (Tier-3 per-case
+exception pricing: reason + expiry + second approver, rendered separately so it is never
+mistaken for a bank rate).
+
+Verification: `npx tsc --noEmit` clean · `npm run test:pricing` 27/27 · eslint clean on every
+touched path (the one remaining `no-require-imports` error is pre-existing in
+`src/lib/graph.ts`, untouched) · schema pushed to Mumbai (additive only — new models and
+nullable columns, no drops).
+
+---
+
 
 Owner asked for the "3-tier inheritance + choose-any-axis pricing" model to be made real,
 not just planned. Three workstreams landed together.
@@ -634,3 +1126,41 @@ Stage Summary:
 - Staff replies reach the client on any bank journey and on the correct thread, both sides see sent/received/seen, attachments show progress then a real filename, and any chat attachment can be filed into the Document Vault in one click. Admin notification and device settings now load what is actually stored and persist what you toggle.
 
 
+
+---
+
+Task ID: rate-card bank-default inheritance + safe override revert
+Agent: cline
+Task: Make the inherited bank-default layer real (processing fees), and give overrides a safe way back to the default
+
+Work Log:
+- Found a live divergence: `/api/proposal` recalculated the processing fee from the product alone, so a product with no filed fee quoted `null` while the Rate Desk grid showed the bank's default. Two copies of one rule had already drifted.
+- `processingFeePct()` / `processingFeeAed()` now take a final `bankDefaultPct` (default `null`, so every existing call site is unchanged). `bank-match.ts` loads `Bank.defaultProcessingFeePct` alongside the products and passes it in; the fee block is now built even when a product has no `feesJson` at all, instead of being skipped. `/api/proposal` uses the same call and only reads approved, active products.
+- Precedence is explicit and tested: slab -> segment -> product default -> bank default -> `null`. An **expired promo with no filed standard stays `null`** - inheriting there would resurrect a fee we already knew had a different standard. That case is the one assertion in the new block that exists because getting it wrong is silent.
+- Inheritance is QUIET. `CardField` now keeps `parentValue` and sets `overridden` with half-a-basis-point tolerance (float noise must never read as an override). The grid shows the inherited number plainly and marks only a genuine row override with an amber `dagger`, naming where the value came from on hover.
+- **Revert is now a real action.** The edit panel shows the bank default it would fall back to, and offers `Revert to 0.525%` when (and only when) the row is a real override AND a default exists - offering a revert with nothing to revert to would promise inheritance that is not there. A null commit is a REVERT, not a zero: the route deletes `feesJson.processing.default` instead of writing `default: null`, which would shadow the default with a blank, and it leaves sibling fee keys (`min`/`max`/slabs) alone so clearing a row default cannot delete a product's other filed fees. A reason is still required and the button stays disabled until one is typed.
+- 16 new assertions (107 -> 123) in `tests/pricing-floor.test.ts`, covering product-over-default, missing-product-inherits, slab/segment still winning, the expired-promo `null`, `processingFeeAed` parity, grid-vs-engine equality, and `cardField` override detection. The harness now compiles `bank-fees.ts` + `format.ts` as siblings so the fee rules are testable without a DB.
+- Removed the temporary probe `scripts/tmp-bankdefaults.cjs`.
+- Verified: `npx tsc --noEmit` clean, `eslint` clean on all eight touched files, `npm run test:pricing` 123 passed / 0 failed.
+
+Scope left open (deliberate, not an oversight): only `defaultProcessingFeePct` is fully resolved end-to-end. LTV, minimum salary, tenor and stress buffer are still display/rule metadata in Bank Defaults, not a resolved row hierarchy - wiring them would change qualification outcomes, which is a bigger call than a fee.
+
+---
+
+Task ID: sanctions visibility + PR1 safety (validation, pos/neg points, in-place write)
+Agent: cline
+Task: Report the nationality restrictions the engine cannot see; land the safe PR-1 items
+
+Work Log:
+- Measured, not assumed: `RateQuote.nationalityRule` is a fully built, enforced axis (`nationalityAllowed()` via `quoteMatches()`, ranked by `quoteSpecificity()`) and it was set on **0 of 470 quotes**. `emirates[]` likewise 0. Meanwhile **11 banks** state a real restriction in `axesJson["Restricted Nationalities"]` that no matcher can see - RAK's "Syria, Pakistan, Iran, North Korea, Congo", NBF/Arab Bank "Iranians", ADIB's list, SCB's "Syria - even birth place". So a restricted client is currently matched and quoted.
+- New READ-ONLY `scripts/check-nationality-rules.mjs` (+ `scripts/nationality-report.txt`). It does NOT auto-apply anything; it prints each bank with its source wording so a human can check the reading first.
+- **The classification is the whole point, and it caught a bug in itself.** The same sheet label carries four different real meanings: BAN ("Iranians"), CONDITIONAL ("Iranians - Non ENBD Banking clients & STL is mandatory"), LTV_CAP ("Iranian - LTV restricted to 60%"), APPROVAL ("Russia ... compliance approval"). Only one is a hard deny. My first pass read ENBD as a BAN of Pakistan/Iran - it is actually an ALLOW-LIST ("Accept applications from these countries only: UK, France, ... Pakistan"), i.e. the exact inversion that refuses good clients. Added an ALLOWLIST kind, tested first. Result: **5 of 11 banks read as an unambiguous hard ban**; the rest need a human call. Only BAN rows are safe to type in.
+- Left as open questions rather than guessed: a **birthplace** ban (SCB: "Syria - even birth place") is broader than a passport check and `nationality` cannot represent it. And `nationalityAllowed()` returns TRUE for an unknown passport (deliberate fail-open, reported via `unknownAxes()`) - for a sanctions rule that is the wrong default and needs a policy decision.
+- **PR1.1** - `productIssues()` moved out of the Bank Rules component into `src/lib/product-issues.ts` (pure, no React). It was trapped in one screen, so the only check for a mistyped rate ran on the screen admins use least. Now enforced SERVER-SIDE on `rate-desk` `kind:"verify"`: a rate cannot be stamped "confirmed with the bank" while it is obviously wrong, which would otherwise sit unquestioned for 12 months. Advisory issues (text-only fees/insurance) still do not block.
+- A test caught a real gap in the check itself: `0.0395` (3.95 divided by 100 once too often) passed, because it is a well-formed number under 20. Added the sub-1% case - nothing in the UAE prices below ~1%. 13 new assertions, 123 -> 136.
+- **PR1.2** - pos/neg points were **read-only in the entire app**. They were declared in the Bank Defaults TS interface and never rendered; the only writer anywhere was `seed.ts`. Added Strengths / Watch-outs inputs to Bank Defaults and made `PUT /api/admin/bank-defaults` accept them. 9/18 banks have a value, 8 are blank - they are now editable for the first time. Internal-only (proposal sends them under `mode === "internal"`).
+- **PR1.3** - Bank Rules "Approve & save" spread `{...editing}` into `PATCH /api/admin`, writing `pricingJson` and `feesJson` IN PLACE with no reason - the exact thing CODEBASE.md says must never happen. Now strips both, so that tab approves RULES and rates move only through the Rate Desk.
+- Corrected two false CODEBASE.md claims found along the way: the "+ Save as New Version (Next Month)" button does not exist (dead `bankproduct_version` handler, duplicated twice in api/admin/route.ts; 12 products with version>1 came from scripts), and Bank Defaults has NO age-based staleness despite the doc claiming a 12-month warning.
+- Verified: `npx tsc --noEmit` clean, `eslint` clean on all touched files, `npm run test:pricing` 136 passed / 0 failed.
+
+Deliberately NOT done, pending review of `scripts/nationality-report.txt`: typing any `nationalityRule` into a quote. Only the BAN rows are safe; the rest would refuse clients the bank lends to. Bank Rules itself was kept, per instruction.

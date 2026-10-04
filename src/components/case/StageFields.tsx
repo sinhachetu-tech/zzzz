@@ -1,23 +1,26 @@
 "use client";
 
-/* Stage field capture — the date/DDA fields the drawer's checks read first
-   (valuation → FOL conversion → signing → DDA → settlement → title deed).
-   The FOL rule lives here AND in the API: signing before conversion is blocked.
+/* Stage field capture — the date/DDA/boolean fields the drawer's checks read.
+   Supports both admin-defined dynamic steps and legacy hardcoded dates.
    Persists straight through case PATCH, so no second save path exists. */
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useHfmcStore } from "@/lib/client-store";
-import type { LoanCase } from "@/lib/types";
+import type { LoanCase, StageItem } from "@/lib/types";
 import type { StageKey } from "@/lib/workflow/types";
 import { ICheck } from "@/components/icons";
 
 type DateField =
   | "valuationInitiatedDate" | "inspectionDate" | "valuationReportDate"
   | "folConversionDate" | "folSignedDate"
-  | "liabilityLetterDate" | "settlementDate" | "transferDate" | "titleDeedDate";
+  | "liabilityLetterDate" | "settlementDate" | "transferDate" | "titleDeedDate"
+  | "fileSubmittedDate" | "preApprovalDate";
 
-const FIELDS: Record<StageKey, { field: DateField; label: string }[]> = {
+const LEGACY_FIELDS: Record<string, { field: string; label: string }[]> = {
   doc: [],
-  pre: [],
+  pre: [
+    { field: "fileSubmittedDate", label: "2.1 File submitted date" },
+    { field: "preApprovalDate", label: "2.3 Pre-approval date" },
+  ],
   val: [
     { field: "valuationInitiatedDate", label: "3.1 Valuation initiated" },
     { field: "inspectionDate", label: "3.2 Inspection date" },
@@ -35,17 +38,48 @@ const FIELDS: Record<StageKey, { field: DateField; label: string }[]> = {
   ],
 };
 
-export function StageFields({ c, stageKey, conversionMissing }: {
+export function StageFields({
+  c,
+  stageKey,
+  stageItem,
+  conversionMissing,
+}: {
   c: LoanCase;
-  stageKey: StageKey;
+  stageKey: StageKey | string;
+  stageItem?: StageItem | null;
   conversionMissing: boolean;
 }) {
   const { updateCase, toast } = useHfmcStore();
   const [busy, setBusy] = useState(false);
-  const fields = FIELDS[stageKey];
-  if (stageKey === "fol" || stageKey === "val" || stageKey === "transfer") {
-    // handled below
-  }
+
+  // Extract dynamic date and boolean fields from stageItem steps if available.
+  // Two steps can target the same LoanCase column (e.g. both "settlementDate"), so
+  // dedupe by field — one input per column — and key on the step id, not the field.
+  const dateFields = useMemo(() => {
+    if (stageItem?.steps && stageItem.steps.length > 0) {
+      const seen = new Set<string>();
+      const dynamic = stageItem.steps
+        .filter((s) => s.checkType === "date_field" && s.checkTarget)
+        .filter((s) => {
+          if (seen.has(s.checkTarget)) return false;
+          seen.add(s.checkTarget);
+          return true;
+        })
+        .map((s) => ({
+          key: `step-${s.id}`,
+          field: s.checkTarget,
+          label: `${s.stepNumber} ${s.label}`,
+        }));
+      if (dynamic.length > 0) return dynamic;
+    }
+    return (LEGACY_FIELDS[stageKey] ?? []).map((f) => ({
+      key: `legacy-${f.field}`,
+      field: f.field,
+      label: f.label,
+    }));
+  }, [stageItem, stageKey]);
+
+  const hasDda = stageKey === "fol" || stageItem?.steps?.some((s) => s.checkTarget === "ddaActive");
 
   const save = async (patch: Record<string, unknown>, label: string) => {
     setBusy(true);
@@ -60,49 +94,56 @@ export function StageFields({ c, stageKey, conversionMissing }: {
 
   return (
     <div className="card p-4 space-y-3">
-      <h4 className="font-disp font-semibold text-[13px] m-0">Stage dates (drive the ticks)</h4>
-      {fields.length === 0 && (
+      <h4 className="font-disp font-semibold text-[13px] m-0">Stage data & dates (drive the ticks)</h4>
+      {dateFields.length === 0 && !hasDda && (
         <p className="text-[12px] text-[var(--ink-faint)] m-0">
           This stage has no date capture — document and task state drive it.
         </p>
       )}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-        {fields.map((f) => {
-          const disabled = f.field === "folSignedDate" && conversionMissing;
-          return (
-            <div key={f.field}>
-              <label className="label">{f.label}</label>
-              <input
-                type="date"
-                className="input mono !py-[6px]"
-                disabled={disabled || busy}
-                value={(c[f.field] as string | null) ?? ""}
-                onChange={(e) => save({ [f.field]: e.target.value }, f.label)}
-              />
-              {disabled && (
-                <p className="text-[10.5px] m-0 mt-1" style={{ color: "var(--coral)" }}>
-                  Locked — record 4.1 conversion first.
-                </p>
-              )}
-            </div>
-          );
-        })}
-      </div>
-      {stageKey === "fol" && (
+      {dateFields.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          {dateFields.map((f) => {
+            const disabled = f.field === "folSignedDate" && conversionMissing;
+            const stageData = ((c as unknown as { stageDataJson?: Record<string, unknown> }).stageDataJson ?? {}) as Record<string, unknown>;
+            const currentVal = (((c as unknown as Record<string, unknown>)[f.field] as string | null) ?? (stageData[f.field] as string | null)) ?? "";
+            return (
+              <div key={f.key}>
+                <label className="label">{f.label}</label>
+                <input
+                  type="date"
+                  className="input mono !py-[6px]"
+                  disabled={disabled || busy}
+                  value={currentVal}
+                  onChange={(e) => save({ [f.field]: e.target.value }, f.label)}
+                />
+                {disabled && (
+                  <p className="text-[10.5px] m-0 mt-1" style={{ color: "var(--coral)" }}>
+                    Locked — record 4.1 conversion first.
+                  </p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {hasDda && (
         <button
+          type="button"
           className="chip transition-all"
           disabled={busy}
           onClick={() => save({ ddaActive: !c.ddaActive }, c.ddaActive ? "DDA cleared" : "DDA activated")}
-          style={c.ddaActive
-            ? { background: "rgba(67,214,155,0.12)", borderColor: "var(--mint)", color: "var(--mint)" }
-            : { background: "var(--bg2)", borderColor: "var(--line)", color: "var(--ink-dim)" }}
+          style={
+            c.ddaActive
+              ? { background: "rgba(67,214,155,0.12)", borderColor: "var(--mint)", color: "var(--mint)" }
+              : { background: "var(--bg2)", borderColor: "var(--line)", color: "var(--ink-dim)" }
+          }
         >
-          {c.ddaActive ? <><ICheck size={12} /> DDA activated (4.5)</> : "Mark DDA activated (4.5)"}
+          {c.ddaActive ? <><ICheck size={12} /> DDA activated</> : "Mark DDA activated"}
         </button>
       )}
     </div>
   );
 }
 
-export { FIELDS as STAGE_DATE_FIELDS };
+export { LEGACY_FIELDS as STAGE_DATE_FIELDS };
 export type { DateField as StageDateField };

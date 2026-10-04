@@ -47,6 +47,13 @@ model User {
   proposals Proposal[] @relation("ProposalAuthor")
   sentChatMessages ChatMessage[]
   devices          UserDevice[]
+  // staff who pressed "Convert to case" on a lead they were working
+  conversions     LoanCase[]      @relation("CaseConverter")
+  // staff who recorded a bank leg's outcome (Phase 2)
+  decidedCases    LoanCase[]      @relation("CaseDecider")
+  // staff who owns a Lead row / converted it into a case
+  ownedLeads      Lead[]          @relation("LeadOwner")
+  convertedLeads  Lead[]          @relation("LeadConverter")
 }
 
 model Designation {
@@ -61,6 +68,123 @@ model Designation {
   manageDocs Boolean @default(true)  // may upload/verify/reject/waive/delete/compress vault documents
   clientChat Boolean @default(true)  // may reply to client & agent chats
   builtIn  Boolean  @default(false)
+}
+
+// SERVICE LINE — the kind of business we are in. The firm started as a mortgage
+// brokerage but also does wills, insurance, real estate, business setup and
+// golden-visa assistance, and the data model had NO way to say which. Everything
+// downstream (stages, document rules, reporting, commissions) hangs off this
+// one axis: a golden-visa case must never be forced through "Valuation".
+//
+// Deliberately a small table rather than an enum column: the service list is a
+// business decision that will grow, and admin needs to add a line without a
+// migration. `code` is the stable key used in code + backfills (MORTGAGE,
+// GOLDEN_VISA, …); never rename a code, add a new one.
+model ServiceLine {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique
+  name      String
+  // short label for chips/pickers — "Mortgage", "Golden Visa"
+  shortName String   @default("")
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+  // does this line involve a per-bank competitive race (mortgage does; a will
+  // does not)? Drives whether bank legs + legStatus are meaningful at all.
+  bankRaced Boolean  @default(false)
+  notes     String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products     Product[]
+  cases        LoanCase[]
+  stageSets    StageSet[]
+  docRules     DocRule[]
+  slaRules     SlaRule[]
+  commTemplates CommTemplate[]
+  leads        Lead[]
+
+  @@index([active, sortOrder])
+}
+
+// PRODUCT — a specific offering WITHIN a service line. This is the layer that
+// was missing and the one the old vocabulary conflated with the service line:
+// "Mortgage" is a service line; "First-home purchase" / "Buyout & equity
+// release" / "Construction" are products under it. A Case runs through exactly
+// one product.
+model Product {
+  id            Int      @id @default(autoincrement())
+  serviceLineId Int
+  code          String   @unique
+  name          String
+  active        Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  notes         String   @default("")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  serviceLine ServiceLine @relation(fields: [serviceLineId], references: [id], onDelete: Cascade)
+  cases       LoanCase[]
+  leads       Lead[]
+
+  @@index([serviceLineId, active, sortOrder])
+}
+
+// LEAD — an expression of interest from someone we do not yet know well enough
+// to commit a file to. Until Phase 4 lands, a "lead" is still a LoanCase row
+// while stage === "Lead" (see the conversion stamp columns on LoanCase); this
+// table is the destination for that migration.
+//
+// TWO DESIGN RULES worth preserving when this table starts being written to:
+//   1. serviceLineId is REQUIRED. A consultancy selling six services cannot
+//      answer "how many leads do we have?" without it — a golden-visa enquiry
+//      and a 5M mortgage enquiry are otherwise the same row type and the
+//      pipeline number is meaningless.
+//   2. NEVER add service-specific columns here (no propertyValue, no salary,
+//      no visaType). A lead knows who, how to reach them, what they want and
+//      roughly how much. The moment this table grows a product-specific column,
+//      it has become a Case in all but name.
+model Lead {
+  id            Int      @id @default(autoincrement())
+  fullName      String
+  phone         String   @default("") // digits only — match hint, never a merge key
+  email         String?
+  serviceLineId Int // REQUIRED — see rule 1 above
+  productId     Int?     // null is valid: "doesn't know yet"
+  intendedAmount Int?    // null is meaningful: "not stated"
+  currency      String   @default("AED")
+  source        String   @default("Direct") // Direct | Agent | Broker | Website | Referral | WalkIn
+  // free-text detail the enum cannot hold: "met at GITEX stand", "WhatsApp ad"
+  sourceDetail  String   @default("")
+  status        String   @default("New") // New | Contacted | Qualified | Nurture | Converted | Lost | Invalid
+  // Invalid is NOT the same as Lost: Lost = real interest that didn't convert
+  // (price/timing/competitor). Invalid = spam, wrong number, duplicate. Mixing
+  // them understates your conversion rate.
+  ownerId       Int?     // nullable is NORMAL — an unassigned lead is not an error
+  // A pointer, not a required FK: a lead may convert to a case before we know
+  // the person well enough to make them a Client.
+  clientId      Int?
+  caseId        Int?     // set when the lead becomes a case
+  lostReason    String   @default("")
+  // The SLA clock starts HERE, not at createdAt. "Days since a human touched
+  // it" is the metric a manager actually wants; createdAt measures arrival age
+  // and would report a lead someone called on day 1 as stale by day 4.
+  firstContactedAt DateTime?
+  convertedAt   DateTime?
+  convertedById Int?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  owner        User?     @relation("LeadOwner", fields: [ownerId], references: [id])
+  convertedBy  User?     @relation("LeadConverter", fields: [convertedById], references: [id])
+  serviceLine  ServiceLine @relation(fields: [serviceLineId], references: [id])
+  product      Product?  @relation(fields: [productId], references: [id])
+  client       Client?   @relation(fields: [clientId], references: [id])
+  case         LoanCase? @relation("LeadOriginCase", fields: [caseId], references: [id])
+
+  @@index([status, createdAt])
+  @@index([serviceLineId, status])
+  @@index([ownerId, status])
+  @@index([phone])
 }
 
 // Client master — one row per human (borrower, co-borrower, co-applicant).
@@ -92,6 +216,21 @@ model Client {
   rentalIncome    Int @default(0)
   existingEmis    Int @default(0)
   creditCardLimits Int @default(0)
+  // The reusable ANSWER SHEET — the ~50 facts bank application forms ask for
+  // (mother's maiden name, home-country address, references, employment
+  // breakdown, document validity windows…). It lives on the PERSON, not the case,
+  // precisely so a returning customer is never asked the same question twice: a
+  // renovation loan two years after the original purchase should start from what
+  // we already know about that human.
+  //
+  // Deliberately a JSON blob rather than 50 columns: the field set is discovered
+  // incrementally (every new bank form turns up something new), and the point of
+  // src/lib/person-sheet.ts is that adding a field is ONE line there plus
+  // whatever the new bank requires. The shape is declared in that file.
+  //
+  // `profileJson` on the case stays the "as filed" SNAPSHOT for one engagement;
+  // this is the latest known truth — the same split as every other Client field.
+  personJson  String  @default("{}")
   notes     String   @default("")
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
@@ -99,6 +238,8 @@ model Client {
 
   primaryCases     LoanCase[] @relation("PrimaryClient")
   secondPartyCases LoanCase[] @relation("SecondPartyClient")
+  // leads that resolved to this known person (Phase 4)
+  leads            Lead[]
 
   @@index([phone])
   @@index([passportNo])
@@ -110,7 +251,26 @@ model LoanCase {
   customer    String
   banks       String   @default("[]") // JSON array of bank names
   wonBank     String?
+  // --- Per-bank journey identity ---
+  // The bank issues its OWN case / application number, which is not our
+  // HFMC-xxxx and is quoted back to the bank on every follow-up. Because a
+  // multi-bank deal is modelled as SIBLING cases (one LoanCase per bank — see
+  // the perBank loop in api/cases/route.ts), this field is naturally per-bank:
+  // the Mashreq leg carries Mashreq's reference, the Emirates leg theirs.
+  bankRef     String?
+  // Sibling linkage. The FIRST bank created is the parent (null); every bank
+  // added afterwards points back at it, so the legs of one deal stay visibly
+  // one deal instead of looking like unrelated cases in the worklist.
+  parentCaseId Int?
+  parentCase   LoanCase?  @relation("CaseSiblings", fields: [parentCaseId], references: [id])
+  siblings     LoanCase[] @relation("CaseSiblings")
   loanAmount  Int
+  // REAL property value. Was previously fabricated as loanAmount/0.8 in
+  // case-profile.ts whenever this was absent, which invented an 80% LTV and fed
+  // it to every LTV/affordability verdict. Null now means "not captured" and the
+  // engine says so instead of guessing — see pricing-floor/trace work in
+  // src/lib/bank-match.ts (resolveCaps returns boundBy).
+  propertyValue Int?
   stage       String
   caseStatus  String   @default("Active") // Active | Closed | Lost
   closedDate  String?
@@ -162,6 +322,15 @@ model LoanCase {
   holdReason       String?
   holdUntil        String? // ISO date
   lostReason       String? // why a lead/case was marked lost (audit trail — no hard delete for losses)
+  // --- Lead → case conversion stamp ---
+  // A "Lead" is not its own table; it is this row while stage === "Lead".
+  // Converting moves the stage, and these two columns record THAT FACT so the
+  // pipeline can distinguish "came from a lead on 12 Sep" from "manually
+  // created on 12 Sep". Stamped once, on the PATCH where the stage first
+  // leaves "Lead" — never re-stamped if the stage is later edited back and
+  // forth, so it stays a stable date rather than a moving target.
+  convertedAt   DateTime?
+  convertedById Int?     // the user who pressed Convert
   // --- Bank submission tracking ---
   loanType          String? // NSTL | STL (non-salary vs salary transfer)
   fileSubmittedDate String? // when the file was submitted to the bank
@@ -201,11 +370,34 @@ model LoanCase {
   backup2Id           Int? // second backup staffer — covers the file while the owner is on leave
   profileClientVerifiedAt DateTime? // when the CLIENT last confirmed their own data sheet
 
+  // --- SERVICE LINE (Phase 1) ---
+  // Which line of business this procedure belongs to. Nullable so the additive
+  // migration cannot fail on a locked/empty table; scripts/backfill-service-line
+  // .mjs sets every existing row to MORTGAGE (factually true — every row today
+  // is a mortgage). productId is the specific offering within that line.
+  serviceLineId Int?
+  productId     Int?
+
+  // --- BANK LEG OUTCOME (Phase 2) ---
+  // A multi-bank mortgage is a COMPETITIVE SET: many pre-approvals, one FOL, one
+  // loan taken. `caseStatus` cannot express that — "Lost" means we lost the
+  // business, which is not what happened to the Emirates leg when Mashreq won.
+  // legStatus is per-leg; the parent row rolls up to Won when exactly one leg is.
+  // Only meaningful when serviceLine.bankRaced is true.
+  legStatus  String  @default("Active") // Active | Won | LostRace | Declined | Withdrawn
+  decidedAt  DateTime? // when this leg's outcome was recorded
+  decidedById Int?    // the user who recorded it
+
   owner      User      @relation("CaseOwner", fields: [ownerId], references: [id])
   advisor    User?     @relation("CaseAdvisor", fields: [advisorId], references: [id])
   backup1    User?     @relation("CaseBackupOne", fields: [backup1Id], references: [id])
   backup2    User?     @relation("CaseBackupTwo", fields: [backup2Id], references: [id])
   vrm        User?     @relation("CaseVrm", fields: [vrmId], references: [id])
+  convertedBy User?    @relation("CaseConverter", fields: [convertedById], references: [id])
+  decidedBy   User?    @relation("CaseDecider", fields: [decidedById], references: [id])
+  serviceLine ServiceLine? @relation(fields: [serviceLineId], references: [id])
+  product     Product?     @relation(fields: [productId], references: [id])
+  originLeads Lead[]       @relation("LeadOriginCase")
   tasks      Task[]
   activities Activity[]
   instructions Instruction[]
@@ -218,11 +410,18 @@ model LoanCase {
   caseUpdates      CaseUpdate[]
   proposals        Proposal[]
   notificationOverrides String? // JSON override: { push?: boolean, whatsapp?: boolean, email?: boolean }
+  dealExceptions   DealException[]
   chatMessages     ChatMessage[]
   devices          UserDevice[]
   client           Client?  @relation("PrimaryClient", fields: [clientId], references: [id])
   secondPartyClient Client? @relation("SecondPartyClient", fields: [secondPartyClientId], references: [id])
+  // Admin-defined flexible stage data fields (Phase 3). Shape:
+  // { [stageLabel: string]: { [fieldKey: string]: string | number | boolean | null } }
+  // Existing typed columns (preApprovalDate, folDate, etc.) remain canonical for now;
+  // admin-added fields for NEW stages land here so no migration is needed per field.
+  stageDataJson    String  @default("{}")
 }
+
 
 model Task {
   id          Int      @id @default(autoincrement())
@@ -326,11 +525,70 @@ model Reply {
   user     User          @relation("ReplyUser", fields: [userId], references: [id])
 }
 
+// STAGE SET — the stage list belonging to ONE service line. This is what lets a
+// golden-visa case run Documents → Application → Visa issued → Emirates ID
+// while a mortgage runs Document Collection → Pre-Approval → Valuation → FOL →
+// Transfer. Before this, StageItem was global and the 5 mortgage stages were
+// hardcoded in src/lib/workflow/registry.ts, so every case of every service had
+// to walk the mortgage pipeline.
+model StageSet {
+  id            Int      @id @default(autoincrement())
+  serviceLineId Int
+  name          String
+  active        Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  // null = the default set for that service line, used when a case names no set
+  isDefault     Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  serviceLine ServiceLine @relation(fields: [serviceLineId], references: [id], onDelete: Cascade)
+  stages      StageItem[]
+
+  @@unique([serviceLineId, name])
+  @@index([serviceLineId, active])
+}
+
 model StageItem {
-  id        Int      @id @default(autoincrement())
-  label     String   @unique
-  active    Boolean  @default(true)
-  sortOrder Int      @default(0)
+  id              Int         @id @default(autoincrement())
+  label           String      @unique
+  active          Boolean     @default(true)
+  sortOrder       Int         @default(0)
+  // Which service line this stage belongs to. NULL = legacy/global (the 5
+  // mortgage stages before Phase 5); backfill-service-line.mjs assigns MORTGAGE.
+  stageSetId      Int?
+  // Admin-configurable behaviour (Phase 1 fields — no LoanCase migration needed)
+  ownerRole       String      @default("")      // e.g. "VRM → SPO" shown on journey card
+  exitGateSummary String      @default("")      // one-liner shown on the Move button when blocked
+  sopJson         String      @default("[]")    // JSON string[] — procedure bullets admin writes
+  commsJson       String      @default("[]")    // JSON string[] of CommTemplate keys for this stage
+
+  stageSet StageSet? @relation(fields: [stageSetId], references: [id], onDelete: Cascade)
+  steps StageStep[]
+}
+
+// Sub-steps / checklist for a stage — replaces the 5 hardcoded stages/*.ts files.
+// Each row is one checkbox in the StageDrawer. `checkType` + `checkTarget` tell
+// useStageLive how to evaluate it; `isGate` means "block stage advance if false".
+model StageStep {
+  id          Int      @id @default(autoincrement())
+  stageId     Int
+  stepNumber  String   @default("")    // display label, e.g. "2.3"
+  label       String
+  hint        String   @default("")
+  sortOrder   Int      @default(0)
+  active      Boolean  @default(true)
+  isGate      Boolean  @default(false) // must pass (or override+reason) before advancing
+  // How to evaluate this step automatically:
+  // "date_field"    → ✓ when LoanCase[checkTarget] is non-null
+  // "boolean_field" → ✓ when LoanCase[checkTarget] === true
+  // "doc_category"  → ✓ when all mandatory docs of that category are Verified
+  // "note_keyword"  → ✓ when any daily-note contains checkTarget (regex)
+  // "manual"        → always false until staff ticks a StageStepAck row
+  checkType   String   @default("manual") // date_field | boolean_field | doc_category | note_keyword | manual
+  checkTarget String   @default("")       // field name on LoanCase or doc category or regex
+
+  stage StageItem @relation(fields: [stageId], references: [id], onDelete: Cascade)
 }
 
 model MasterItem {
@@ -354,6 +612,42 @@ model BankItem {
   negPoints String  @default("") // negotiating intel — negatives
   website   String?
   contactsJson String @default("[]") // bank RM contacts: [{name,phone,email,role}]
+
+  // ---- BANK DEFAULTS -------------------------------------------------
+  // The rarely-changing layer everything below inherits from. A product/slot that
+  // sets its own value OVERRIDES these; a null field here means "use the norm"
+  // (src/lib/bank-pricing UAE_NORMS), so there is always a resolved value.
+  //
+  // `ratePct` above is COMMISSION, not an interest rate — it is the only reason that
+  // field has been confusing, so it is never shown next to a rate card again.
+  defaultProcessingFeePct Float? // charged on the loan
+  defaultValuationFeeAed  Float? // flat AED
+  defaultPreApprovalAed   Float? // flat AED
+  maxTenorYears           Int?   // 14/14 of our banks are internally consistent here
+  maxLtvNational          Int?
+  maxLtvExpatriate        Int?
+  minSalaryAed            Int?
+  totalTatDays            Int?
+  paTatDays               Int?
+  paValidityDays          Int?
+  folValidityDays         Int?
+  valuationValidityDays   Int?
+  stressBufferPct         Float? // the bank's own stress rule
+  cardRulePct             Float? // % of card limits counted in DBR
+  bonusPct                Float? // % of bonus counted
+  rentalIncomePct         Float? // % of rental counted
+  maxAgeSalaried          Int?   // age at loan maturity
+  maxAgeSelfEmp           Int?
+  serviceMonthsMin        Int?   // "6 months in the same company"
+  propertyAgeYearsMax     Int?
+  firstPropertyOnly       Boolean @default(false)
+  /** When a human last confirmed these defaults with the bank. An UNRECORDED date
+   *  is the whole risk of a "constant": it rots silently. Drives the ⚠ badges. */
+  defaultsVerifiedAt      String  @default("")
+  /** Which mortgage types this bank offers at all — Islamic / Conventional / both.
+   *  A set, not a value, so a master need not be duplicated per type. */
+  offersIslamic           Boolean @default(true)
+  offersConventional      Boolean @default(true)
 
   products BankProduct[]
 }
@@ -419,6 +713,18 @@ model BankProduct {
 
   bank BankItem @relation(fields: [bankId], references: [id], onDelete: Cascade)
   promotions Promotion[]
+  projects ProjectProduct[]
+
+  // --- Eligibility rules the engine now actually READS (were previously free
+  // text buried in eligibility/axesJson, so the engine never saw them) ---
+  serviceMonthsMin  Int?   // "6 months in the same company" — very common UAE rule
+  propertyAgeYearsMax Int? // some banks cap the age of the building itself
+  firstPropertyOnly Boolean @default(false) // is this the client's first purchase?
+  minServiceNote    String @default("") // source text for the above
+  /** Availability restriction, NOT a customer segment: this product may only be
+   *  sold for a specific developer/promotion (e.g. the 382 Huspy is_exclusive rows
+   *  tied to Dubai Holding projects). The project itself lives in Project. */
+  isExclusive       Boolean @default(false)
 }
 
 // Tier-4 override layer — festival bonanzas / fee waivers / rate cuts.
@@ -491,8 +797,16 @@ model SlaRule {
   id        Int      @id @default(autoincrement())
   stage     String
   bank      String? // null = all banks
+  // Which service line's turnaround this SLA measures. NULL = global/legacy
+  // (every existing rule); backfill-service-line.mjs assigns MORTGAGE. A golden
+  // visa has no bank and its own clock, so it needs its own rows.
+  serviceLineId Int?
   maxDays   Int
   active    Boolean  @default(true)
+
+  serviceLine ServiceLine? @relation(fields: [serviceLineId], references: [id])
+
+  @@index([serviceLineId])
 }
 
 model AffordabilityCheck {
@@ -607,8 +921,102 @@ model Proposal {
   decidedAt DateTime?
   createdAt DateTime @default(now())
 
+  case         LoanCase        @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  author       User            @relation("ProposalAuthor", fields: [createdBy], references: [id])
+  snapshot     ProposalSnapshot?
+}
+
+// Append-only audit trail for EVERY pricing-affecting mutation. A pricing engine
+// must be able to answer "what did we tell the client on 3 March, and who changed
+// it?" — approvedBy alone records only the last approver, not the before/after.
+// Written by src/lib/audit.ts from the /api/admin routes.
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  entity    String   // BankProduct | Promotion | FeeRule | AppSetting | DealException | BankItem
+  entityId  String   // "" for key-value entities (AppSetting)
+  action    String   // create | update | delete | revise | approve
+  field     String   @default("") // the specific field/axis that moved (e.g. "quotes[2].ratePct")
+  beforeVal String   @default("")
+  afterVal  String   @default("")
+  reason    String   @default("") // required at the point of entry for rate edits
+  actorId   Int?
+  actorName String   @default("")
+  at        DateTime @default(now())
+
+  @@index([entity, at])
+  @@index([at])
+}
+
+// Named development (projects). The Huspy feed carries 382 is_exclusive products
+// tied to specific projects ("Dubai Holding Exclusive - Jomana 8"); those are an
+// AVAILABILITY restriction, not a customer segment, so they get their own layer
+// instead of polluting the segment vocabulary.
+model Project {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  developer String   @default("")
+  emirate   String   @default("")
+  promotion String   @default("") // e.g. "Dubai Holding"
+  stage     String   @default("") // OFF_PLAN | HANDOVER | COMPLETED
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products ProjectProduct[]
+}
+
+// Which bank products are restricted to which project.
+model ProjectProduct {
+  id          Int    @id @default(autoincrement())
+  projectId   Int
+  bankProductId Int
+  isExclusive Boolean @default(true)
+
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  bankProduct BankProduct  @relation(fields: [bankProductId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, bankProductId])
+  @@index([bankProductId])
+}
+
+// Tier-3 pricing: a per-CASE exception below the standard floor. Deliberately the
+// most restricted layer in the system — case-scoped, reason + expiry mandatory,
+// super-admin only, second approver required, and rendered as an explicit
+// "exception pricing" line on the proposal so it is never mistaken for a bank rate.
+model DealException {
+  id           Int      @id @default(autoincrement())
+  caseId       Int
+  bankProductId Int?
+  rateDeltaBps Int      @default(0)      // e.g. -30 = 30bps better than the tier-1 rate
+  feeWaive     Boolean  @default(false)  // waive processing fee on this deal
+  reason       String   // MANDATORY — why this exception exists
+  approvedBy   String   // second approver (must differ from createdBy)
+  validFrom    String   // ISO date, inclusive
+  validTo      String   // ISO date, inclusive — exceptions must expire
+  createdBy    String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
   case LoanCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
-  author User @relation("ProposalAuthor", fields: [createdBy], references: [id])
+}
+
+// A proposal is a SNAPSHOT, not a live view. It never re-reads bank rates: if a
+// bank repriced tomorrow, a proposal sent last month still shows what the client
+// was actually told. This is what makes the document defensible.
+model ProposalSnapshot {
+  id          Int      @id @default(autoincrement())
+  proposalId  Int
+  inputsJson      String @default("{}") // client, property, loan — as entered
+  eiborCurveJson  String @default("{}") // every tenor, as at capturedAt
+  resultsJson     String @default("[]") // frozen MatchResult[] incl. followOn/stress EMIs
+  floorJson       String @default("{}") // pricing floor in force at capture
+  overlaysJson    String @default("[]") // which tier-2 promos were applied
+  exceptionsJson  String @default("[]") // any tier-3 deal exceptions applied
+  eiborCapturedAt String @default("")   // the EIBOR publication date shown to the client
+  capturedAt  DateTime @default(now())
+
+  proposal Proposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  @@unique([proposalId])
 }
 
 model StageTransition {
@@ -662,12 +1070,28 @@ model DocRule {
   applicablePropertyType String @default("[\"any\"]")  // Ready | Off-Plan | any
   applicableTransaction  String @default("[\"any\"]")  // New Purchase | Buyout / Equity Release | any
   applicableResidency    String @default("[\"all\"]")  // UAE National | Resident Expatriate | Non-Resident | all
+  // Per-bank document requirements. Every bank asks for something different
+  // (a bank-specific valuation format, a particular salary-certificate window,
+  // an extra internal-uw memo), and that difference is invisible without this
+  // axis — a case used to get ONE uniform checklist regardless of which bank
+  // it sat with. "any"/"all" = every bank, which is the default so every
+  // existing rule keeps behaving exactly as it does today.
+  applicableBank         String @default("[\"any\"]")
+  // Which service line's checklist this rule belongs to. The property /
+  // transaction / residency axes above are all mortgage vocabulary, so without
+  // this a will or a golden-visa case would be handed a mortgage checklist.
+  // NULL = legacy/global (every existing rule); backfill assigns MORTGAGE.
+  serviceLineId   Int?
   // access rules
   mandatory           Boolean @default(true)  // blocks case progression when missing
   visibleToClient     Boolean @default(true)  // false = staff-internal only (AECB, memos…)
   clientCanUpload     Boolean @default(true)
   expiryTrackingRequired Boolean @default(true)
   active       Boolean @default(true)
+
+  serviceLine ServiceLine? @relation(fields: [serviceLineId], references: [id])
+
+  @@index([serviceLineId])
 }
 
 // Per-case document instance — the living vault. Auto-populated from templates
@@ -676,6 +1100,14 @@ model CaseDocument {
   id              Int      @id @default(autoincrement())
   caseId          Int
   templateId      Int?     // null = ad-hoc document
+  // Provenance for a document carried over from a SIBLING bank leg of the same
+  // deal (see POST /api/cases/:id/add-bank). The file bytes are NOT duplicated —
+  // the new row points at the same storage key — so this is purely the audit
+  // trail answering "why does the ADCB leg already have the EID, nobody asked
+  // the client twice?". Null on every document that was uploaded for real.
+  copiedFromId    Int?
+  copiedFrom      CaseDocument?  @relation("DocCopy", fields: [copiedFromId], references: [id])
+  copies          CaseDocument[] @relation("DocCopy")
   title           String
   category        String   @default("KYC")
   status          String   @default("Pending upload") // Pending upload | Uploaded | Verified | Rejected | Waived
@@ -719,12 +1151,20 @@ model CommTemplate {
   channel   String  @default("whatsapp") // whatsapp | email | call
   stageKey  String  @default("doc")      // doc | pre | val | fol | transfer
   bank      String? // null = every bank
+  // stageKey above is mortgage vocabulary; this is the owning service line so a
+  // golden-visa "application submitted" message does not have to masquerade as
+  // one of the 5 mortgage keys. NULL = legacy/global; backfill assigns MORTGAGE.
+  serviceLineId Int?
   name      String
   subject   String? // email only
   body      String
   vars      String  @default("[]") // JSON array of placeholder names used in body
   sortOrder Int     @default(0)
   active    Boolean @default(true)
+
+  serviceLine ServiceLine? @relation(fields: [serviceLineId], references: [id])
+
+  @@index([serviceLineId])
 }
 
 // SOP §6.9 — Government & bank transfer fee matrices (Dubai / Abu Dhabi).

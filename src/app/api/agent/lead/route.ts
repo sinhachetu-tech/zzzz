@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { currentAgent } from "@/lib/agent-auth";
 import { serCase } from "@/lib/ser";
+import { syncCaseClients } from "@/lib/client-master";
 
 export async function POST(req: NextRequest) {
   const me = await currentAgent();
@@ -40,12 +41,26 @@ export async function POST(req: NextRequest) {
       transactionType: "",
       propertyLocation: null,
       coApplicantName: null,
+      // The agent's form collects an email but LoanCase has no email column —
+      // it lives on the Client master, which is written from profileJson. Write
+      // it into the profile now (was silently dropped) so the team actually
+      // sees the address the agent typed. syncCaseClients below promotes it.
+      profileJson: JSON.stringify({
+        primary: { fullName: name.trim(), phone: phone.trim(), email: email?.trim() || undefined },
+      }),
     },
   });
+
+  // Link the Client master so the lead's name/phone/email are queryable from
+  // the Leads tab. Best-effort: a lead must still be creatable if this fails.
+  await syncCaseClients(created.id).catch((e) => console.error("agent lead client sync failed:", e));
 
   await db.activity.create({
     data: { caseId: created.id, userId: 1, action: `agent ${me.name} onboarded lead: ${name.trim()}` },
   });
 
-  return NextResponse.json({ case: serCase(created) });
+  // Re-read rather than serialising `created`: syncCaseClients writes clientId,
+  // so the original object would report a null clientId to the agent's screen.
+  const fresh = (await db.loanCase.findUnique({ where: { id: created.id } })) ?? created;
+  return NextResponse.json({ case: serCase(fresh) });
 }

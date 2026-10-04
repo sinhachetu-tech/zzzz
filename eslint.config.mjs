@@ -43,8 +43,32 @@ const eslintConfig = [...nextCoreWebVitals, ...nextTypescript, {
     "no-unreachable": "off",
     "no-useless-escape": "off",
   },
-}, {
-  ignores: ["node_modules/**", ".next/**", "out/**", "build/**", "next-env.d.ts", "examples/**", "skills"]
+}, // Node CLI scripts under scripts/ are run directly with `node script.js`, so they
+// are CommonJS by design — scripts/backfill-clients.js and
+// scripts/build-pricing-tests.mjs both rely on that. Linting them with the
+// TS/browser rule set raised a `no-require-imports` error per file for something
+// that is correct for the folder.
+{
+  files: ["scripts/**/*.js"],
+  rules: {
+    "@typescript-eslint/no-require-imports": "off",
+  },
+},
+{
+  // `.kilo/worktrees/` is a STALE COPY of the whole project left behind by an
+  // agent worktree. It holds a full duplicate of src/, scripts/ and the configs,
+  // and it was being linted as if it were live source — which roughly DOUBLED
+  // every error count and made the real number impossible to see.
+  ignores: [
+    "node_modules/**",
+    ".next/**",
+    "out/**",
+    "build/**",
+    "next-env.d.ts",
+    "examples/**",
+    "skills",
+    ".kilo/**",
+  ],
 }];
 
 export default eslintConfig;

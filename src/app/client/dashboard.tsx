@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactElement } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { useHfmcStore } from "@/lib/client-store";
 import { useClientStore } from "./client-store";
 import { fmtMoney, fmtDate, relTime, todayISO } from "@/lib/format";
 import { LogoMark, ICheck, IWhatsapp, IDownload, IUpload, ILogout, IUsers, IHome, IMenu } from "@/components/icons";
-import { ThemeToggle, Tabs } from "@/components/hfmc/ui";
+import { ThemeToggle, Tabs, Modal } from "@/components/hfmc/ui";
 import { parseCaseProfile, ageFromDob, type CaseProfile } from "@/lib/case-profile";
+import { PersonDataSheet } from "@/components/person/PersonDataSheet";
+import { seedPersonSheet } from "@/lib/person-sheet";
 import { ChatBubble } from "@/components/chat/ChatBubble";
 import { PwaInstallBanner } from "@/components/pwa/PwaInstallBanner";
 
@@ -27,7 +29,28 @@ const TABS: { id: Tab; label: string; Icon: (p: { size?: number }) => ReactEleme
 
 export function ClientDashboard() {
   const { me, engagements, case: c, stages, stageTransitions, documents, advisor, advisorWhatsapp, profile, profileClientVerifiedAt, logout, switchCase, hydrate, vaultDocuments } = useClientStore();
-  const [tab, setTab] = useState<Tab>("journey");
+  const [tab, setTabRaw] = useState<Tab>("journey");
+
+  // UNSAVED-CHANGES GUARD. The bank-application sheet holds a draft until Save is
+  // pressed, so switching the bottom tab away — or reloading — would drop it. A
+  // ref, because the guard only READS the flag at the moment of navigation.
+  const sheetDirtyRef = useRef(false);
+  const [pendingTab, setPendingTab] = useState<Tab | null>(null);
+
+  const setTab = (t: Tab) => {
+    if (sheetDirtyRef.current && t !== "details") { setPendingTab(t); return; }
+    setTabRaw(t);
+  };
+
+  useEffect(() => {
+    const beforeUnload = (e: BeforeUnloadEvent) => {
+      if (!sheetDirtyRef.current) return;
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", beforeUnload);
+    return () => window.removeEventListener("beforeunload", beforeUnload);
+  }, []);
 
   const activeStages = useMemo(() => stages.filter((s) => s.active).sort((a, b) => a.sortOrder - b.sortOrder), [stages]);
   // Legacy labels (Bank Submission, Final Approval, …) resolve to the current
@@ -74,6 +97,29 @@ export function ClientDashboard() {
         </div>
       </header>
 
+      {/* Unsaved-changes guard: a hard block, never a silent auto-save. */}
+      {pendingTab && (
+        <Modal title="Save before you leave?" onClose={() => setPendingTab(null)} width={420}>
+          <p className="text-[12.5px] text-[var(--ink-dim)] m-0 mb-3">
+            You have unsaved changes on your bank application details. Leaving now will <strong>discard them</strong>.
+          </p>
+          <div className="flex gap-2 justify-end">
+            <button className="btn btn-ghost" onClick={() => setPendingTab(null)}>Go back and save</button>
+            <button
+              className="btn btn-primary"
+              onClick={() => {
+                const t = pendingTab;
+                setPendingTab(null);
+                sheetDirtyRef.current = false;
+                setTabRaw(t);
+              }}
+            >
+              Discard and leave
+            </button>
+          </div>
+        </Modal>
+      )}
+
       <main className="max-w-[860px] mx-auto px-4 py-5 space-y-4 pb-28 md:pb-10">
         {tab === "journey" && (
           <JourneyTab
@@ -92,7 +138,7 @@ export function ClientDashboard() {
         {tab === "details" && (
           <DetailsTab
             caseId={c.id} caseNumber={c.caseNumber}
-            profile={profile} verified={profileClientVerifiedAt} hydrate={hydrate}
+            profile={profile} verified={profileClientVerifiedAt} hydrate={hydrate} sheetDirtyRef={sheetDirtyRef}
           />
         )}
 
@@ -357,9 +403,11 @@ function JourneyTab({ c, greeting, progressPct, engagements, switchCase, advisor
 
 /* ================= MY DETAILS tab ================= */
 
-function DetailsTab({ caseId, caseNumber, profile, verified, hydrate }: {
+function DetailsTab({ caseId, caseNumber, profile, verified, hydrate, sheetDirtyRef }: {
   caseId: number; caseNumber: string;
   profile: unknown; verified: string | null; hydrate: (caseId?: number) => Promise<void>;
+  /** Shared with the parent so a tab switch can be blocked while dirty. */
+  sheetDirtyRef: React.MutableRefObject<boolean>;
 }) {
   const prof: CaseProfile | null = profile ? (() => { try { return parseCaseProfile(JSON.stringify(profile)); } catch { return null; } })() : null;
   const p0 = prof?.primary;
@@ -383,6 +431,76 @@ function DetailsTab({ caseId, caseNumber, profile, verified, hydrate }: {
   }));
   const [saving, setSaving] = useState(false);
   const { toast } = useHfmcStore();
+
+  // The bank application answer sheet. Seeded from whatever is already on file,
+  // so the client confirms rather than re-types. Saved on every change — and
+  // because the sheet renders ANSWERED fields read-only, an edit only fires on a
+  // deliberate change to an empty box, not per keystroke.
+  const [sheet, setSheet] = useState<Record<string, unknown>>({});
+  const [savingSheet, setSavingSheet] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/client/person", { cache: "no-store" });
+        if (!res.ok) return;
+        const j = await res.json();
+        if (!cancelled && j && j.personData) {
+          // Seed from the typed profile columns too, so the client sees their OWN
+          // name, Emirates ID and salary already filled in rather than re-typing
+          // facts the file has held for months.
+          const pk = p0 as unknown as Record<string, unknown>;
+          setSheet(
+            seedPersonSheet(j.personData as Record<string, unknown>, {
+              fullName: p0?.fullName,
+              firstName: pk.firstName as string,
+              middleName: pk.middleName as string,
+              lastName: pk.lastName as string,
+              eidNo: p0?.eidNo,
+              passportNo: p0?.passportNo,
+              dob: p0?.dob,
+              nationality: p0?.nationality,
+              phone: p0?.phone,
+              email: p0?.email,
+              employmentProfile: p0?.employmentProfile,
+              companyName: p0?.companyName,
+              monthlySalary: p0?.monthlySalary,
+              variableIncome: p0?.variableIncome,
+              rentalIncome: p0?.rentalIncome,
+              existingEmis: p0?.existingEmis,
+              creditCardLimits: p0?.creditCardLimits,
+            }),
+          );
+        }
+      } catch { /* unauthenticated or offline — the sheet just starts empty */ }
+    })();
+    return () => { cancelled = true; };
+  }, [caseId]);
+
+  const saveSheet = async (next: Record<string, unknown>) => {
+    setSavingSheet(true);
+    try {
+      const res = await fetch("/api/client/person", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        // Send only this sheet's own keys, so the client's edit can never write
+        // something they were not shown.
+        body: JSON.stringify({ personData: next }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Save failed");
+      const j = await res.json().catch(() => null);
+      // Adopt the SAVED value as the new baseline. Without this the sheet keeps
+      // diffing its draft against the pre-save prop forever, so "Unsaved
+      // changes" would stay lit and the leave-prompt would keep firing AFTER a
+      // successful save. The staff side gets this for free because its save
+      // triggers a store hydrate; the portal writes straight to the API, so it
+      // has to refresh its own baseline.
+      setSheet((j && j.personData ? j.personData : next) as Record<string, unknown>);
+    } catch (e) {
+      toast("error", e instanceof Error ? e.message : "Could not save that section.");
+    }
+    setSavingSheet(false);
+  };
 
   const up = (patch: Partial<typeof form>) => setForm((f) => ({ ...f, ...patch }));
 
@@ -472,6 +590,32 @@ function DetailsTab({ caseId, caseNumber, profile, verified, hydrate }: {
       <p className="text-[10.5px] text-[var(--ink-faint)] text-center m-0 -mt-2">
         Saved straight to case file {caseNumber} — your advisor is notified automatically.
       </p>
+
+      {/* THE BANK APPLICATION DATA SHEET. This is the part only the CLIENT can
+          complete — mother's maiden name, home-country address, a reference's
+          mobile number — and it is why staff "Request N from client" instead of
+          keying it in. It saves to the PERSON, not to this case, so it carries
+          over to the next application instead of being asked again. */}
+      <div className="mt-5 pt-4" style={{ borderTop: "1px dashed var(--line)" }}>
+        <div className="mb-2.5">
+          <h3 className="font-disp font-semibold text-[14px] m-0">Bank application details</h3>
+          <p className="text-[11.5px] text-[var(--ink-faint)] m-0 mt-0.5">
+            Fill this once and it is used on every bank form, every time — you will never be asked for it again.
+          </p>
+        </div>
+        <PersonDataSheet
+          data={sheet}
+          selfEmployed={sheet.employmentType === "Self-Employed"}
+          onChange={saveSheet}
+          onDirtyChange={(d) => { sheetDirtyRef.current = d; }}
+          // Lock the fields while the save is in flight, so a double-tap cannot
+          // fire two writes.
+          readOnly={savingSheet}
+        />
+        {/* No "Saved ✓" line here on purpose: the sheet's own sticky bar is the
+            single source of truth for save state, and two indicators disagreeing
+            about the same state is how a user ends up trusting neither. */}
+      </div>
     </div>
   );
 }

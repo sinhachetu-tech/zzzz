@@ -32,17 +32,35 @@ export function txnConditionOf(transactionType: string): string {
 }
 
 /** Does this template apply to this case profile? */
-export function templateApplies(rule: DocRule, c: Pick<LoanCase, "employmentProfile" | "propertyType" | "residency" | "transactionType">): boolean {
+export function templateApplies(rule: DocRule, c: Pick<LoanCase, "employmentProfile" | "propertyType" | "residency" | "transactionType"> & { banks?: string[] }): boolean {
   return (
     matches(rule.applicableEmployment, c.employmentProfile) &&
     matches(rule.applicablePropertyType, c.propertyType) &&
     matches(rule.applicableTransaction, txnConditionOf(c.transactionType)) &&
-    matches(rule.applicableResidency, c.residency)
+    matches(rule.applicableResidency, c.residency) &&
+    bankApplies(rule, c.banks ?? [])
   );
 }
 
+/**
+ * The per-bank axis. A rule scoped to a specific bank only applies when the case
+ * actually sits with that bank — which is what lets Emirates and Mashreq demand
+ * different documents off the same borrower.
+ *
+ * A case with NO bank yet must still get the full "any"/"all" checklist: we
+ * cannot know which bank will take it, and silently handing a new case an empty
+ * vault would hide mandatory KYC. Bank-scoped rules stay off until a bank is
+ * named, which is the honest reading of "this is a Mashreq-only document".
+ */
+function bankApplies(rule: DocRule, banks: string[]): boolean {
+  const scope = rule.applicableBank ?? ["any"];
+  if (scope.includes("all") || scope.includes("any")) return true;
+  if (banks.length === 0) return false;
+  return banks.some((b) => scope.includes(b));
+}
+
 /** Which active templates should be on this case's vault right now? */
-export function requiredTemplates(rules: DocRule[], c: Pick<LoanCase, "employmentProfile" | "propertyType" | "residency" | "transactionType">): DocRule[] {
+export function requiredTemplates(rules: DocRule[], c: Pick<LoanCase, "employmentProfile" | "propertyType" | "residency" | "transactionType"> & { banks?: string[] }): DocRule[] {
   return rules.filter((r) => r.active && templateApplies(r, c));
 }
 
@@ -58,11 +76,17 @@ export async function syncCaseVault(caseId: number): Promise<number> {
   const existing = await db.caseDocument.findMany({ where: { caseId }, select: { templateId: true } });
   const have = new Set(existing.map((e) => e.templateId));
 
+  // `banks` is part of the profile the rules are evaluated against — it is what
+  // makes a bank-scoped document requirement apply (or not) on this leg.
+  let banks: string[] = [];
+  try { banks = JSON.parse(c.banks); } catch { banks = []; }
+
   const profile = {
     employmentProfile: c.employmentProfile,
     propertyType: c.propertyType,
     residency: c.residency,
     transactionType: c.transactionType,
+    banks,
   };
   let added = 0;
   let sortOrder = (await db.caseDocument.aggregate({ where: { caseId }, _max: { sortOrder: true } }))._max.sortOrder ?? 0;
@@ -90,7 +114,8 @@ export async function syncCaseVault(caseId: number): Promise<number> {
 type PrismaDocRuleRow = {
   id: number; code: string; name: string; category: string; validityDays: number; warnDays: number;
   verifyNotes: string; applicableEmployment: string; applicablePropertyType: string;
-  applicableTransaction: string; applicableResidency: string; mandatory: boolean;
+  applicableTransaction: string; applicableResidency: string; applicableBank?: string;
+  mandatory: boolean;
   visibleToClient: boolean; clientCanUpload: boolean; expiryTrackingRequired: boolean; active: boolean;
 };
 function serToDocRule(d: PrismaDocRuleRow): DocRule {
@@ -101,6 +126,10 @@ function serToDocRule(d: PrismaDocRuleRow): DocRule {
     applicablePropertyType: parseVec(d.applicablePropertyType),
     applicableTransaction: parseVec(d.applicableTransaction),
     applicableResidency: parseVec(d.applicableResidency),
+    // MUST be read here too, not just in ser.ts: this local copy is the one the
+    // vault engine actually evaluates, so omitting it would make the bank axis
+    // silently inert while the admin UI happily saved it.
+    applicableBank: parseVec(d.applicableBank ?? '["any"]'),
     mandatory: d.mandatory, visibleToClient: d.visibleToClient,
     clientCanUpload: d.clientCanUpload, expiryTrackingRequired: d.expiryTrackingRequired,
     active: d.active,

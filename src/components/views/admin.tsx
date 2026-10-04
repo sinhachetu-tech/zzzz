@@ -13,20 +13,31 @@ import { parsePricing, resolveQuote, rateSchedule, type ProductPricing, type Rat
 import { parseRateTable } from "@/lib/quote-parser";
 import { emi, loanForEmi } from "@/lib/calc";
 import { BankFees, BankInsurance, parseFees, parseInsurance, extractFromAxes } from "@/lib/bank-fees";
+import { productIssues } from "@/lib/product-issues";
 import { CANONICAL_TXN } from "@/lib/bank-rules-taxonomy";
 import {
   IBank, ICheck, IPencil, IPlus, IShield, ITrash, ITrophy, IUpload, IUsers, IX,
 } from "@/components/icons";
 import { PolicyImporterModal } from "@/components/views/policy-import";
+import { RateCards } from "@/components/views/admin/rate-cards";
+import { BankDefaults } from "@/components/views/admin/bank-defaults";
+import { ChangeLog } from "@/components/views/admin/change-log";
+import { isBankFeeLabel, BANK_FEE_MISFILE_MESSAGE } from "@/lib/fee-scope";
+import { DealExceptions } from "@/components/views/admin/deal-exceptions";
+import { StagesManager } from "@/components/views/admin/stages";
 
 /* ------------------------------ types ------------------------------ */
 
-type Tab = "users" | "designations" | "banks" | "bankrules" | "promotions" | "dataquality" | "partners" | "channels" | "stages" | "masters" | "sla" | "docrules" | "feerules" | "templates" | "storage" | "portal" | "notifications" | "devices";
+type Tab = "ratedesk" | "changelog" | "dealexceptions" | "bankdefaults" | "users" | "designations" | "banks" | "bankrules" | "promotions" | "dataquality" | "partners" | "channels" | "stages" | "masters" | "sla" | "docrules" | "feerules" | "templates" | "storage" | "portal" | "notifications" | "devices";
 type MasterKind = "whyPending" | "waitingFor";
 
 const TEAMS = ["Management", "Dubai", "Abu Dhabi"];
 
 const TAB_OPTIONS: { value: Tab; label: string }[] = [
+  { value: "ratedesk", label: "Rate Cards" },
+  { value: "bankdefaults", label: "Bank Defaults" },
+  { value: "changelog", label: "Change log" },
+  { value: "dealexceptions", label: "Deal exceptions" },
   { value: "users", label: "Teammates" },
   { value: "designations", label: "Designations" },
   { value: "banks", label: "Banks & rates" },
@@ -49,10 +60,16 @@ const TAB_OPTIONS: { value: Tab; label: string }[] = [
 
 // Two-level admin navigation: group row on top, tabs for the active group below.
 // New sections slot into a group — the top row stays small no matter how much grows.
+//
+// PRICING is deliberately FIRST: changing a rate is the 90% daily task, and the
+// card grid makes it two steps instead of six. Bank Defaults (the inherited layer)
+// sits directly beside Rate Cards, so an inherited value and its override are one
+// click apart rather than in separate mental models.
 const GROUPS: { key: string; label: string; tabs: { value: Tab; label: string }[] }[] = [
+  { key: "pricing", label: "Pricing", tabs: TAB_OPTIONS.filter((t) => ["ratedesk", "bankdefaults", "bankrules", "promotions", "changelog", "dataquality", "dealexceptions"].includes(t.value)) },
   { key: "team", label: "Team & Access", tabs: TAB_OPTIONS.filter((t) => ["users", "designations"].includes(t.value)) },
-  { key: "market", label: "Marketplace", tabs: TAB_OPTIONS.filter((t) => ["banks", "bankrules", "promotions", "partners", "channels"].includes(t.value)) },
-  { key: "workflow", label: "Workflow", tabs: TAB_OPTIONS.filter((t) => ["stages", "masters", "sla", "dataquality", "portal"].includes(t.value)) },
+  { key: "market", label: "Marketplace", tabs: TAB_OPTIONS.filter((t) => ["banks", "partners", "channels"].includes(t.value)) },
+  { key: "workflow", label: "Workflow", tabs: TAB_OPTIONS.filter((t) => ["stages", "masters", "sla", "portal"].includes(t.value)) },
   { key: "docs", label: "Docs & Fees", tabs: TAB_OPTIONS.filter((t) => ["docrules", "feerules", "templates", "storage"].includes(t.value)) },
   { key: "settings", label: "Settings", tabs: TAB_OPTIONS.filter((t) => ["notifications", "devices"].includes(t.value)) },
 ];
@@ -180,8 +197,10 @@ function roleTone(role: string): "amber" | "sky" | "slate" {
 /* ------------------------------ main ------------------------------ */
 
 export default function Admin() {
-  const { flags, me } = useHfmcStore();
-  const [tab, setTab] = useState<Tab>("users");
+  const { flags, me, toast } = useHfmcStore();
+  // Land on the Rate Desk: changing a rate is the daily task, and the old default
+  // (Teammates) made the pricing work two clicks deeper than it needed to be.
+  const [tab, setTab] = useState<Tab>("ratedesk");
 
   const allowed = !!(flags?.admin || flags?.super);
 
@@ -228,6 +247,22 @@ export default function Admin() {
         </div>
       </div>
 
+      {tab === "ratedesk" && <RateCards onToast={toast} />}
+      {tab === "bankdefaults" && <BankDefaults onToast={toast} />}
+      {tab === "changelog" && <ChangeLog />}
+      {/* Tier 3 prices below the floor, so it is super-only here AND in the API —
+          the two guards are independent on purpose. */}
+      {tab === "dealexceptions" && (flags?.super
+        ? <DealExceptions />
+        : (
+          <div className="card p-8 text-center">
+            <h2 className="font-disp font-semibold text-[16px] m-0">Deal exceptions are super-admin only</h2>
+            <p className="text-[12.5px] mt-1 mb-0" style={{ color: "var(--ink-faint)" }}>
+              This screen prices a single case below the standard floor, so it requires a designation
+              with super rights.
+            </p>
+          </div>
+        ))}
       {tab === "users" && <UsersTab />}
       {tab === "designations" && <DesignationsTab />}
         {tab === "storage" && <StorageTab />}
@@ -237,7 +272,7 @@ export default function Admin() {
       {tab === "dataquality" && <DataQualityTab />}
       {tab === "partners" && <PartnersTab />}
       {tab === "channels" && <ChannelsTab />}
-      {tab === "stages" && <StagesTab />}
+      {tab === "stages" && <StagesManager />}
       {tab === "masters" && <MastersTab />}
       {tab === "sla" && <SlaTab />}
       {tab === "docrules" && <DocRulesTab />}
@@ -1078,7 +1113,11 @@ function BanksTab() {
             <thead>
               <tr>
                 <th>Bank</th>
-                <th>Rate</th>
+                {/* This column shows BankItem.ratePct, which is COMMISSION as a % of the
+                    loan amount — NOT an interest rate. Labelled "Rate" it invited exactly
+                    the confusion that made pricing feel opaque, since the pricing screens
+                    show interest rates in the same unit. */}
+                <th>Our commission</th>
                 <th>Status</th>
                 <th className="text-right">Actions</th>
               </tr>
@@ -1098,7 +1137,7 @@ function BanksTab() {
                     <span className="mono text-[13px] font-semibold" style={{ color: b.ratePct >= 0.9 ? "var(--mint)" : "var(--ink)" }}>
                       {fmtRate(b.ratePct)}
                     </span>
-                    <span className="text-[11px] text-[var(--ink-faint)] ml-1">of loan</span>
+                    <span className="text-[11px] text-[var(--ink-faint)] ml-1">of loan · not an interest rate</span>
                   </td>
                   <td>
                     <span className="inline-flex items-center gap-1.5">
@@ -1548,167 +1587,7 @@ function ChannelsTab() {
 }
 
 function StagesTab() {
-  const { stages, hydrate, toast } = useHfmcStore();
-  const [editing, setEditing] = useState<StageDraft | null>(null);
-  const [creating, setCreating] = useState(false);
-  const [deleting, setDeleting] = useState<StageItem | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  const sorted = useMemo(() => [...stages].sort((a, b) => a.sortOrder - b.sortOrder), [stages]);
-
-  const save = async () => {
-    if (!editing) return;
-    if (!editing.label.trim()) {
-      toast("error", "Stage label is required.");
-      return;
-    }
-    setBusy(true);
-    const body: Record<string, unknown> = {
-      kind: "stage",
-      label: editing.label.trim(),
-      active: editing.active,
-      sortOrder: editing.sortOrder,
-    };
-    const res = creating
-      ? await adminPost(body)
-      : await adminPatch({ ...body, id: editing.id });
-    setBusy(false);
-    if (!res.ok) {
-      toast("error", res.error ?? "Could not save stage.");
-      return;
-    }
-    await hydrate();
-    toast("success", creating ? `Stage "${editing.label}" added.` : "Stage updated.");
-    setEditing(null);
-  };
-
-  const confirmDelete = async () => {
-    if (!deleting) return;
-    setBusy(true);
-    const res = await adminDelete("stage", deleting.id);
-    setBusy(false);
-    if (!res.ok) {
-      toast("error", res.error ?? "Could not delete stage.");
-      return;
-    }
-    await hydrate();
-    toast("success", `"${deleting.label}" deleted.`);
-  };
-
-  const nextOrder = sorted.length ? sorted[sorted.length - 1].sortOrder + 1 : 1;
-
-  return (
-    <div className="card anim-fade-up">
-      <CardHeader
-        title={`Workflow stages · ${stages.length}`}
-        sub="Ordered left-to-right on every Case 360. Deactivated stages disappear from pickers."
-        action={
-          <button className="btn btn-primary sm:btn-sm" onClick={() => { setEditing(blankStage(nextOrder)); setCreating(true); }}>
-            <IPlus size={14} /> Add stage
-          </button>
-        }
-      />
-      {sorted.length === 0 ? (
-        <EmptyState icon={<ITrophy size={20} />} title="No pipeline stages" body="Define the steps a case moves through, in order." />
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="tbl min-w-[640px]">
-            <thead>
-              <tr>
-                <th className="w-[60px]">Order</th>
-                <th>Stage</th>
-                <th>Status</th>
-                <th className="text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map((s) => (
-                <tr key={s.id} style={{ opacity: s.active ? 1 : 0.5 }}>
-                  <td className="mono text-[12px] text-[var(--ink-faint)]">{s.sortOrder}</td>
-                  <td className="text-[13px] font-medium">{s.label}</td>
-                  <td>
-                    <span className="inline-flex items-center gap-1.5">
-                      <ActiveDot active={s.active} />
-                      <span className="text-[12px] text-[var(--ink-dim)]">{s.active ? "active" : "inactive"}</span>
-                    </span>
-                  </td>
-                  <td className="text-right">
-                    <div className="inline-flex gap-1.5">
-                      <button
-                        className="btn btn-ghost btn-sm"
-                        onClick={() => { setEditing({ ...s }); setCreating(false); }}
-                      >
-                        <IPencil size={13} /> Edit
-                      </button>
-                      <button className="btn btn-danger btn-sm !px-2" onClick={() => setDeleting(s)} title="Delete">
-                        <ITrash size={13} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {editing && (
-        <Modal
-          title={creating ? "Add stage" : `Edit · ${editing.label}`}
-          onClose={() => setEditing(null)}
-          width={420}
-          footer={
-            <>
-              <button className="btn btn-ghost" onClick={() => setEditing(null)} disabled={busy}>Cancel</button>
-              <button className="btn btn-primary" onClick={save} disabled={busy}>
-                <ICheck size={15} /> Save
-              </button>
-            </>
-          }
-        >
-          <div className="space-y-3.5">
-            <Field label="Stage label">
-              <input className="input" placeholder="e.g. Awaiting NOC" value={editing.label} onChange={(e) => setEditing({ ...editing, label: e.target.value })} autoFocus />
-            </Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Sort order">
-                <input
-                  className="input mono"
-                  type="number"
-                  min={0}
-                  value={editing.sortOrder}
-                  onChange={(e) => setEditing({ ...editing, sortOrder: Number(e.target.value) || 0 })}
-                />
-              </Field>
-              <div className="flex items-end pb-2">
-                <span className="text-[11.5px] text-[var(--ink-faint)]">Lower numbers appear first on the pipeline.</span>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="stage-active"
-                checked={editing.active}
-                onChange={(e) => setEditing({ ...editing, active: e.target.checked })}
-              />
-              <label htmlFor="stage-active" className="text-[12.5px] text-[var(--ink-dim)] m-0">
-                Active — available in stage pickers
-              </label>
-            </div>
-          </div>
-        </Modal>
-      )}
-
-      <ConfirmModal
-        open={!!deleting}
-        onClose={() => setDeleting(null)}
-        onConfirm={confirmDelete}
-        title={`Delete "${deleting?.label ?? ""}"?`}
-        body="Cases already in this stage keep their label but it will no longer appear as an option."
-        confirmLabel="Delete"
-      />
-    </div>
-  );
+  return <StagesManager />;
 }
 
 /* ------------------------------ masters (whyPending + waitingFor) ------------------------------ */
@@ -2123,6 +2002,7 @@ interface DocRuleDraft {
   applicablePropertyType: string[];
   applicableTransaction: string[];
   applicableResidency: string[];
+  applicableBank: string[];
   mandatory: boolean;
   visibleToClient: boolean;
   clientCanUpload: boolean;
@@ -2133,7 +2013,8 @@ function blankDocRule(): DocRuleDraft {
   return {
     id: 0, code: "", name: "", category: "KYC", validityDays: 30, warnDays: 7, verifyNotes: "",
     applicableEmployment: ["all"], applicablePropertyType: ["any"], applicableTransaction: ["any"],
-    applicableResidency: ["all"], mandatory: true, visibleToClient: true, clientCanUpload: true, active: true,
+    applicableResidency: ["all"], applicableBank: ["any"],
+    mandatory: true, visibleToClient: true, clientCanUpload: true, active: true,
   };
 }
 
@@ -2169,8 +2050,16 @@ function toggleValue(selected: string[], value: string, exclusive: string): stri
   return next.length ? next : [exclusive];
 }
 
+/** Multi-select toggle for the bank axis: banks are NOT exclusive (a document can
+ *  be required by several banks at once), so this never collapses to one value. */
+function toggleMulti(selected: string[], value: string): string[] {
+  return selected.includes(value) ? selected.filter((v) => v !== value) : [...selected, value];
+}
+
 function DocRulesTab() {
-  const { docRules, hydrate, toast } = useHfmcStore();
+  // `banks` drives the per-bank condition row: the options are the live bank
+  // master, so a document can be scoped to a bank without hardcoding names.
+  const { docRules, banks, hydrate, toast } = useHfmcStore();
   const [editing, setEditing] = useState<DocRuleDraft | null>(null);
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<DocRule | null>(null);
@@ -2199,6 +2088,7 @@ function DocRulesTab() {
       applicablePropertyType: editing.applicablePropertyType.length ? editing.applicablePropertyType : ["any"],
       applicableTransaction: editing.applicableTransaction.length ? editing.applicableTransaction : ["any"],
       applicableResidency: editing.applicableResidency.length ? editing.applicableResidency : ["all"],
+      applicableBank: editing.applicableBank.length ? editing.applicableBank : ["any"],
       mandatory: editing.mandatory,
       visibleToClient: editing.visibleToClient,
       clientCanUpload: editing.clientCanUpload,
@@ -2365,6 +2255,20 @@ function DocRulesTab() {
                 onToggle={(v) => setEditing({ ...editing, applicableResidency: toggleValue(editing.applicableResidency, v, "all") })}
                 exclusive="all"
               />
+              {/* Per-bank requirement. "Every bank" is the exclusive default, and
+                  is what every pre-existing rule means — so scoping a rule to one
+                  bank is a deliberate opt-in, not a migration. */}
+              <ConditionRow
+                label="Bank"
+                options={["any", ...banks.filter((b) => b.active).map((b) => b.name)]}
+                selected={editing.applicableBank?.length ? editing.applicableBank : ["any"]}
+                onToggle={(v) => setEditing({ ...editing, applicableBank: toggleMulti(editing.applicableBank ?? ["any"], v) })}
+                exclusive="any"
+              />
+              <p className="text-[10.5px] text-[var(--ink-faint)] m-0 -mt-1">
+                Pick <strong>every bank</strong> unless this document is genuinely bank-specific. A case is a separate
+                file per bank, so a bank-scoped rule only appears on that bank&apos;s leg of the deal.
+              </p>
               <ConditionRow
                 label="Property type"
                 options={DOC_CONDITION_SETS.property}
@@ -2734,6 +2638,10 @@ interface FeeRuleDraft {
   active: boolean;
 }
 
+/**
+ * A label that belongs on a BANK product, not on the emirate table.
+ * See src/lib/fee-scope.ts for why, and for the API-side guard that rejects them.
+ */
 function blankFeeRule(): FeeRuleDraft {
   return { id: 0, emirate: "Dubai", txnType: "Primary", label: "", amountType: "fixed", amount: 0, paidBy: "Client", note: "", active: true };
 }
@@ -2761,6 +2669,12 @@ function FeeRulesTab() {
     if (!editing) return;
     if (!editing.label.trim()) {
       toast("error", "Fee label is required.");
+      return;
+    }
+    // FeeRule is PLACE fees only. Catching it here gives a readable message; the
+    // API rejects it too, so the guard holds however the row is created.
+    if (isBankFeeLabel(editing.label)) {
+      toast("error", BANK_FEE_MISFILE_MESSAGE);
       return;
     }
     setBusy(true);
@@ -3138,8 +3052,16 @@ function BankRulesTab() {
                 title={productIssues(editing).filter((i) => i.blocking).map((i) => i.msg).join("; ") || "Approve these rules"}
                 onClick={async () => {
                   setBusy(true);
+                  // Approve must NOT carry pricingJson/feesJson. It used to spread
+                  // the whole product, which wrote the live rate card in place with
+                  // no reason attached — the exact thing the Rate Desk exists to
+                  // prevent (CODEBASE.md: "A rate is never edited in place"). Rates
+                  // move through PUT /api/admin/rate-desk, which dates the line,
+                  // requires a reason and audits it. This tab approves the RULES.
                   const patch: Record<string, unknown> = { ...editing, status: "approved" };
                   delete patch.axes;
+                  delete patch.pricingJson;
+                  delete patch.feesJson;
                   await saveBankProduct(editing.id, patch);
                   setBusy(false);
                   setEditing(null);
@@ -3304,39 +3226,9 @@ function FieldRowBadge({ role, text }: { role: FieldRole; text: string }) {
   );
 }
 
-interface ProductIssue { msg: string; blocking: boolean }
-
-function productIssues(editing: BankProduct): ProductIssue[] {
-  const issues: ProductIssue[] = [];
-  if (editing.maxLtvNational != null && (editing.maxLtvNational <= 0 || editing.maxLtvNational > 100))
-    issues.push({ msg: `Max LTV (nationals) ${editing.maxLtvNational}% looks wrong — LTV is between 1 and 100.`, blocking: true });
-  if (editing.maxLtvExpatriate != null && (editing.maxLtvExpatriate <= 0 || editing.maxLtvExpatriate > 100))
-    issues.push({ msg: `Max LTV (expats) ${editing.maxLtvExpatriate}% looks wrong — LTV is between 1 and 100.`, blocking: true });
-  if (editing.tenorYears != null && (editing.tenorYears <= 0 || editing.tenorYears > 30))
-    issues.push({ msg: `Tenor ${editing.tenorYears}y looks wrong — mortgages run 1 to 30 years.`, blocking: true });
-  if (editing.minLoan != null && editing.maxLoan != null && editing.minLoan > editing.maxLoan)
-    issues.push({ msg: "Min loan is larger than max loan — swap them.", blocking: true });
-  let quotes = 0;
-  try {
-    const parsed = JSON.parse(editing.pricingJson as string);
-    quotes = parsed?.quotes?.length ?? 0;
-    for (const q of parsed?.quotes ?? []) {
-      if (q.rateType === "FIXED" && (q.ratePct == null || q.ratePct <= 0 || q.ratePct > 20))
-        issues.push({ msg: `A quote has rate ${q.ratePct}% — rates are small numbers like 3.95, not 39.5 or 0.0395.`, blocking: true });
-      if (q.rateType !== "FIXED" && (q.marginPct == null || q.marginPct < 0 || q.marginPct > 15))
-        issues.push({ msg: `A variable quote has margin ${q.marginPct}% — margins are small numbers like 1 or 1.49.`, blocking: true });
-    }
-  } catch {
-    issues.push({ msg: "The pricing JSON is not valid — use the guided quote editor or fix the JSON.", blocking: true });
-  }
-  if (quotes === 0)
-    issues.push({ msg: "No structured quotes yet — without them the engine cannot price this bank at all.", blocking: true });
-  if (editing.minSalary != null && editing.minSalary > 0 && editing.minSalary < 1000)
-    issues.push({ msg: `Min salary ${editing.minSalary} looks too small — salaries are monthly in AED (e.g. 10000, not 10).`, blocking: true });
-  if (!editing.fees) issues.push({ msg: "Fees are text only — they are not part of cost calculations yet.", blocking: false });
-  if (!editing.insurance) issues.push({ msg: "Insurance is text only — not part of cost-to-close yet.", blocking: false });
-  return issues;
-}
+/* productIssues() now lives in src/lib/product-issues.ts so the Rate Desk can
+   run the same check. It used to be defined here, which meant this screen was
+   the only place a mistyped rate could be caught. */
 
 function FieldIssues({ editing }: { editing: BankProduct }) {
   const issues = productIssues(editing);

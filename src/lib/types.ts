@@ -48,7 +48,14 @@ export interface LoanCase {
   customer: string;
   banks: string[];
   wonBank: string | null;
+  /** The BANK's own case / application number (not our HFMC-xxxx). Per-bank,
+   *  because a multi-bank deal is split into sibling cases. */
+  bankRef: string | null;
+  /** The first bank of a multi-bank deal; siblings point back at it. */
+  parentCaseId: number | null;
   loanAmount: number;
+  /** REAL property value; null = not captured (never derived from loanAmount). */
+  propertyValue: number | null;
   stage: string;
   caseStatus: CaseState;
   closedDate: string | null;
@@ -76,6 +83,12 @@ export interface LoanCase {
   holdReason: string | null;
   holdUntil: string | null;
   lostReason: string | null; // ISO date
+  // --- Lead → case conversion stamp ---
+  // Set once, when the stage first leaves "Lead". null = this case was never a
+  // lead (created straight into the pipeline), which is what the "From lead"
+  // saved view filters on. See the note in prisma/schema.prisma.
+  convertedAt: string | null;
+  convertedById: number | null;
   // --- Bank submission tracking ---
   // Document Vault profile vectors
   employmentProfile: string; // Salaried | Self-Employed
@@ -126,7 +139,11 @@ export interface LoanCase {
   backup2Id: number | null;      // second backup staffer — covers the file while the owner is on leave
   profileClientVerifiedAt: string | null; // when the client last confirmed their data sheet
   notificationOverrides?: { push?: boolean; whatsapp?: boolean; email?: boolean } | null;
+  // Admin-defined flexible stage data — shape: { [stageLabel]: { [fieldKey]: value } }
+  // New fields added by admin for any stage land here; no migration needed per field.
+  stageDataJson?: Record<string, any>;
 }
+
 
 // Client master — one row per human across all their engagements
 // (mortgage cases, future buyouts, insurance). Identity decided by KYC:
@@ -150,6 +167,14 @@ export interface ClientDto {
   existingEmis: number;
   creditCardLimits: number;
   notes: string;
+  /**
+   * The reusable bank-form answer sheet (see src/lib/person-sheet.ts). Lives on
+   * the PERSON so a returning customer is never asked the same question on a
+   * second case — a renovation loan two years later starts from what we already
+   * know about that human. `profileJson` on each case stays the as-filed
+   * snapshot; this is the latest known truth.
+   */
+  personData: Record<string, unknown>;
   createdAt: string;
 }
 
@@ -256,6 +281,25 @@ export interface StageItem {
   label: string;
   active: boolean;
   sortOrder: number;
+  // Admin-configurable behaviour fields (Phase 1)
+  ownerRole: string;        // e.g. "VRM → SPO" — shown on journey cards
+  exitGateSummary: string;  // one-liner shown when stage advance is blocked
+  sopJson: string[];        // procedure bullets (admin-editable)
+  commsJson: string[];      // CommTemplate keys surfaced in the drawer Actions
+  steps: StageStep[];       // ordered sub-step checklist (Phase 2)
+}
+
+export interface StageStep {
+  id: number;
+  stageId: number;
+  stepNumber: string;  // display label e.g. "2.3"
+  label: string;
+  hint: string;
+  sortOrder: number;
+  active: boolean;
+  isGate: boolean;     // blocks stage advance if not satisfied
+  checkType: "date_field" | "boolean_field" | "doc_category" | "note_keyword" | "manual";
+  checkTarget: string; // field name on LoanCase, doc category, or regex
 }
 
 export interface MasterItem {
@@ -382,6 +426,9 @@ export interface DocRule {
   applicablePropertyType: string[]; // Ready | Off-Plan | any
   applicableTransaction: string[]; // New Purchase | Buyout / Equity Release | any
   applicableResidency: string[]; // UAE National | Resident Expatriate | Non-Resident | all
+  /** Bank-specific requirement. "any"/"all" = every bank. A rule scoped to one
+   *  bank only appears on that bank's leg of a multi-bank deal. */
+  applicableBank: string[];
   mandatory: boolean;
   visibleToClient: boolean;
   clientCanUpload: boolean;
@@ -417,7 +464,20 @@ export interface Proposal {
   createdAt: string;
 }
 
-export type CaseDocStatus = "Pending upload" | "Uploaded" | "Verified" | "Rejected" | "Waived";
+export type CaseDocStatus =
+  | "Pending upload"
+  | "Uploaded"
+  | "Verified"
+  | "Rejected"
+  | "Waived"
+  // Application-form lifecycle. An application form is broker-produced and sent
+  // TO the bank, so it does not fit the client-uploads-then-staff-verifies flow.
+  // "Filled (unsigned)" is the common real case: the bank wants the form
+  // completed but NOT signed, because the RM signs or it is e-signed separately.
+  | "Filled (unsigned)"
+  | "Submitted to bank"
+  | "Signed"
+  | "Returned by bank";
 
 // Per-case document instance — the living vault (metadata only; file bytes are
 // served separately via /api/documents/[id]/file).
@@ -425,6 +485,9 @@ export interface CaseDocument {
   id: number;
   caseId: number;
   templateId: number | null; // null = ad-hoc
+  /** Set when this row was pre-filled from a SIBLING bank leg of the same deal
+   *  (add-bank). The file is shared, not duplicated — this is the audit trail. */
+  copiedFromId: number | null;
   title: string;
   category: string;
   status: CaseDocStatus;

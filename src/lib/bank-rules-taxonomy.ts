@@ -85,10 +85,32 @@ export interface NationalityRule {
 
 export function nationalityAllowed(rule: NationalityRule | null | undefined, nationality: string | null | undefined): boolean {
   if (rule == null || rule.mode === "ALL" || rule.countries.length === 0) return true;
-  if (!nationality) return true; // unknown passport never blocks — surfaces as TO_VERIFY downstream
+  if (!nationality) return true; // unknown passport never blocks — surfaced via nationalityUnverified() below
   const hit = rule.countries.some((c) => c.toLowerCase().trim() === nationality.toLowerCase().trim());
   return rule.mode === "ALLOW" ? hit : !hit;
 }
+
+/**
+ * The THIRD state the engine was missing.
+ *
+ * A quote that gates on nationality will "pass" when the case has no passport
+ * recorded, because we refuse to guess a rejection. That is the right call for the
+ * verdict (never invent a failure) but it must not be SILENT — otherwise a
+ * restricted product is presented to a client whose passport we simply never asked
+ * for. Returns the list of constrained-but-unknown axes so the UI can show
+ * "needs verification" instead of a confident ✓.
+ */
+export function unknownAxes(q: RateQuoteLike, req: QuoteMatchInputLike): string[] {
+  const gaps: string[] = [];
+  if (req.nationality == null || req.nationality === "") {
+    if (q.nationalityRule && q.nationalityRule.mode !== "ALL" && q.nationalityRule.countries.length > 0) {
+      gaps.push(`nationality (${q.nationalityRule.mode}-list not checked — passport unknown)`);
+    }
+  }
+  return gaps;
+}
+type RateQuoteLike = { nationalityRule?: NationalityRule | null };
+type QuoteMatchInputLike = { nationality?: string | null };
 
 /** Bank segment synonyms → display label. Grows as more banks are imported. */
 export const SEGMENT_ALIASES: Record<string, string> = {

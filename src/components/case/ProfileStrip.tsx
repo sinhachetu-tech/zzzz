@@ -9,7 +9,6 @@ import { parseCaseProfile, computeJointAffordability } from "@/lib/case-profile"
 import { fmtMoney } from "@/lib/format";
 import { Chip } from "@/components/hfmc/ui";
 import { IArrowR } from "@/components/icons";
-import type { CaseTab } from "./stage-parts";
 import type { ProfileSubTab } from "@/components/views/case-profile-editor";
 
 function pct(done: number, total: number): number {
@@ -21,7 +20,11 @@ export function ProfileStrip({
   onEdit,
 }: {
   c: LoanCase;
-  onEdit: (tab: CaseTab, subTab?: ProfileSubTab) => void;
+  /** Jump to a section of the Client tab. There is no tab argument any more:
+   *  the strip used to hand back "profile" as a tab AND a sub-tab, which only
+   *  worked while profile and data sheet were separate tabs. Now it lives inside
+   *  Client and only needs to say WHICH section. */
+  onEdit: (subTab: ProfileSubTab) => void;
 }) {
   const prof = useMemo(
     () =>
@@ -122,7 +125,7 @@ export function ProfileStrip({
         <button
           key={k.title}
           type="button"
-          onClick={() => onEdit("profile", k.subTab)}
+          onClick={() => onEdit(k.subTab)}
           className="group card p-3.5 text-left transition-all hover:border-[var(--amber)] hover:shadow-sm cursor-pointer relative overflow-hidden"
           title={`Open ${k.title} tab in Profile Editor`}
         >

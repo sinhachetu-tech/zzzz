@@ -6,6 +6,7 @@ import { commissionFor, fmtMoney, fmtRate } from "@/lib/format";
 import { useHfmcStore } from "@/lib/client-store";
 import { Chip } from "./ui";
 import { Avatar } from "./ui";
+import { BankLogo } from "@/components/case/ContactBits";
 import { IWhatsapp, IX } from "../icons";
 
 export function CaseStateChip({ state }: { state: CaseState }) {
@@ -19,17 +20,67 @@ export function SourceChip({ source }: { source: CaseSource }) {
   return <Chip tone={tone as "mint" | "slate" | "amber" | "sky" | "coral"}>{source}</Chip>;
 }
 
+/**
+ * The Banks cell in the Cases worklist: a logo + name per bank, plus the bank's
+ * own reference.
+ *
+ * WHY IT RENDERS EVERY BANK AND NOT JUST c.banks[0]: the per-bank model says a
+ * case holds ONE bank, and everything created through the app obeys that. But
+ * rows imported/seeded straight into the database (src/lib/seed.ts writes the
+ * `banks` array verbatim, bypassing POST /api/cases and its sibling split) can
+ * still list several. Those must not render as a silent truncation, so each
+ * listed bank gets its own mark and the overflow is a "+N".
+ */
 export function BankChips({ c, max = 2 }: { c: LoanCase; max?: number }) {
+  const { banks } = useHfmcStore();
+  const bankByName = new Map(banks.map((b) => [b.name, b]));
+
   if (c.banks.length === 0 && !c.wonBank) return <Chip tone="slate">Bank TBC</Chip>;
   const list = c.wonBank ? [c.wonBank] : c.banks;
   const shown = list.slice(0, max);
   const rest = list.length - shown.length;
+
   return (
-    <span className="inline-flex flex-wrap gap-1">
-      {shown.map((b) => (
-        <Chip key={b} tone={b === c.wonBank ? "mint" : "sky"}>{b}{b === c.wonBank ? " ✓" : ""}</Chip>
-      ))}
+    <span className="inline-flex flex-wrap items-center gap-1.5">
+      {shown.map((b) => {
+        const bank = bankByName.get(b);
+        const won = b === c.wonBank;
+        return (
+          <span
+            key={b}
+            className="inline-flex items-center gap-1 rounded-md px-1 py-0.5"
+            style={{
+              background: won ? "rgba(16,185,129,0.12)" : "var(--tint)",
+              border: `1px solid ${won ? "rgba(16,185,129,0.35)" : "var(--line-soft)"}`,
+            }}
+            title={won ? `${b} — winning bank` : b}
+          >
+            {bank
+              ? <BankLogo bank={bank} size={16} />
+              : (
+                <span
+                  className="inline-flex items-center justify-center font-bold"
+                  style={{ width: 16, height: 16, fontSize: 9, color: "var(--ink-faint)" }}
+                >
+                  {(b || "?").charAt(0).toUpperCase()}
+                </span>
+              )}
+            <span className="text-[11px] font-medium" style={{ color: won ? "var(--mint)" : "var(--ink-dim)" }}>
+              {b}{won ? " ✓" : ""}
+            </span>
+          </span>
+        );
+      })}
       {rest > 0 && <span className="mono text-[10.5px] text-[var(--ink-faint)] self-center">+{rest}</span>}
+      {/* The BANK's own case / application number — a sibling case is scoped to
+          one bank, so this ref belongs to exactly that bank. On a legacy
+          multi-bank row it is only meaningful for the first bank, which is
+          named in the tooltip. */}
+      {c.bankRef && (
+        <span className="mono text-[10px] text-[var(--ink-faint)]" title={`${c.banks[0] ?? "Bank"} reference`}>
+          #{c.bankRef}
+        </span>
+      )}
     </span>
   );
 }

@@ -6,6 +6,7 @@ import type {
   CaseUpdate, EmailLog, FeeRule, Proposal, Instruction, LoanCase, MasterItem, PartnerItem, SlaRule, StageItem, StageTransitionDto, Task, UnmatchedEmail, User,
 } from "./types";
 import type { RoleFlags } from "./domain";
+import { confirmDiscard, setUnsavedChanges } from "./leave-guard";
 
 interface Me {
   id: number;
@@ -28,6 +29,7 @@ interface StateSnapshot {
   stages: StageItem[];
   whyPending: MasterItem[];
   waitingFor: MasterItem[];
+  milestoneDates: MasterItem[];
   banks: BankItem[];
   partners: PartnerItem[];
   channels: ChannelItem[];
@@ -60,11 +62,13 @@ export type Route =
   | { name: "dashboard" }
   | { name: "cases" }
   | { name: "leads" }
+  | { name: "clients" }
   | { name: "case"; id: number }
   | { name: "tasks" }
   | { name: "bulletin" }
   | { name: "calculator" }
   | { name: "reports" }
+  | { name: "products" }
   | { name: "admin" };
 
 interface HfmcState extends StateSnapshot {
@@ -96,9 +100,30 @@ interface HfmcState extends StateSnapshot {
     employmentProfile?: string; propertyType?: string; residency?: string;
   }) => Promise<LoanCase>;
   updateCase: (id: number, patch: Record<string, unknown>) => Promise<void>;
+  /** Shop an existing case to another bank — creates a SIBLING case for that
+   *  bank (own case number, own document rules), not a second name on one row.
+   *  POSTs to /api/cases/:id/add-bank. */
+  addBankToCase: (id: number, input: { bank: string; bankRef?: string; bankRm?: string; startStage?: string; note?: string }) => Promise<{ id: number; caseNumber: string; banks: string[] }>;
+  /**
+   * Save a slice of a person's bank-form answer sheet (Client.personJson).
+   * MERGES per key — it is filled in over months by two parties, so replacing
+   * the whole object would let one stale tab wipe what the other just did.
+   * Pass `remove: [path]` to clear a single field.
+   */
+  savePersonData: (clientId: number, patch: Record<string, unknown>, remove?: string[]) => Promise<void>;
+  /**
+   * Pull a document this client already supplied on ANOTHER case into this one.
+   * The new row shares the same R2 key (no bytes copied) and is stamped
+   * "Uploaded" — never "Verified", because the other bank saw it, this one has
+   * not. Replaces the existing row for the same rule rather than duplicating.
+   */
+  borrowDocument: (caseId: number, sourceDocId: number, templateId?: number | null) => Promise<void>;
   addTask: (caseId: number, input: { description: string; ownerId: number; waitingFor: string; whyPending: string; dueDate: string }) => Promise<void>;
   completeTask: (id: number, remarks?: string) => Promise<void>;
   reopenTask: (id: number) => Promise<void>;
+  /** Re-read one task's server truth. Used to roll back an optimistic write the
+   *  server rejected, without refetching the whole workspace. */
+  reconcileTask: (id: number) => Promise<void>;
   deleteTask: (id: number) => Promise<void>;
   createBulletin: (input: { task: string; caseId: number | null; targets: number[]; date?: string }) => Promise<void>;
   completeBulletin: (id: number) => Promise<void>;
@@ -157,7 +182,7 @@ interface HfmcState extends StateSnapshot {
 
 const empty: StateSnapshot = {
   me: null, flags: null, users: [], designations: [], cases: [], visibleCaseIds: [], tasks: [],
-  visibleTaskIds: [], activities: [], stages: [], whyPending: [], waitingFor: [], banks: [],
+  visibleTaskIds: [], activities: [], stages: [], whyPending: [], waitingFor: [], milestoneDates: [], banks: [],
   partners: [], channels: [], slaRules: [], commTemplates: [], instructions: [], bulletin: [], caseUpdates: [], caseProposals: [],
   escalations: 0, docRules: [], feeRules: [], eibor: [], stageTransitions: [], caseDocuments: [], bankProducts: [], unmatchedEmails: [], emails: [], clients: [], promotions: [],
 };
@@ -174,7 +199,21 @@ export const useHfmcStore = create<HfmcState>((set, get) => ({
   openNewCase: () => set({ newCaseOpen: true }),
   closeNewCase: () => set({ newCaseOpen: false }),
   setRoute: (r) => set({ route: r }),
-  nav: (r) => set({ route: r }),
+  // Every in-app navigation funnels through here — the sidebar, the dashboard
+  // links, "back to pipeline", the case rows. Guarding it is what makes the
+  // unsaved-changes warning actually fire: beforeunload alone never triggers for
+  // a client-side route swap, which is why the warning appeared to do nothing.
+  nav: (r) => {
+    // Navigating to the place you are already on is not leaving — don't nag.
+    const cur = get().route;
+    const same = cur.name === r.name && ("id" in r ? ("id" in cur && cur.id === r.id) : true);
+    if (same) return;
+    if (!confirmDiscard("changes on this form")) return;
+    // Leaving deliberately abandons the draft; clear the flag so the next form
+    // does not inherit it and block an unrelated screen.
+    setUnsavedChanges(false);
+    set({ route: r });
+  },
   toast: (kind, msg) => {
     const id = toastSeq++;
     set((s) => ({ toasts: [...s.toasts, { id, kind, msg }] }));
@@ -230,21 +269,142 @@ export const useHfmcStore = create<HfmcState>((set, get) => ({
     }
     get().hydrate().catch(() => {}); // fire-and-forget — UI must not wait on the full-state reload
   },
+  addBankToCase: async (id, input) => {
+    const res = await fetch(`/api/cases/${id}/add-bank`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input),
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error(e.error || "Could not add that bank.");
+    }
+    const data = await res.json();
+    // Say how much paperwork travelled with the new leg — otherwise the broker
+    // sees a pre-filled vault and has no idea whether the client was re-asked
+    // for their EID or not.
+    get().toast(
+      "success",
+      data.copiedDocuments
+        ? `Opened ${data.case.caseNumber} for ${input.bank} — ${data.copiedDocuments} document${data.copiedDocuments > 1 ? "s" : ""} carried over from the other bank leg, so the client was not re-asked.`
+        : `Opened ${data.case.caseNumber} for ${input.bank}.`,
+    );
+    get().hydrate().catch(() => {}); // fire-and-forget — UI must not wait on the full-state reload
+    return data.case;
+  },
+  savePersonData: async (clientId, patch, remove) => {
+    const res = await fetch(`/api/clients/${clientId}/person`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ patch, remove }),
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error(e.error || "Could not save the data sheet.");
+    }
+    get().toast("success", "Data sheet updated.");
+    get().hydrate().catch(() => {}); // fire-and-forget — UI must not wait on the full-state reload
+  },
+  borrowDocument: async (caseId, sourceDocId, templateId) => {
+    const res = await fetch(`/api/cases/${caseId}/borrow-document`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sourceDocId, templateId }),
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error(e.error || "Could not copy that document.");
+    }
+    get().toast("success", "Document copied — same file, no re-upload needed. Mark it verified once you have checked it.");
+    get().hydrate().catch(() => {}); // fire-and-forget — UI must not wait on the full-state reload
+  },
   addTask: async (caseId, input) => {
     await fetch(`/api/cases/${caseId}/tasks`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) });
     get().hydrate().catch(() => {}); // fire-and-forget — UI must not wait on the full-state reload
   },
+  /* TASKS — the only mutations in the store that patch LOCAL STATE instead of
+   * re-hydrating the whole workspace.
+   *
+   * WHY THIS IS DIFFERENT FROM EVERY ACTION ABOVE: `/api/state` returns every
+   * case, document, chat message, product and user in the book. Ticking one task
+   * box used to fire that full refetch, so the row did not move until the
+   * network round-trip for the ENTIRE workspace finished — a visible multi-second
+   * freeze on the single most frequent action in the app, and the reason "mark
+   * done" felt slow.
+   *
+   * The task PATCH already returns the updated row (`serTask(updated)`), and
+   * `completeTask`/`reopenTask` only change columns that live on the task itself
+   * — so we can reconcile exactly, for one row, with certainty. `deleteTask` is
+   * a pure local splice.
+   *
+   * `reconcileTask` still re-hydrates afterwards, but OFF the critical path: the
+   * UI has already moved, and the refetch quietly repairs anything a side effect
+   * changed elsewhere (the activity row the PATCH writes, dashboard counters).
+   * A failure there is invisible and harmless because the local state is right. */
+
   completeTask: async (id, remarks) => {
-    await fetch(`/api/tasks/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "Done", remarks }) });
-    get().hydrate().catch(() => {}); // fire-and-forget — UI must not wait on the full-state reload
+    // optimistic first — the row must move on click, not on network
+    set((s) => ({
+      tasks: s.tasks.map((t) =>
+        t.id === id
+          ? { ...t, status: "Done", completedAt: new Date().toISOString(), remarks: remarks ?? t.remarks }
+          : t
+      ),
+    }));
+    const res = await fetch(`/api/tasks/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "Done", remarks }),
+    });
+    if (!res.ok) {
+      // roll back so the UI never claims a save that did not happen
+      get().reconcileTask(id);
+      throw new Error("Could not mark that task done.");
+    }
+    const data = await res.json().catch(() => null);
+    if (data?.task) {
+      const authoritative = data.task as Task;
+      set((s) => ({ tasks: s.tasks.map((t) => (t.id === id ? authoritative : t)) }));
+    }
+    get().hydrate().catch(() => {});
   },
   reopenTask: async (id) => {
-    await fetch(`/api/tasks/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "Open" }) });
-    get().hydrate().catch(() => {}); // fire-and-forget — UI must not wait on the full-state reload
+    set((s) => ({
+      tasks: s.tasks.map((t) => (t.id === id ? { ...t, status: "Open", completedAt: null } : t)),
+    }));
+    const res = await fetch(`/api/tasks/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "Open" }),
+    });
+    if (!res.ok) {
+      get().reconcileTask(id);
+      throw new Error("Could not reopen that task.");
+    }
+    const data = await res.json().catch(() => null);
+    if (data?.task) {
+      const authoritative = data.task as Task;
+      set((s) => ({ tasks: s.tasks.map((t) => (t.id === id ? authoritative : t)) }));
+    }
+    get().hydrate().catch(() => {});
+  },
+  /** Pull the truth for ONE task without refetching the workspace. Used to undo
+   *  an optimistic write that the server rejected. */
+  reconcileTask: async (id) => {
+    try {
+      const res = await fetch(`/api/state`, { cache: "no-store" });
+      if (!res.ok) return;
+      const data = await res.json();
+      const fresh = (data.tasks as Task[]).find((t) => t.id === id);
+      if (fresh) set((s) => ({ tasks: s.tasks.map((t) => (t.id === id ? fresh : t)) }));
+    } catch {
+      /* offline — leave the optimistic value; the next hydrate will correct it */
+    }
   },
   deleteTask: async (id) => {
-    await fetch(`/api/tasks/${id}`, { method: "DELETE" });
-    get().hydrate().catch(() => {}); // fire-and-forget — UI must not wait on the full-state reload
+    set((s) => ({ tasks: s.tasks.filter((t) => t.id !== id) }));
+    const res = await fetch(`/api/tasks/${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      get().reconcileTask(id);
+      throw new Error("Could not delete that task.");
+    }
+    get().hydrate().catch(() => {});
   },
   createBulletin: async (input) => {
     await fetch("/api/bulletin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) });

@@ -55,3 +55,4 @@ server.log
 /skills/
 # scratch files
 zz_*
+.tmp-*.js

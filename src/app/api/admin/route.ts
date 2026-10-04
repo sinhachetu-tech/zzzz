@@ -4,6 +4,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { currentUser, flagsFor } from "@/lib/auth";
 import { serBank, serPartner, serStage, serMaster, serUser, serChannel, serDocRule, serFeeRule, serCommTemplate, serPromotion } from "@/lib/ser";
+import { audit, auditDiff } from "@/lib/audit";
+// FeeRule is PLACE fees only; this is the single predicate that decides it.
+import { isBankFeeLabel } from "@/lib/fee-scope";
 
 async function guard() {
   const me = await currentUser();
@@ -21,7 +24,7 @@ export async function GET(req: NextRequest) {
   const kind = url.searchParams.get("kind");
   if (kind === "banks") return NextResponse.json({ items: (await db.bankItem.findMany({ orderBy: { id: "asc" } })).map(serBank) });
   if (kind === "partners") return NextResponse.json({ items: (await db.partnerItem.findMany({ orderBy: { id: "asc" } })).map(serPartner) });
-  if (kind === "stages") return NextResponse.json({ items: (await db.stageItem.findMany({ orderBy: { sortOrder: "asc" } })).map(serStage) });
+  if (kind === "stages") return NextResponse.json({ items: (await db.stageItem.findMany({ orderBy: { sortOrder: "asc" }, include: { steps: { orderBy: { sortOrder: "asc" } } } })).map(serStage) });
   if (kind === "masters") {
     const all = await db.masterItem.findMany({ orderBy: { id: "asc" } });
     return NextResponse.json({
@@ -60,8 +63,38 @@ export async function POST(req: NextRequest) {
     }
     if (kind === "stage") {
       const max = await db.stageItem.aggregate({ _max: { sortOrder: true } });
-      const item = await db.stageItem.create({ data: { label: body.label, active: true, sortOrder: body.sortOrder ?? (max._max.sortOrder ?? 0) + 1 } });
+      const item = await db.stageItem.create({
+        data: {
+          label: body.label, active: true,
+          sortOrder: body.sortOrder ?? (max._max.sortOrder ?? 0) + 1,
+          ownerRole: body.ownerRole ?? "",
+          exitGateSummary: body.exitGateSummary ?? "",
+          sopJson: JSON.stringify(Array.isArray(body.sopJson) ? body.sopJson : []),
+          commsJson: JSON.stringify(Array.isArray(body.commsJson) ? body.commsJson : []),
+        },
+        include: { steps: true },
+      });
       return NextResponse.json({ item: serStage(item) });
+    }
+    if (kind === "stage_step") {
+      // Create a new sub-step for a stage
+      const stageId = Number(body.stageId);
+      if (!stageId) return NextResponse.json({ error: "stageId required" }, { status: 400 });
+      const max = await db.stageStep.aggregate({ where: { stageId }, _max: { sortOrder: true } });
+      const item = await db.stageStep.create({
+        data: {
+          stageId,
+          stepNumber: body.stepNumber ?? "",
+          label: body.label ?? "New step",
+          hint: body.hint ?? "",
+          sortOrder: body.sortOrder ?? (max._max.sortOrder ?? 0) + 10,
+          active: body.active ?? true,
+          isGate: body.isGate ?? false,
+          checkType: body.checkType ?? "manual",
+          checkTarget: body.checkTarget ?? "",
+        },
+      });
+      return NextResponse.json({ item });
     }
         if (kind === "bankproduct_version") {
       const orig = await db.bankProduct.findUnique({ where: { id: Number(body.originalProductId) } });
@@ -92,6 +125,12 @@ export async function POST(req: NextRequest) {
           approvedBy: g.me.name,
         },
       });
+      await audit({
+        entity: "BankProduct", entityId: item.id, action: "approve",
+        field: "version", beforeVal: { version: maxVersion, expiryDate: prevDate },
+        afterVal: { version: maxVersion + 1, effectiveDate: newEffective },
+        reason: body.reason ?? "", actorId: g.me.id, actorName: g.me.name,
+      });
       return NextResponse.json({ item });
     }
     if (kind === "master") {
@@ -120,6 +159,8 @@ export async function POST(req: NextRequest) {
           applicablePropertyType: JSON.stringify(body.applicablePropertyType?.length ? body.applicablePropertyType : ["any"]),
           applicableTransaction: JSON.stringify(body.applicableTransaction?.length ? body.applicableTransaction : ["any"]),
           applicableResidency: JSON.stringify(body.applicableResidency?.length ? body.applicableResidency : ["all"]),
+          // per-bank axis — empty means "every bank", matching every pre-existing rule
+          applicableBank: JSON.stringify(body.applicableBank?.length ? body.applicableBank : ["any"]),
           mandatory: body.mandatory ?? true,
           visibleToClient: body.visibleToClient ?? true,
           clientCanUpload: body.clientCanUpload ?? true,
@@ -130,6 +171,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ item: serDocRule(item) });
     }
     if (kind === "feerule") {
+      // FeeRule is PLACE fees only — see isBankFeeLabel(). A bank fee here would
+      // vary with the emirate and double-count against feesJson.
+      if (isBankFeeLabel(String(body.label ?? ""))) {
+        return NextResponse.json({
+          error: "\"Bank Processing Fee\" and \"Valuation Fee\" belong to the bank product (Admin → Bank Rules), not the emirate fee table — a bank fee must not change with the emirate.",
+        }, { status: 400 });
+      }
       const max = await db.feeRule.aggregate({ where: { emirate: body.emirate, txnType: body.txnType }, _max: { sortOrder: true } });
       const item = await db.feeRule.create({
         data: {
@@ -202,8 +250,34 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ item: serChannel(item) });
     }
     if (kind === "stage") {
-      const item = await db.stageItem.update({ where: { id: numId }, data: { label: body.label, active: body.active, sortOrder: body.sortOrder } });
+      const item = await db.stageItem.update({
+        where: { id: numId },
+        data: {
+          label: body.label, active: body.active, sortOrder: body.sortOrder,
+          ...(body.ownerRole !== undefined ? { ownerRole: body.ownerRole } : {}),
+          ...(body.exitGateSummary !== undefined ? { exitGateSummary: body.exitGateSummary } : {}),
+          ...(body.sopJson !== undefined ? { sopJson: JSON.stringify(Array.isArray(body.sopJson) ? body.sopJson : []) } : {}),
+          ...(body.commsJson !== undefined ? { commsJson: JSON.stringify(Array.isArray(body.commsJson) ? body.commsJson : []) } : {}),
+        },
+        include: { steps: true },
+      });
       return NextResponse.json({ item: serStage(item) });
+    }
+    if (kind === "stage_step") {
+      const item = await db.stageStep.update({
+        where: { id: numId },
+        data: {
+          ...(body.stepNumber !== undefined ? { stepNumber: body.stepNumber } : {}),
+          ...(body.label !== undefined ? { label: body.label } : {}),
+          ...(body.hint !== undefined ? { hint: body.hint } : {}),
+          ...(body.sortOrder !== undefined ? { sortOrder: body.sortOrder } : {}),
+          ...(body.active !== undefined ? { active: body.active } : {}),
+          ...(body.isGate !== undefined ? { isGate: body.isGate } : {}),
+          ...(body.checkType !== undefined ? { checkType: body.checkType } : {}),
+          ...(body.checkTarget !== undefined ? { checkTarget: body.checkTarget } : {}),
+        },
+      });
+      return NextResponse.json({ item });
     }
         if (kind === "bankproduct_version") {
       const orig = await db.bankProduct.findUnique({ where: { id: Number(body.originalProductId) } });
@@ -233,6 +307,12 @@ export async function PATCH(req: NextRequest) {
           status: "approved",
           approvedBy: g.me.name,
         },
+      });
+      await audit({
+        entity: "BankProduct", entityId: item.id, action: "approve",
+        field: "version", beforeVal: { version: maxVersion, expiryDate: prevDate },
+        afterVal: { version: maxVersion + 1, effectiveDate: newEffective },
+        reason: body.reason ?? "", actorId: g.me.id, actorName: g.me.name,
       });
       return NextResponse.json({ item });
     }
@@ -268,6 +348,7 @@ export async function PATCH(req: NextRequest) {
           ...(body.applicablePropertyType ? { applicablePropertyType: JSON.stringify(body.applicablePropertyType) } : {}),
           ...(body.applicableTransaction ? { applicableTransaction: JSON.stringify(body.applicableTransaction) } : {}),
           ...(body.applicableResidency ? { applicableResidency: JSON.stringify(body.applicableResidency) } : {}),
+          ...(body.applicableBank ? { applicableBank: JSON.stringify(body.applicableBank) } : {}),
           ...(body.mandatory !== undefined ? { mandatory: !!body.mandatory } : {}),
           ...(body.visibleToClient !== undefined ? { visibleToClient: !!body.visibleToClient } : {}),
           ...(body.clientCanUpload !== undefined ? { clientCanUpload: !!body.clientCanUpload } : {}),
@@ -275,6 +356,26 @@ export async function PATCH(req: NextRequest) {
           active: body.active,
         },
       });
+
+      // PUSH-DOWN: a CaseDocument's `title`/`category` are a SNAPSHOT taken from
+      // the rule at the moment syncCaseVault created the row. Renaming a rule
+      // therefore used to leave every existing vault row showing the OLD name —
+      // rule and instances silently drifting apart, which is exactly the kind of
+      // quiet inconsistency nobody notices until a broker chases the wrong
+      // document.
+      //
+      // A staff member's own rename lives in `displayName`, a DIFFERENT column
+      // that is left untouched — so this can never clobber a local edit.
+      //
+      // Deliberately NOT pushed: `mandatory`, `visibleToClient`,
+      // `clientCanUpload`. Those are snapshotted too, but changing them on an
+      // existing row would retroactively alter what the CLIENT must supply or
+      // can see — a per-case human decision, not a bulk edit.
+      await db.caseDocument.updateMany({
+        where: { templateId: item.id },
+        data: { title: item.name, category: item.category },
+      });
+
       return NextResponse.json({ item: serDocRule(item) });
     }
     if (kind === "eibor") {
@@ -287,17 +388,34 @@ export async function PATCH(req: NextRequest) {
     }
     if (kind === "bankproduct") {
       const data: Record<string, unknown> = {};
-      const numFields = ["maxLtvNational","maxLtvExpatriate","minLoan","maxLoan","tenorYears","minSalary","totalTatDays","paTatDays","paValidityDays","folValidityDays","valuationValidityDays"] as const;
+      const numFields = ["maxLtvNational","maxLtvExpatriate","minLoan","maxLoan","tenorYears","minSalary","totalTatDays","paTatDays","paValidityDays","folValidityDays","valuationValidityDays","serviceMonthsMin","propertyAgeYearsMax"] as const;
       for (const f of numFields) if (body[f] !== undefined) data[f] = body[f] === null || body[f] === "" ? null : Number(body[f]);
-      for (const f of ["rateTable","stressTest","fees","insurance","eligibility","documents","notes","effectiveDate","expiryDate","pricingJson","feesJson","insuranceJson","cardRulePct","bonusPct","rentalIncomePct","rentalCapPctOfSalary","dbrPct","stressBufferPct"]) if (body[f] !== undefined) data[f] = body[f];
+      for (const f of ["rateTable","stressTest","fees","insurance","eligibility","documents","notes","effectiveDate","expiryDate","pricingJson","feesJson","insuranceJson","cardRulePct","bonusPct","rentalIncomePct","rentalCapPctOfSalary","dbrPct","stressBufferPct","minServiceNote"]) if (body[f] !== undefined) data[f] = body[f];
+      if (body.firstPropertyOnly !== undefined) data.firstPropertyOnly = !!body.firstPropertyOnly;
       if (body.status !== undefined) {
         data.status = body.status;
         if (body.status === "approved") { data.approvedBy = g.me.name; data.effectiveDate = data.effectiveDate ?? new Date().toISOString().slice(0,10); }
+      }
+      // Audit BEFORE the write so the change log records what the engine was
+      // actually using a moment ago, not the new state.
+      const prev = await db.bankProduct.findUnique({ where: { id: numId } });
+      if (prev) {
+        const before: Record<string, unknown> = {}; const after: Record<string, unknown> = {};
+        for (const k of Object.keys(data)) { before[k] = (prev as unknown as Record<string, unknown>)[k]; after[k] = data[k]; }
+        await auditDiff({ entity: "BankProduct", entityId: numId, before, after, reason: body.reason ?? "", actorId: g.me.id, actorName: g.me.name });
       }
       const item = await db.bankProduct.update({ where: { id: numId }, data });
       return NextResponse.json({ item });
     }
     if (kind === "feerule") {
+      // FeeRule is PLACE fees only. A bank fee here would vary with the emirate and
+      // double-count against feesJson — twelve such rows existed. Reject rather than
+      // silently accept, so the mistake cannot come back.
+      if (isBankFeeLabel(String(body.label ?? ""))) {
+        return NextResponse.json({
+          error: "\"Bank Processing Fee\" and \"Valuation Fee\" belong to the bank product (Admin → Bank Rules), not the emirate fee table — a bank fee must not change with the emirate.",
+        }, { status: 400 });
+      }
       const item = await db.feeRule.update({
         where: { id: numId },
         data: {
@@ -333,7 +451,13 @@ export async function PATCH(req: NextRequest) {
       if (data.validFrom && data.validTo && String(data.validTo) < String(data.validFrom)) {
         return NextResponse.json({ error: "validTo must be on/after validFrom" }, { status: 400 });
       }
+      const prevPromo = await db.promotion.findUnique({ where: { id: numId } });
       const item = await db.promotion.update({ where: { id: numId }, data });
+      if (prevPromo) {
+        const before: Record<string, unknown> = {}; const after: Record<string, unknown> = {};
+        for (const k of Object.keys(data)) { before[k] = (prevPromo as unknown as Record<string, unknown>)[k]; after[k] = data[k]; }
+        await auditDiff({ entity: "Promotion", entityId: numId, before, after, reason: body.reason ?? "", actorId: g.me.id, actorName: g.me.name });
+      }
       return NextResponse.json({ item: serPromotion(item) });
     }
     return NextResponse.json({ error: "unknown kind" }, { status: 400 });
@@ -364,6 +488,7 @@ export async function DELETE(req: NextRequest) {
     else if (kind === "feerule") await db.feeRule.delete({ where: { id: numId } });
     else if (kind === "commtemplate") await db.commTemplate.delete({ where: { id: numId } });
     else if (kind === "promotion") await db.promotion.delete({ where: { id: numId } });
+    else if (kind === "stage_step") await db.stageStep.delete({ where: { id: numId } });
     else return NextResponse.json({ error: "unknown kind" }, { status: 400 });
     return NextResponse.json({ ok: true });
   } catch (e) {

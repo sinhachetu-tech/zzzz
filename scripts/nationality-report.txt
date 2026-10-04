@@ -1,0 +1,128 @@
+Restricted Nationalities — what the engine cannot currently see
+
+READ-ONLY. Nothing is written. Typed rules today: 0 of 470 quotes.
+11 banks state a restriction in text.
+
+=== BAN — HARD BAN -> auto-applicable as nationalityRule DENY  (5 banks)
+
+  ADIB
+    countries: Iran, Mauritius, Israel, Qatar, Yemen
+    source:    "Somali, Mauritius, Nigiera, Yemenis, Iranians, Afghanis"
+    source:    "Israel, Qatar (OUT) - Syrian & yemeni (STL)"
+    NOTE: states BOTH BAN and NEEDS_REVIEW — needs a human call.
+
+  Arab Bank
+    countries: Iran
+    source:    "Arab Nationals Only (excp. Iranians, no other nationalities)"
+    source:    "Iranians"
+    NOTE: states BOTH NEEDS_REVIEW and BAN — needs a human call.
+
+  ENBD
+    countries: Pakistan, Iran
+    source:    "Accept applications from these countries only: UK, France, German, Switzerland, GCC, India, Singapore, Egypt, Pakistan —UK, France, German, Switzerland, GCC, India, Singapore, Egypt, Pakistan —Accept applications from these countries only: UK, France, German, Switzerland, GCC, India, Singapore, Egypt, Pakistan —Accept applications from these countries only: UK, France, German, Switzerland, GCC, India, Singapore, Egypt, Pakistan"
+    source:    "Iranians - Non ENBD Banking clients —Iranians - Non ENBD Banking clients"
+    source:    "Iranians - Non ENBD Banking clients & STL is mandatory —Iranians - Non ENBD Banking clients & STL is mandatory"
+    NOTE: states BOTH ALLOWLIST and BAN and CONDITIONAL — needs a human call.
+
+  NBF
+    countries: Iran
+    source:    "Iranians"
+
+  RAK Bank
+    countries: Congo, Iran, North Korea, Pakistan, Syria
+    source:    "Syria, Pakistan, Iran, North Korea, Congo"
+    source:    "1. Only AML Restricted and Sanctioned Nationalities - However, mortgage loan approved basis Account opening upfront 2. Iranian - Non Banking clients"
+    source:    "Iranian"
+    NOTE: states BOTH NEEDS_REVIEW and CONDITIONAL and BAN — needs a human call.
+
+=== ALLOWLIST — ALLOW-LIST -> these countries are the ONLY ones welcome (NOT a deny of them)  (1 bank)
+
+  ENBD
+    countries: Pakistan, Iran
+    source:    "Accept applications from these countries only: UK, France, German, Switzerland, GCC, India, Singapore, Egypt, Pakistan —UK, France, German, Switzerland, GCC, India, Singapore, Egypt, Pakistan —Accept applications from these countries only: UK, France, German, Switzerland, GCC, India, Singapore, Egypt, Pakistan —Accept applications from these countries only: UK, France, German, Switzerland, GCC, India, Singapore, Egypt, Pakistan"
+    source:    "Iranians - Non ENBD Banking clients —Iranians - Non ENBD Banking clients"
+    source:    "Iranians - Non ENBD Banking clients & STL is mandatory —Iranians - Non ENBD Banking clients & STL is mandatory"
+    NOTE: states BOTH ALLOWLIST and BAN and CONDITIONAL — needs a human call.
+
+=== CONDITIONAL — CONDITIONAL -> allowed, but only with a condition (NOT a deny)  (3 banks)
+
+  ENBD
+    countries: Pakistan, Iran
+    source:    "Accept applications from these countries only: UK, France, German, Switzerland, GCC, India, Singapore, Egypt, Pakistan —UK, France, German, Switzerland, GCC, India, Singapore, Egypt, Pakistan —Accept applications from these countries only: UK, France, German, Switzerland, GCC, India, Singapore, Egypt, Pakistan —Accept applications from these countries only: UK, France, German, Switzerland, GCC, India, Singapore, Egypt, Pakistan"
+    source:    "Iranians - Non ENBD Banking clients —Iranians - Non ENBD Banking clients"
+    source:    "Iranians - Non ENBD Banking clients & STL is mandatory —Iranians - Non ENBD Banking clients & STL is mandatory"
+    NOTE: states BOTH ALLOWLIST and BAN and CONDITIONAL — needs a human call.
+
+  RAK Bank
+    countries: Congo, Iran, North Korea, Pakistan, Syria
+    source:    "Syria, Pakistan, Iran, North Korea, Congo"
+    source:    "1. Only AML Restricted and Sanctioned Nationalities - However, mortgage loan approved basis Account opening upfront 2. Iranian - Non Banking clients"
+    source:    "Iranian"
+    NOTE: states BOTH NEEDS_REVIEW and CONDITIONAL and BAN — needs a human call.
+
+  Sharjah Islamic Bank
+    countries: Iran
+    source:    "Iranian (can be done with deviation)"
+
+=== LTV_CAP — LTV CAP -> allowed at a lower LTV (NOT a deny)  (1 bank)
+
+  Mashreq
+    countries: Iran
+    source:    "As long as resident, no restrictions - Iranian Max LTV 60% Russian - Resident / Non Resident restricted"
+    source:    "Resident, no issue - Iranian Max LTV 60%"
+
+=== APPROVAL — APPROVAL -> allowed, compliance sign-off first (NOT a deny)  (1 bank)
+
+  SCB
+    countries: Syria
+    source:    "Sanction countries (Syria - even birth place if Syria) Russian - No Restriction, however compliance approval takes time"
+
+=== NEEDS_REVIEW — NEEDS REVIEW -> wording not machine-classifiable  (3 banks)
+
+  ADIB
+    countries: Iran, Mauritius, Israel, Qatar, Yemen
+    source:    "Somali, Mauritius, Nigiera, Yemenis, Iranians, Afghanis"
+    source:    "Israel, Qatar (OUT) - Syrian & yemeni (STL)"
+    NOTE: states BOTH BAN and NEEDS_REVIEW — needs a human call.
+
+  Arab Bank
+    countries: Iran
+    source:    "Arab Nationals Only (excp. Iranians, no other nationalities)"
+    source:    "Iranians"
+    NOTE: states BOTH NEEDS_REVIEW and BAN — needs a human call.
+
+  RAK Bank
+    countries: Congo, Iran, North Korea, Pakistan, Syria
+    source:    "Syria, Pakistan, Iran, North Korea, Congo"
+    source:    "1. Only AML Restricted and Sanctioned Nationalities - However, mortgage loan approved basis Account opening upfront 2. Iranian - Non Banking clients"
+    source:    "Iranian"
+    NOTE: states BOTH NEEDS_REVIEW and CONDITIONAL and BAN — needs a human call.
+
+=== AMBIGUOUS — AMBIGUOUS -> says 'none' but names countries  (3 banks)
+
+  ADCB
+    countries: Belarus, Russia
+    source:    "No (Russia and Belarus basis compliance approval)"
+
+  CBD
+    countries: Iran
+    source:    "NO (Iranian - LTV is restricted to 60%)"
+
+  DIB
+    countries: Russia
+    source:    "None —None"
+    source:    "None (preferred GCC, UK, USA, Canada, Russia) —N/A —None (preferred GCC, UK, USA, Canada, Russia) —N/A"
+    NOTE: states BOTH NONE and AMBIGUOUS — needs a human call.
+
+=== NONE — NONE -> no restriction; leave the axis blank  (1 bank)
+
+  DIB
+    countries: Russia
+    source:    "None —None"
+    source:    "None (preferred GCC, UK, USA, Canada, Russia) —N/A —None (preferred GCC, UK, USA, Canada, Russia) —N/A"
+    NOTE: states BOTH NONE and AMBIGUOUS — needs a human call.
+
+
+Summary: 5 of 11 banks read as an unambiguous hard ban.
+Only those are safe to type in automatically. The rest need a human decision —
+denying them would refuse clients the bank does lend to.

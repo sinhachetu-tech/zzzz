@@ -30,7 +30,7 @@ function kb(n?: number | null): string {
 }
 
 export function DocVault({ c }: { c: LoanCase }) {
-  const { caseDocuments, docRules, saveDoc, deleteDoc, addAdhocDoc, uploadDoc, compressDoc, selectDocVersion, mergeDocs, convertToPdf, downloadZip, flags, toast } = useHfmcStore();
+  const { caseDocuments, docRules, saveDoc, deleteDoc, addAdhocDoc, uploadDoc, compressDoc, selectDocVersion, mergeDocs, convertToPdf, downloadZip, borrowDocument, cases, flags, toast } = useHfmcStore();
   // document writes (upload/verify/reject/waive/delete/compress) are permission-gated
   const canManage = !!(flags?.manageDocs || flags?.super || flags?.admin);
   const docs = useMemo(() => caseDocuments.filter((d) => d.caseId === c.id), [caseDocuments, c.id]);
@@ -45,7 +45,24 @@ export function DocVault({ c }: { c: LoanCase }) {
   const [converting, setConverting] = useState<{ doc: CaseDocument; crop?: { x: number; y: number; width: number; height: number } } | null>(null);
   const [mergeName, setMergeName] = useState("");
   const [showMergeModal, setShowMergeModal] = useState(false);
+  const [borrowing, setBorrowing] = useState(false);
   const [mergeItems, setMergeItems] = useState<CaseDocument[]>([]);
+
+  // Everything this SAME client already has on another case, with a file on it.
+  // Scoped to the person (primary or co-partner), because that is where a broker
+  // will actually look for a document they know the client has already sent.
+  const borrowable = useMemo(() => {
+    const personIds = [c.clientId, c.secondPartyClientId].filter(Boolean) as number[];
+    if (personIds.length === 0) return [];
+    const caseById = new Map(cases.map((k) => [k.id, k]));
+    return caseDocuments.filter((d) => {
+      if (d.caseId === c.id) return false;
+      if (!d.hasFile) return false;
+      const other = caseById.get(d.caseId);
+      if (!other) return false;
+      return [other.clientId, other.secondPartyClientId].some((x) => x && personIds.includes(x));
+    });
+  }, [caseDocuments, cases, c.id, c.clientId, c.secondPartyClientId]);
   const uploadTarget = useRef<number | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -207,9 +224,25 @@ export function DocVault({ c }: { c: LoanCase }) {
           </span>
         )}
         {canManage && (
-          <button className="btn btn-primary sm:btn-sm" onClick={() => setAdding(true)}>
-            <IPlus size={14} /> Add document
-          </button>
+          <>
+            {/* Copy from another case. The automatic sibling copy in add-bank
+                fires once, silently, and only at the moment a bank is added — so
+                it never answers "the EID is on the other leg, how do I get it
+                across?", and cannot help legs that predate it. This is the
+                manual, discoverable version, scoped to the SAME CLIENT. */}
+            {borrowable.length > 0 && (
+              <button
+                className="btn btn-ghost sm:btn-sm"
+                onClick={() => setBorrowing(true)}
+                title={`This client already has ${borrowable.length} document(s) on their other case(s)`}
+              >
+                Copy from another case ({borrowable.length})
+              </button>
+            )}
+            <button className="btn btn-primary sm:btn-sm" onClick={() => setAdding(true)}>
+              <IPlus size={14} /> Add document
+            </button>
+          </>
         )}
       </div>
 
@@ -491,6 +524,57 @@ export function DocVault({ c }: { c: LoanCase }) {
         </div>
       )}
 
+      {/* Copy-from-another-case picker */}
+      {borrowing && (
+        <Modal
+          title="Copy from this client's other case"
+          sub="Same file, no re-upload. It arrives as “Uploaded” — check it, then mark it verified."
+          onClose={() => setBorrowing(false)}
+          width={620}
+        >
+          {borrowable.length === 0 ? (
+            <p className="text-[12.5px] text-[var(--ink-faint)] m-0">
+              This client has no documents with files on any other case yet.
+            </p>
+          ) : (
+            <div className="space-y-1.5 max-h-[52vh] overflow-y-auto">
+              {borrowable.map((d) => {
+                const from = cases.find((k) => k.id === d.caseId);
+                const already = d.templateId != null && docs.some((x) => x.templateId === d.templateId && x.hasFile);
+                return (
+                  <div key={d.id} className="flex items-center gap-2 rounded-lg px-2.5 py-2" style={{ background: "var(--tint)", border: "1px solid var(--line-soft)" }}>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[12.5px] font-medium truncate">{d.displayName || d.title}</div>
+                      <div className="mono text-[10.5px] text-[var(--ink-faint)] truncate">
+                        {from?.caseNumber} · {from?.banks[0] ?? "no bank"} · {d.fileName}
+                      </div>
+                    </div>
+                    {already ? (
+                      <span className="chip shrink-0" style={{ fontSize: "9.5px", color: "var(--mint)", background: "rgba(16,185,129,0.12)", borderColor: "rgba(16,185,129,0.3)" }}>
+                        already here
+                      </span>
+                    ) : (
+                      <button
+                        className="btn btn-mint btn-sm shrink-0"
+                        onClick={async () => {
+                          try {
+                            await borrowDocument(c.id, d.id, d.templateId);
+                          } catch (e) {
+                            toast("error", e instanceof Error ? e.message : "Could not copy that document.");
+                          }
+                        }}
+                      >
+                        Copy
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Modal>
+      )}
+
       {/* ad-hoc add modal */}
       {adding && (
         <AddDocModal
@@ -578,7 +662,29 @@ export function DocVault({ c }: { c: LoanCase }) {
 
 /* ---------------- add ad-hoc ---------------- */
 
-const DOC_CATEGORIES = ["Chat", "KYC", "Income", "Property", "Bank & Liabilities", "Valuation", "Transfer", "Internal Underwriting", "Other"];
+/* "Application Form" is its own category because an application form is NOT a
+   client-supplied document — it is one the BROKER fills in and sends to the bank.
+   Banks commonly want it "filled, not signed" (the RM signs, or e-signature
+   happens separately), so it has its own lifecycle rather than living under
+   Income/KYC where it would be treated like something to collect. */
+const DOC_CATEGORIES = ["Chat", "KYC", "Income", "Property", "Bank & Liabilities", "Application Form", "Valuation", "Transfer", "Internal Underwriting", "Other"];
+
+/** Statuses an APPLICATION FORM moves through. `status` is a plain String column,
+ *  not a DB enum, so these cost no migration — but they must be understood by
+ *  the vault's status filter or an unsigned form will look "not done". */
+export const FORM_STATUSES = [
+  "Filled (unsigned)",
+  "Submitted to bank",
+  "Signed",
+  "Returned by bank",
+] as const;
+
+/** Documents that are outstanding = no file attached AND not explicitly waived.
+ *  A stored "done" flag would drift from reality; deriving it cannot. */
+export function isDocOutstanding(status: string, hasFile: boolean): boolean {
+  if (status === "Waived") return false;
+  return !hasFile;
+}
 
 function AddDocModal({ onClose, onAdd }: { onClose: () => void; onAdd: (input: { title: string; category: string; mandatory: boolean; visibleToClient: boolean; clientCanUpload: boolean; notes?: string }) => Promise<void> }) {
   const [title, setTitle] = useState("");

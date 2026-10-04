@@ -1,0 +1,707 @@
+{
+  "generatedFrom": "bankProducts.json",
+  "rules": [
+    {
+      "bank": "DIB",
+      "name": "Passport, Visa & EID",
+      "category": "KYC",
+      "applicableBank": [
+        "DIB"
+      ],
+      "applicableEmployment": [
+        "all"
+      ],
+      "applicablePropertyType": [
+        "any"
+      ],
+      "applicableTransaction": [
+        "any"
+      ],
+      "applicableResidency": [
+        "all"
+      ],
+      "mandatory": true,
+      "clientCanUpload": true,
+      "visibleToClient": true,
+      "verifyNotes": "Yes, PDF | Yes",
+      "source": "bankProducts.json → axesJson"
+    },
+    {
+      "bank": "DIB",
+      "name": "Proof of Residence",
+      "category": "Property",
+      "applicableBank": [
+        "DIB"
+      ],
+      "applicableEmployment": [
+        "all"
+      ],
+      "applicablePropertyType": [
+        "any"
+      ],
+      "applicableTransaction": [
+        "any"
+      ],
+      "applicableResidency": [
+        "all"
+      ],
+      "mandatory": false,
+      "clientCanUpload": true,
+      "visibleToClient": true,
+      "verifyNotes": "Yes (Optional) | Yes",
+      "source": "bankProducts.json → axesJson",
+      "_review": "required votes split across product variants"
+    },
+    {
+      "bank": "DIB",
+      "name": "Application Form",
+      "category": "Application Form",
+      "applicableBank": [
+        "DIB"
+      ],
+      "applicableEmployment": [
+        "all"
+      ],
+      "applicablePropertyType": [
+        "any"
+      ],
+      "applicableTransaction": [
+        "any"
+      ],
+      "applicableResidency": [
+        "all"
+      ],
+      "mandatory": true,
+      "clientCanUpload": false,
+      "visibleToClient": true,
+      "verifyNotes": "Yes - filled not signed | Editable required | Yes",
+      "source": "bankProducts.json → axesJson"
+    },
+    {
+      "bank": "DIB",
+      "name": "Any other Form",
+      "category": "Application Form",
+      "applicableBank": [
+        "DIB"
+      ],
+      "applicableEmployment": [
+        "all"
+      ],
+      "applicablePropertyType": [
+        "any"
+      ],
+      "applicableTransaction": [
+        "any"
+      ],
+      "applicableResidency": [
+        "all"
+      ],
+      "mandatory": false,
+      "clientCanUpload": false,
+      "visibleToClient": true,
+      "verifyNotes": "Consent Form | KFS",
+      "source": "bankProducts.json → axesJson"
+    },
+    {
+      "bank": "DIB",
+      "name": "Salary Certificate",
+      "category": "Income",
+      "applicableBank": [
+        "DIB"
+      ],
+      "applicableEmployment": [
+        "all"
+      ],
+      "applicablePropertyType": [
+        "any"
+      ],
+      "applicableTransaction": [
+        "any"
+      ],
+      "applicableResidency": [
+        "all"
+      ],
+      "mandatory": true,
+      "clientCanUpload": true,
+      "visibleToClient": true,
+      "verifyNotes": "Yes - within 30 days (if expired can condition for preapproval) For Emirates - Salary Reference number required (Salary Letter with Accommodation) | Yes",
+      "source": "bankProducts.json → axesJson"
+    },
+    {
+      "bank": "DIB",
+      "name": "Payslips",
+      "category": "Income",
+      "applicableBank": [
+        "DIB"
+      ],
+      "applicableEmployment": [
+        "all"
+      ],
+      "applicablePropertyType": [
+        "any"
+      ],
+      "applicableTransaction": [
+        "any"
+      ],
+      "applicableResidency": [
+        "all"
+      ],
+      "mandatory": false,
+      "clientCanUpload": true,
+      "visibleToClient": true,
+      "verifyNotes": "6 Months - Only if pay varies | 6 Months - English",
+      "source": "bankProducts.json → axesJson"
+    },
+    {
+      "bank": "DIB",
+      "name": "Bank Statements",
+      "category": "Bank & Liabilities",
+      "applicableBank": [
+        "DIB"
+      ],
+      "applicableEmployment": [
+        "all"
+      ],
+      "applicablePropertyType": [
+        "any"
+      ],
+      "applicableTransaction": [
+        "any"
+      ],
+      "applicableResidency": [
+        "all"
+      ],
+      "mandatory": false,
+      "clientCanUpload": true,
+      "visibleToClient": true,
+      "verifyNotes": "6 Months - E-Statements. Can pull from FTS if required | 6 Months - English",
+      "source": "bankProducts.json → axesJson"
+    },
+    {
+      "bank": "DIB",
+      "name": "Liability Information",
+      "category": "Bank & Liabilities",
+      "applicableBank": [
+        "DIB"
+      ],
+      "applicableEmployment": [
+        "all"
+      ],
+      "applicablePropertyType": [
+        "any"
+      ],
+      "applicableTransaction": [
+        "any"
+      ],
+      "applicableResidency": [
+        "all"
+      ],
+      "mandatory": false,
+      "clientCanUpload": true,
+      "visibleToClient": true,
+      "verifyNotes": "Latest CC Statement / Any other liability statements",
+      "source": "bankProducts.json → axesJson"
+    },
+    {
+      "bank": "DIB",
+      "name": "Valuation Report Validity",
+      "category": "Valuation",
+      "applicableBank": [
+        "DIB"
+      ],
+      "applicableEmployment": [
+        "all"
+      ],
+      "applicablePropertyType": [
+        "any"
+      ],
+      "applicableTransaction": [
+        "any"
+      ],
+      "applicableResidency": [
+        "all"
+      ],
+      "mandatory": false,
+      "clientCanUpload": true,
+      "visibleToClient": true,
+      "verifyNotes": "45 days (extension possible for 15 days with exception approval)",
+      "source": "bankProducts.json → axesJson"
+    },
+    {
+      "bank": "DIB",
+      "name": "Personal Bank Statements",
+      "category": "Bank & Liabilities",
+      "applicableBank": [
+        "DIB"
+      ],
+      "applicableEmployment": [
+        "all"
+      ],
+      "applicablePropertyType": [
+        "any"
+      ],
+      "applicableTransaction": [
+        "any"
+      ],
+      "applicableResidency": [
+        "all"
+      ],
+      "mandatory": false,
+      "clientCanUpload": true,
+      "visibleToClient": true,
+      "verifyNotes": "6 Months - E-Statements",
+      "source": "bankProducts.json → axesJson"
+    },
+    {
+      "bank": "DIB",
+      "name": "Company Statements",
+      "category": "Other",
+      "applicableBank": [
+        "DIB"
+      ],
+      "applicableEmployment": [
+        "all"
+      ],
+      "applicablePropertyType": [
+        "any"
+      ],
+      "applicableTransaction": [
+        "any"
+      ],
+      "applicableResidency": [
+        "all"
+      ],
+      "mandatory": false,
+      "clientCanUpload": true,
+      "visibleToClient": true,
+      "verifyNotes": "12 Months Company Bank Statements",
+      "source": "bankProducts.json → axesJson"
+    },
+    {
+      "bank": "DIB",
+      "name": "VAT Statement",
+      "category": "Other",
+      "applicableBank": [
+        "DIB"
+      ],
+      "applicableEmployment": [
+        "all"
+      ],
+      "applicablePropertyType": [
+        "any"
+      ],
+      "applicableTransaction": [
+        "any"
+      ],
+      "applicableResidency": [
+        "all"
+      ],
+      "mandatory": false,
+      "clientCanUpload": true,
+      "visibleToClient": true,
+      "verifyNotes": "Mandatory",
+      "source": "bankProducts.json → axesJson"
+    },
+    {
+      "bank": "DIB",
+      "name": "Passport",
+      "category": "KYC",
+      "applicableBank": [
+        "DIB"
+      ],
+      "applicableEmployment": [
+        "all"
+      ],
+      "applicablePropertyType": [
+        "any"
+      ],
+      "applicableTransaction": [
+        "any"
+      ],
+      "applicableResidency": [
+        "all"
+      ],
+      "mandatory": true,
+      "clientCanUpload": true,
+      "visibleToClient": true,
+      "verifyNotes": "Yes, PDF",
+      "source": "bankProducts.json → axesJson"
+    },
+    {
+      "bank": "DIB",
+      "name": "Employment Type",
+      "category": "Income",
+      "applicableBank": [
+        "DIB"
+      ],
+      "applicableEmployment": [
+        "all"
+      ],
+      "applicablePropertyType": [
+        "any"
+      ],
+      "applicableTransaction": [
+        "any"
+      ],
+      "applicableResidency": [
+        "all"
+      ],
+      "mandatory": false,
+      "clientCanUpload": true,
+      "visibleToClient": true,
+      "verifyNotes": "Employed · Self Employed",
+      "source": "bankProducts.json → axesJson"
+    },
+    {
+      "bank": "ENBD",
+      "name": "Passport, Visa & EID",
+      "category": "KYC",
+      "applicableBank": [
+        "ENBD"
+      ],
+      "applicableEmployment": [
+        "all"
+      ],
+      "applicablePropertyType": [
+        "any"
+      ],
+      "applicableTransaction": [
+        "any"
+      ],
+      "applicableResidency": [
+        "all"
+      ],
+      "mandatory": true,
+      "clientCanUpload": true,
+      "visibleToClient": true,
+      "verifyNotes": "Yes, Colour, PDF",
+      "source": "bankProducts.json → axesJson"
+    },
+    {
+      "bank": "ENBD",
+      "name": "Proof of Residence",
+      "category": "Property",
+      "applicableBank": [
+        "ENBD"
+      ],
+      "applicableEmployment": [
+        "all"
+      ],
+      "applicablePropertyType": [
+        "any"
+      ],
+      "applicableTransaction": [
+        "any"
+      ],
+      "applicableResidency": [
+        "all"
+      ],
+      "mandatory": false,
+      "clientCanUpload": true,
+      "visibleToClient": true,
+      "verifyNotes": "No | Yes",
+      "source": "bankProducts.json → axesJson",
+      "_review": "required votes split across product variants"
+    },
+    {
+      "bank": "ENBD",
+      "name": "Application Form",
+      "category": "Application Form",
+      "applicableBank": [
+        "ENBD"
+      ],
+      "applicableEmployment": [
+        "all"
+      ],
+      "applicablePropertyType": [
+        "any"
+      ],
+      "applicableTransaction": [
+        "any"
+      ],
+      "applicableResidency": [
+        "all"
+      ],
+      "mandatory": true,
+      "clientCanUpload": false,
+      "visibleToClient": true,
+      "verifyNotes": "Yes",
+      "source": "bankProducts.json → axesJson"
+    },
+    {
+      "bank": "ENBD",
+      "name": "Any other Form",
+      "category": "Application Form",
+      "applicableBank": [
+        "ENBD"
+      ],
+      "applicableEmployment": [
+        "all"
+      ],
+      "applicablePropertyType": [
+        "any"
+      ],
+      "applicableTransaction": [
+        "any"
+      ],
+      "applicableResidency": [
+        "all"
+      ],
+      "mandatory": false,
+      "clientCanUpload": false,
+      "visibleToClient": true,
+      "verifyNotes": "Coversheet, all details mandatory & BV form, FTS Form, Editable application form, last 3 Yrs employment history | Coversheet, all details mandatory",
+      "source": "bankProducts.json → axesJson"
+    },
+    {
+      "bank": "ENBD",
+      "name": "Salary Certificate",
+      "category": "Income",
+      "applicableBank": [
+        "ENBD"
+      ],
+      "applicableEmployment": [
+        "all"
+      ],
+      "applicablePropertyType": [
+        "any"
+      ],
+      "applicableTransaction": [
+        "any"
+      ],
+      "applicableResidency": [
+        "all"
+      ],
+      "mandatory": true,
+      "clientCanUpload": true,
+      "visibleToClient": true,
+      "verifyNotes": "Yes - within 30 days, has to be addressed to Bank | Yes",
+      "source": "bankProducts.json → axesJson"
+    },
+    {
+      "bank": "ENBD",
+      "name": "Payslips",
+      "category": "Income",
+      "applicableBank": [
+        "ENBD"
+      ],
+      "applicableEmployment": [
+        "all"
+      ],
+      "applicablePropertyType": [
+        "any"
+      ],
+      "applicableTransaction": [
+        "any"
+      ],
+      "applicableResidency": [
+        "all"
+      ],
+      "mandatory": false,
+      "clientCanUpload": true,
+      "visibleToClient": true,
+      "verifyNotes": "6 Months - Only if pay varies | 6 Months - English",
+      "source": "bankProducts.json → axesJson"
+    },
+    {
+      "bank": "ENBD",
+      "name": "Bank Statements",
+      "category": "Bank & Liabilities",
+      "applicableBank": [
+        "ENBD"
+      ],
+      "applicableEmployment": [
+        "all"
+      ],
+      "applicablePropertyType": [
+        "any"
+      ],
+      "applicableTransaction": [
+        "any"
+      ],
+      "applicableResidency": [
+        "all"
+      ],
+      "mandatory": false,
+      "clientCanUpload": true,
+      "visibleToClient": true,
+      "verifyNotes": "6 Months - E-Statements. Countersign all pages. If original, no need to countersign | 6 Months - English",
+      "source": "bankProducts.json → axesJson"
+    },
+    {
+      "bank": "ENBD",
+      "name": "Liability Information",
+      "category": "Bank & Liabilities",
+      "applicableBank": [
+        "ENBD"
+      ],
+      "applicableEmployment": [
+        "all"
+      ],
+      "applicablePropertyType": [
+        "any"
+      ],
+      "applicableTransaction": [
+        "any"
+      ],
+      "applicableResidency": [
+        "all"
+      ],
+      "mandatory": false,
+      "clientCanUpload": true,
+      "visibleToClient": true,
+      "verifyNotes": "Latest CC Statement / Any other liability statements",
+      "source": "bankProducts.json → axesJson"
+    },
+    {
+      "bank": "ENBD",
+      "name": "Valuation Report Validity",
+      "category": "Valuation",
+      "applicableBank": [
+        "ENBD"
+      ],
+      "applicableEmployment": [
+        "all"
+      ],
+      "applicablePropertyType": [
+        "any"
+      ],
+      "applicableTransaction": [
+        "any"
+      ],
+      "applicableResidency": [
+        "all"
+      ],
+      "mandatory": false,
+      "clientCanUpload": true,
+      "visibleToClient": true,
+      "verifyNotes": "45 days",
+      "source": "bankProducts.json → axesJson"
+    },
+    {
+      "bank": "ENBD",
+      "name": "Personal Bank Statements",
+      "category": "Bank & Liabilities",
+      "applicableBank": [
+        "ENBD"
+      ],
+      "applicableEmployment": [
+        "all"
+      ],
+      "applicablePropertyType": [
+        "any"
+      ],
+      "applicableTransaction": [
+        "any"
+      ],
+      "applicableResidency": [
+        "all"
+      ],
+      "mandatory": false,
+      "clientCanUpload": true,
+      "visibleToClient": true,
+      "verifyNotes": "6 Months - E-Statements. Countersign all pages. If original, no need to countersign",
+      "source": "bankProducts.json → axesJson"
+    },
+    {
+      "bank": "ENBD",
+      "name": "Company Statements",
+      "category": "Other",
+      "applicableBank": [
+        "ENBD"
+      ],
+      "applicableEmployment": [
+        "all"
+      ],
+      "applicablePropertyType": [
+        "any"
+      ],
+      "applicableTransaction": [
+        "any"
+      ],
+      "applicableResidency": [
+        "all"
+      ],
+      "mandatory": false,
+      "clientCanUpload": true,
+      "visibleToClient": true,
+      "verifyNotes": "12 Months - E-Statements (6 months in case AFS held)",
+      "source": "bankProducts.json → axesJson"
+    },
+    {
+      "bank": "ENBD",
+      "name": "VAT Statement",
+      "category": "Other",
+      "applicableBank": [
+        "ENBD"
+      ],
+      "applicableEmployment": [
+        "all"
+      ],
+      "applicablePropertyType": [
+        "any"
+      ],
+      "applicableTransaction": [
+        "any"
+      ],
+      "applicableResidency": [
+        "all"
+      ],
+      "mandatory": true,
+      "clientCanUpload": true,
+      "visibleToClient": true,
+      "verifyNotes": "Required for last 4 quarters",
+      "source": "bankProducts.json → axesJson"
+    },
+    {
+      "bank": "ENBD",
+      "name": "Passport",
+      "category": "KYC",
+      "applicableBank": [
+        "ENBD"
+      ],
+      "applicableEmployment": [
+        "all"
+      ],
+      "applicablePropertyType": [
+        "any"
+      ],
+      "applicableTransaction": [
+        "any"
+      ],
+      "applicableResidency": [
+        "all"
+      ],
+      "mandatory": true,
+      "clientCanUpload": true,
+      "visibleToClient": true,
+      "verifyNotes": "Yes, PDF",
+      "source": "bankProducts.json → axesJson"
+    },
+    {
+      "bank": "ENBD",
+      "name": "Employment Type",
+      "category": "Income",
+      "applicableBank": [
+        "ENBD"
+      ],
+      "applicableEmployment": [
+        "all"
+      ],
+      "applicablePropertyType": [
+        "any"
+      ],
+      "applicableTransaction": [
+        "any"
+      ],
+      "applicableResidency": [
+        "all"
+      ],
+      "mandatory": false,
+      "clientCanUpload": true,
+      "visibleToClient": true,
+      "verifyNotes": "Employed · Self Employed",
+      "source": "bankProducts.json → axesJson"
+    }
+  ]
+}

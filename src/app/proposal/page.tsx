@@ -7,6 +7,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { LogoMark } from "@/components/icons";
+import { PaymentReveal, RateStory, WhyQualifies } from "@/components/views/proposal/offer-explain";
 
 interface ProposalResult {
   bankProductId: number;
@@ -220,6 +221,31 @@ export default function ProposalPage() {
         })()}
 
         <ProductInspector data={data} />
+
+        {/* WHAT YOU ACTUALLY PAY — the payment step-up after the fixed period.
+            Without this the client reads "3.89% fixed for 3 years" over an 8-year
+            loan and believes the payment never changes. It does. */}
+        {(() => {
+          const top = results[0];
+          if (!top || top.verdict === "not_eligible" || top.introEmi == null) return null;
+          return (
+            <div className="rounded-lg p-4 mt-4" style={{ background: "var(--tint)", border: "1px solid var(--line-soft)" }}>
+              <div className="text-[10.5px] uppercase tracking-[0.12em] font-disp font-semibold text-[var(--ink-faint)] mb-2">
+                What you would pay each month
+              </div>
+              <PaymentReveal o={top} />
+              <div className="mt-3 pt-3" style={{ borderTop: "1px solid var(--line-soft)" }}>
+                <RateStory o={top} />
+              </div>
+              <div className="mt-3 pt-3" style={{ borderTop: "1px solid var(--line-soft)" }}>
+                <div className="text-[10.5px] uppercase tracking-[0.12em] font-disp font-semibold text-[var(--ink-faint)] mb-2">
+                  Why you qualify
+                </div>
+                <WhyQualifies o={top} />
+              </div>
+            </div>
+          );
+        })()}
 
         {/* side-by-side comparison */}
         <h3 className="font-disp font-semibold text-[14px] mt-6 mb-2">Side-by-side comparison</h3>

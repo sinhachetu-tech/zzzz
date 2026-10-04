@@ -10,7 +10,24 @@ import { requireDocManager } from "@/lib/domain";
 import { r2Delete } from "@/lib/r2";
 import { serCaseDocument } from "@/lib/ser";
 
-const STATUSES = ["Pending upload", "Uploaded", "Verified", "Rejected", "Waived"];
+// `CaseDocument.status` is a plain String column, so the application-form ladder
+// costs no migration — but it DOES need to be listed here, because this
+// allow-list rejects anything missing with a 400. Without it a broker could not
+// mark a form "Filled (unsigned)", which is the whole point of the category: a
+// bank that wants the form UNSIGNED is a different requirement from one that
+// wants it signed, and that distinction has to be recordable.
+const STATUSES = [
+  "Pending upload",
+  "Uploaded",
+  "Verified",
+  "Rejected",
+  "Waived",
+  // application-form lifecycle (broker-produced, not client-supplied)
+  "Filled (unsigned)",
+  "Submitted to bank",
+  "Signed",
+  "Returned by bank",
+];
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const me = await currentUser();

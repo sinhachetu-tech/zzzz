@@ -61,6 +61,9 @@ export async function POST(req: NextRequest) {
     customer: string;
     banks: string[];
     loanAmount: number;
+    /** REAL property value. Optional at intake; the engine reports an LTV data gap
+     *  when absent rather than deriving one from the loan amount. */
+    propertyValue?: number | null;
     stage: string;
     ownerId: number;
     source: CaseSource;
@@ -102,6 +105,7 @@ export async function POST(req: NextRequest) {
       bankRm: singleBank ? (rmMap[singleBank] ?? bankRm ?? null) : (bankRm ?? null),
       wonBank: null,
       loanAmount,
+      propertyValue: body.propertyValue ? Number(body.propertyValue) : null,
       stage: stage || "WhatsApp Group Creation",
       caseStatus: "Active",
       ownerId,
@@ -164,6 +168,21 @@ export async function POST(req: NextRequest) {
   }
 
   const created = (await db.loanCase.findUnique({ where: { id: createdList[0].id } }))!;
+
+  // Link every bank after the first back to the FIRST one, so the legs of one
+  // multi-bank deal stay visibly one deal. The first leg is the parent (null).
+  if (createdList.length > 1) {
+    const parentId = createdList[0].id;
+    for (const sib of createdList.slice(1)) {
+      await db.loanCase.update({ where: { id: sib.id }, data: { parentCaseId: parentId } });
+      await db.activity.create({
+        data: { caseId: sib.id, userId: me.id, action: "opened as a leg of a multi-bank deal" },
+      });
+    }
+    await db.activity.create({
+      data: { caseId: parentId, userId: me.id, action: `opened with ${createdList.length - 1} additional bank leg(s)` },
+    });
+  }
 
   if (task?.description?.trim()) {
     for (const c of createdList) {

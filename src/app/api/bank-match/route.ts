@@ -5,11 +5,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { currentUser } from "@/lib/auth";
 import { runBankMatch } from "@/lib/bank-match";
+import { getPricingFloor } from "@/lib/pricing-floor";
 
 export async function POST(req: NextRequest) {
   const me = await currentUser();
   if (!me) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const body = await req.json();
+  // Tier-1 floor is applied on EVERY match so a floor change repricing the whole
+  // book takes effect immediately, with no product edits and no deploy.
+  const floor = await getPricingFloor();
 
   let base = {
     employmentProfile: body.employmentProfile ?? "Salaried",
@@ -40,6 +44,14 @@ export async function POST(req: NextRequest) {
     financeType: body.financeType ?? undefined,
     loanKind: body.loanKind ?? undefined,
     segment: body.segment ?? undefined,
+    // NEW: eligibility inputs the engine can now actually enforce
+    propertyStage: body.propertyStage ?? undefined,
+    transactionPurpose: body.transactionPurpose ?? undefined,
+    propertyTypeCanonical: body.propertyTypeCanonical ?? undefined,
+    customerProfile: body.customerProfile ?? undefined,
+    serviceMonths: body.serviceMonths != null ? Number(body.serviceMonths) : undefined,
+    propertyAgeYears: body.propertyAgeYears != null ? Number(body.propertyAgeYears) : undefined,
+    isFirstProperty: body.isFirstProperty ?? undefined,
   };
 
   if (body.caseId) {
@@ -69,6 +81,8 @@ export async function POST(req: NextRequest) {
       residency: body.residency ?? prof.primary.residency ?? c.residency,
       transactionType: body.transactionType ?? prof.property.transactionType ?? c.transactionType,
       loanAmount: Number(body.loanAmount) || prof.property.loanAmount || c.loanAmount,
+      // REAL property value only — never loanAmount/0.8. If absent, the engine
+      // reports an LTV data gap instead of inventing an 80% LTV.
       propertyValue: Number(body.propertyValue) || prof.property.propertyValue || 0,
       monthlyIncome: Number(body.monthlyIncome) || prof.primary.monthlySalary || 0,
       existingEmis: Number(body.existingEmis) || prof.primary.existingEmis || 0,
@@ -98,12 +112,23 @@ export async function POST(req: NextRequest) {
       ),
       loanKind: body.loanKind ?? (prof.primary.islamicOnly ? "Islamic" : undefined),
       segment: body.segment ?? undefined,
+      // Canonical property classification -> engine axes. These LoanCase columns
+      // existed but nothing read them until now.
+      propertyStage: body.propertyStage ?? (prof.property.canonicalPropertyStage && prof.property.canonicalPropertyStage !== "UNKNOWN" ? prof.property.canonicalPropertyStage : undefined),
+      transactionPurpose: body.transactionPurpose ?? (prof.property.canonicalTransactionPurpose ? prof.property.canonicalTransactionPurpose : undefined),
+      propertyTypeCanonical: body.propertyTypeCanonical ?? (prof.property.canonicalPropertyType !== "UNKNOWN" ? prof.property.canonicalPropertyType : undefined),
+      customerProfile: body.customerProfile ?? undefined,
+      serviceMonths: body.serviceMonths != null ? Number(body.serviceMonths) : undefined,
+      propertyAgeYears: body.propertyAgeYears != null ? Number(body.propertyAgeYears) : undefined,
+      isFirstProperty: body.isFirstProperty ?? undefined,
     };
   }
 
   if (!base.propertyValue || !base.monthlyIncome) {
     return NextResponse.json({ error: "propertyValue and monthlyIncome are required." }, { status: 400 });
   }
-  const results = await runBankMatch(base);
-  return NextResponse.json({ input: base, results });
+  // Apply the admin floor. Only pass it when it has a value, so an unset floor
+  // leaves the call shape byte-identical to before.
+  const results = await runBankMatch({ ...base, floor: Object.keys(floor).length ? floor : undefined });
+  return NextResponse.json({ input: base, floor, results });
 }

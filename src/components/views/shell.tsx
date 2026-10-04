@@ -14,7 +14,7 @@ import { CommandBar } from "@/components/views/command-bar";
 import { useCollapsibleSidebar } from "@/hooks/use-collapsible-sidebar";
 import { useHaptic, withHaptic } from "@/lib/haptics";
 import {
-  IBank, IBriefcase, ICalc, IChart, IChevronL, IChevronR, IFlag, IGrid, IInbox, ILogout, IMenu, IPlus, ISearch, IShield, ITasks, LogoMark,
+  IBank, IBriefcase, ICalc, IChart, IChevronL, IChevronR, IFlag, IGrid, IInbox, ILogout, IMenu, IPlus, ISearch, IShield, ITasks, IUsers, LogoMark,
 } from "@/components/icons";
 
 function Clock() {
@@ -663,9 +663,11 @@ export default function Shell({ children }: { children: ReactNode }) {
     { label: "Dashboard", route: { name: "dashboard" }, icon: IGrid },
     { label: "Morning Bulletin", route: { name: "bulletin" }, icon: IFlag, badge: myOpenDirectives },
     { label: "Leads", route: { name: "leads" }, icon: IInbox },
+    { label: "Clients", route: { name: "clients" }, icon: IUsers },
     { label: "Cases", route: { name: "cases" }, icon: IBriefcase },
     { label: "Task Queue", route: { name: "tasks" }, icon: ITasks },
     { label: "Calculator", route: { name: "calculator" }, icon: ICalc },
+    { label: "Bank Products", route: { name: "products" }, icon: IBank },
     { label: "Reports", route: { name: "reports" }, icon: IChart },
     ...(isAdmin ? [{ label: "Admin", route: { name: "admin" as const }, icon: IShield }] : []),
   ];
@@ -674,12 +676,14 @@ export default function Shell({ children }: { children: ReactNode }) {
     route.name === "dashboard" ? "Dashboard" :
       route.name === "cases" ? "Cases" :
         route.name === "leads" ? "Leads" :
+          route.name === "clients" ? "Clients" :
           route.name === "case" ? "Case 360" :
             route.name === "tasks" ? "Task Queue" :
               route.name === "bulletin" ? "Morning Bulletin" :
                 route.name === "calculator" ? "Calculator" :
                   route.name === "reports" ? "Reports" :
-                    "Admin";
+                    route.name === "products" ? "Bank Products" :
+                      "Admin";
 
   return (
     <div className="flex h-screen overflow-hidden">

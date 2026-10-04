@@ -9,6 +9,8 @@ import { serCase, serDocRule } from "@/lib/ser";
 import { runBankMatch, canonicalTxn } from "@/lib/bank-match";
 import { parseFees, parseInsurance, processingFeePct, lifeInsuranceMonthly, propertyInsuranceYearly } from "@/lib/bank-fees";
 import { parseCaseProfile } from "@/lib/case-profile";
+import { getPricingFloor } from "@/lib/pricing-floor";
+import { todayISO } from "@/lib/format";
 import type { FeeRule } from "@/lib/types";
 
 export async function POST(req: NextRequest) {
@@ -23,12 +25,18 @@ export async function POST(req: NextRequest) {
   const c = await db.loanCase.findUnique({ where: { id: parseInt(body.caseId, 10) } });
   if (!c) return NextResponse.json({ error: "case not found" }, { status: 404 });
 
+  // Tier-1 floor: the engine applies it on every match, and the value in force at
+  // generation time is captured with the proposal so a frozen document can prove
+  // which floor produced its numbers.
+  const floor = await getPricingFloor();
   const input = {
     employmentProfile: body.employmentProfile ?? c.employmentProfile,
     residency: body.residency ?? c.residency,
     transactionType: body.transactionType ?? c.transactionType,
     loanAmount: Number(body.loanAmount) || c.loanAmount,
-    propertyValue: Number(body.propertyValue) || 0,
+    // REAL property value. Prefer the captured column, then the body, then the
+    // stored profile. Never derived from the loan amount.
+    propertyValue: Number(body.propertyValue) || c.propertyValue || 0,
     monthlyIncome: Number(body.monthlyIncome) || 0,
     existingEmis: Number(body.existingEmis) || 0,
     cardLimitsTotal: Number(body.cardLimitsTotal) || 0,
@@ -40,6 +48,11 @@ export async function POST(req: NextRequest) {
     primaryAge: Number(body.primaryAge) || undefined,
     coBorrowerAge: Number(body.coBorrowerAge) || undefined,
     processingMonths: Number(body.processingMonths) || 3,
+    // new axes the engine can now enforce
+    propertyStage: (c as unknown as { propertyStage?: string }).propertyStage ?? undefined,
+    transactionPurpose: (c as unknown as { transactionPurpose?: string }).transactionPurpose ?? undefined,
+    propertyTypeCanonical: (c as unknown as { propertyTypeCanonical?: string }).propertyTypeCanonical ?? undefined,
+    floor: Object.keys(floor).length ? floor : undefined,
   };
   const prof = parseCaseProfile(c.profileJson, { customer: c.customer, loanAmount: c.loanAmount });
   if (!body.processingMonths) input.processingMonths = prof.processingMonths || 3;
@@ -78,7 +91,7 @@ export async function POST(req: NextRequest) {
     .map((d) => ({ title: d.title, category: d.category, status: d.status, mandatory: d.mandatory }));
 
   const bankIds = [...new Set(results.map((r) => r.bankProductId))];
-  const products = await db.bankProduct.findMany({ where: { id: { in: bankIds } }, include: { bank: { select: { id: true, name: true, logoData: true, logoType: true, posPoints: true, negPoints: true } } } });
+  const products = await db.bankProduct.findMany({ where: { id: { in: bankIds }, status: "approved", active: true }, include: { bank: { select: { id: true, name: true, logoData: true, logoType: true, posPoints: true, negPoints: true, defaultProcessingFeePct: true } } } });
   const eiborRows = await db.eiborRate.findMany();
   const bankLogos = products.map((p) => ({
     bankName: p.bank.name,
@@ -104,6 +117,10 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     mode,
     generatedAt: new Date().toISOString(),
+    // The pricing floor in force when this document was generated. Frozen with the
+    // proposal so a stored snapshot can prove which floor produced these numbers.
+    floor,
+    eiborCapturedAt: eiborRows.find((e) => e.tenor === "3M")?.updatedOn ?? "",
     case: {
       caseNumber: c.caseNumber, customer: c.customer,
       employmentProfile: input.employmentProfile, residency: input.residency,
@@ -129,7 +146,8 @@ export async function POST(req: NextRequest) {
       const prod = products.find((pp) => pp.id === r.bankProductId);
       const fees = parseFees((prod as unknown as { feesJson?: string })?.feesJson ?? "{}");
       const ins = parseInsurance((prod as unknown as { insuranceJson?: string })?.insuranceJson ?? "{}");
-      const procPct = processingFeePct(fees, feeTxn);
+      // Same inheritance rule as the engine and the grid: product fee ?? bank default.
+      const procPct = processingFeePct(fees, feeTxn, input.loanAmount, todayISO(), (prod as unknown as { bank?: { defaultProcessingFeePct?: number | null } }).bank?.defaultProcessingFeePct ?? null);
       const processingFee = procPct != null ? Math.round((input.loanAmount * procPct) / 100) : null;
       const lifeMonthly = lifeInsuranceMonthly(ins, input.loanAmount);
       const propertyYearly = propertyInsuranceYearly(ins, input.propertyValue);

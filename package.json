@@ -8,6 +8,7 @@
     "build": "next build && xcopy .next\\static .next\\standalone\\.next\\ /E /I /Y && xcopy public .next\\standalone\\ /E /I /Y",
     "start": "NODE_ENV=production bun .next/standalone/server.js 2>&1 | tee server.log",
     "lint": "eslint .",
+    "test:pricing": "node scripts/build-pricing-tests.mjs",
     "db:push": "prisma db push --accept-data-loss",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",

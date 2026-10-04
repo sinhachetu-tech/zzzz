@@ -57,7 +57,19 @@ export async function POST(req: NextRequest) {
           monthlySalary: 0, variableIncome: 0, rentalIncome: 0, existingEmis: 0, creditCardLimits: 0,
         },
       })
-    : null;
+    // First-time registrant: we still have to persist the email they just typed.
+    // This branch did not exist, so a brand-new client's address was discarded
+    // on the floor — the Client row was created with a phone and no email, and
+    // the team could never contact them by mail. Written as a MINIMAL profile
+    // (name / phone / email only); the Profile editor fills the rest, and
+    // parseCaseProfile supplies the defaults for everything omitted here.
+    : JSON.stringify({
+        primary: {
+          fullName: name.trim(),
+          phone: phone.trim(),
+          email: email?.trim() || undefined,
+        },
+      });
 
   // Create a case in "Lead" stage — before the normal pipeline starts.
   // The team will pick it up, assign an owner, and move it to WhatsApp Group Creation.
