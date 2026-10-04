@@ -234,7 +234,7 @@ export default function Admin() {
           <span className="text-[11px] text-[var(--ink-faint)] ml-2 hidden sm:inline">every change lands in the activity trail</span>
         </div>
         {/* level 1 — groups */}
-        <div className="overflow-x-auto pb-0.5">
+        <div className="rf-scroll rf-scroll-x pb-0.5">
           <Seg<string>
             value={group.key}
             onChange={(k) => setTab(GROUPS.find((g) => g.key === k)!.tabs[0].value)}
@@ -242,7 +242,7 @@ export default function Admin() {
           />
         </div>
         {/* level 2 — tabs within the group */}
-        <div className="overflow-x-auto -mb-1 pb-1">
+        <div className="rf-scroll rf-scroll-x -mb-1 pb-1">
           <Seg<Tab>
             value={tab}
             onChange={setTab}
@@ -386,7 +386,7 @@ function UsersTab() {
       {sorted.length === 0 ? (
         <EmptyState icon={<IUsers size={20} />} title="No teammates yet" body="Add your first account to start assigning cases." />
       ) : (
-        <div className="overflow-x-auto">
+        <div className="rf-scroll rf-scroll-x">
           <table className="tbl min-w-[760px]">
             <thead>
               <tr>
@@ -599,7 +599,7 @@ function DesignationsTab() {
           </button>
         }
       />
-      <div className="overflow-x-auto">
+      <div className="rf-scroll rf-scroll-x">
         <table className="tbl min-w-[760px]">
           <thead>
             <tr>
@@ -934,7 +934,7 @@ function StorageTab() {
       </div>
       <div className="card">
         <CardHeader title="Vault contents" sub="What is on Cloudflare versus still in the database — and what compression has saved." />
-        <div className="p-4 grid grid-cols-2 md:grid-cols-3 gap-3">
+        <div className="rf-form-grid-sm p-4">
           <Stat label="Documents" value={String(stats?.totalDocuments ?? 0)} />
           <Stat label="Files on R2" value={String(stats?.filesOnR2 ?? 0)} />
           <Stat label="Legacy in database" value={String(stats?.legacyInDatabase ?? 0)} hint="re-upload to move them across" />
@@ -1033,12 +1033,17 @@ function ContactsEditor({ contacts, onChange }: { contacts: { name: string; phon
   return (
     <div className="space-y-1.5">
       {contacts.length === 0 && <p className="text-[11.5px] text-[var(--ink-faint)] m-0">No contact yet — add the relationship manager&apos;s name, phone and email. Add more than one if the desk has several RMs.</p>}
+      {/* These four inputs were fixed at 150+130+170+120 = 570px, which cannot fit a
+          390px phone, so each wrapped onto its own line at a fixed width and the row
+          read as ragged. They now share the available width on a phone
+          (`flex-1 min-w-[130px]`) and keep their exact desktop widths from `sm` up
+          (`sm:flex-none sm:w-[…]`). */}
       {contacts.map((c, i) => (
         <div key={i} className="flex flex-wrap items-center gap-1.5">
-          <input className="input !py-1 text-[11.5px]" style={{ width: 150 }} placeholder="RM name" value={c.name} onChange={(e) => upd(i, { name: e.target.value })} />
-          <input className="input mono !py-1 text-[11.5px]" style={{ width: 130 }} placeholder="+971…" value={c.phone ?? ""} onChange={(e) => upd(i, { phone: e.target.value })} />
-          <input className="input !py-1 text-[11.5px]" style={{ width: 170 }} placeholder="email" value={c.email ?? ""} onChange={(e) => upd(i, { email: e.target.value })} />
-          <input className="input !py-1 text-[11.5px]" style={{ width: 120 }} placeholder="role/desk" value={c.role ?? ""} onChange={(e) => upd(i, { role: e.target.value })} />
+          <input className="input !py-1 text-[11.5px] flex-1 min-w-[130px] sm:flex-none sm:w-[150px]" placeholder="RM name" value={c.name} onChange={(e) => upd(i, { name: e.target.value })} />
+          <input className="input mono !py-1 text-[11.5px] flex-1 min-w-[130px] sm:flex-none sm:w-[130px]" placeholder="+971…" value={c.phone ?? ""} onChange={(e) => upd(i, { phone: e.target.value })} />
+          <input className="input !py-1 text-[11.5px] flex-1 min-w-[130px] sm:flex-none sm:w-[170px]" placeholder="email" value={c.email ?? ""} onChange={(e) => upd(i, { email: e.target.value })} />
+          <input className="input !py-1 text-[11.5px] flex-1 min-w-[130px] sm:flex-none sm:w-[120px]" placeholder="role/desk" value={c.role ?? ""} onChange={(e) => upd(i, { role: e.target.value })} />
           <button className="btn btn-ghost btn-sm !px-2" style={{ color: "var(--coral)" }} onClick={() => onChange(contacts.filter((_, idx) => idx !== i))} title="Remove contact">✕</button>
         </div>
       ))}
@@ -1114,7 +1119,7 @@ function BanksTab() {
       {sorted.length === 0 ? (
         <EmptyState icon={<IBank size={20} />} title="No banks yet" body="Add the lenders you submit to with their commission rates." />
       ) : (
-        <div className="overflow-x-auto">
+        <div className="rf-scroll rf-scroll-x">
           <table className="tbl min-w-[640px]">
             <thead>
               <tr>
@@ -1341,7 +1346,7 @@ function PartnersTab() {
       {list.length === 0 ? (
         <EmptyState icon={<IUsers size={20} />} title="No partners yet" body="Add agents, brokers, or referrers to attribute sourcing on cases." />
       ) : (
-        <div className="overflow-x-auto">
+        <div className="rf-scroll rf-scroll-x">
           <table className="tbl min-w-[680px]">
             <thead>
               <tr>
@@ -1554,7 +1559,7 @@ function ChannelsTab() {
         <span className="text-[11px] text-[var(--ink-faint)] self-center">% of loan amount</span>
         <button className="btn btn-primary" onClick={submit} disabled={busy}>Add channel</button>
       </div>
-      <div className="overflow-x-auto">
+      <div className="rf-scroll rf-scroll-x">
         <table className="tbl min-w-[500px]">
           <thead><tr><th>Name</th><th>Commission %</th><th>Active</th><th className="text-right">Actions</th></tr></thead>
           <tbody>
@@ -1690,7 +1695,7 @@ function MastersTab() {
       {items.length === 0 ? (
         <EmptyState icon={<IX size={20} />} title="Nothing here yet" body="Add labels so the team can categorise why tasks are stuck." />
       ) : (
-        <div className="overflow-x-auto">
+        <div className="rf-scroll rf-scroll-x">
           <table className="tbl min-w-[520px]">
             <thead>
               <tr>
@@ -1872,7 +1877,7 @@ function SlaTab() {
       {sorted.length === 0 ? (
         <EmptyState icon={<ICheck size={20} />} title="No SLA rules" body="Without rules, nothing will escalate. Add one per stage." />
       ) : (
-        <div className="overflow-x-auto">
+        <div className="rf-scroll rf-scroll-x">
           <table className="tbl min-w-[680px]">
             <thead>
               <tr>
@@ -2150,7 +2155,7 @@ function DocRulesTab() {
       {sorted.length === 0 ? (
         <EmptyState icon={<ICheck size={20} />} title="No document rules" body="Add the documents your process tracks — they auto-appear on matching cases." />
       ) : (
-        <div className="overflow-x-auto">
+        <div className="rf-scroll rf-scroll-x">
           <table className="tbl min-w-[900px]">
             <thead>
               <tr>
@@ -2373,7 +2378,7 @@ function DataQualityTab() {
           title="Property classification — to verify"
           sub="Cases still missing a canonical dimension. Answer them on the case (Property tab or Case 360 → Attributes) — nothing here is guessed for you."
         />
-        <div className="p-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <div className="rf-form-grid-sm p-3">
           <div className="kpi kpi-plain">
             <div className="kpi-label">Fully classified</div>
             <KpiValue className="mono" value={clean} style={{ color: "var(--mint)" }} />
@@ -2574,7 +2579,7 @@ function PromotionsTab() {
                 ))}
               </select>
             </Field>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="rf-form-grid-sm">
               <Field label="Promo name" hint='e.g. "National Day Bonanza"'>
                 <input className="input" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
               </Field>
@@ -2588,7 +2593,7 @@ function PromotionsTab() {
             <Field label="Description" hint="Shown to staff next to the override summary">
               <input className="input" value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} />
             </Field>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="rf-form-grid-sm">
               <Field label="Rate discount (bps)" hint="Negative = rate cut. -25 → 0.25% lower. Blank = no rate change">
                 <input className="input mono" type="number" step="1" placeholder="-25" value={draft.rateDiscountBps} onChange={(e) => setDraft({ ...draft, rateDiscountBps: e.target.value })} />
               </Field>
@@ -2600,7 +2605,7 @@ function PromotionsTab() {
               <input type="checkbox" checked={draft.valuationFeeWaived} onChange={(e) => setDraft({ ...draft, valuationFeeWaived: e.target.checked })} />
               Waive the valuation fee for this campaign
             </label>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="rf-form-grid-sm">
               <Field label="Start date" hint="Inclusive — promo applies from this day">
                 <input className="input mono" type="date" value={draft.validFrom} onChange={(e) => setDraft({ ...draft, validFrom: e.target.value })} />
               </Field>
@@ -2740,7 +2745,7 @@ function FeeRulesTab() {
       {rows.length === 0 ? (
         <EmptyState icon={<ICheck size={20} />} title="No fees for this emirate / transaction" body="Add the charges your teams quote clients — DLD transfer, trustee, registration, agency." />
       ) : (
-        <div className="overflow-x-auto">
+        <div className="rf-scroll rf-scroll-x">
           <table className="tbl min-w-[760px]">
             <thead>
               <tr>
@@ -3014,7 +3019,7 @@ function BankRulesTab() {
                   </button>
                 </div>
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1.5 mono text-[12px]">
+              <div className="rf-form-grid-sm gap-x-4 gap-y-1.5 mono text-[12px]">
                 {p.maxLtvNational != null && <span>LTV national: <strong>{p.maxLtvNational}%</strong></span>}
                 {p.maxLtvExpatriate != null && <span>LTV expat: <strong>{p.maxLtvExpatriate}%</strong></span>}
                 {p.tenorYears != null && <span>Tenor: <strong>{p.tenorYears}y</strong></span>}
@@ -3115,7 +3120,7 @@ function BankRulesTab() {
                 Sync from axes
               </button>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div className="rf-form-grid-sm">
               {NUM_FIELDS.map((f) => (
                 <Field key={String(f.key)} label={`${f.label} · ${f.suffix ?? ""}`}>
                   <input
@@ -3631,7 +3636,7 @@ function FeesEditor({ fees, onChange }: { fees: BankFees; onChange: (fees: BankF
           {/* Processing fee */}
           <div className="p-2.5 rounded-lg bg-[var(--bg2)] space-y-2">
             <div className="text-[11px] font-semibold text-[var(--ink-dim)]">Processing Fee</div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div className="rf-form-grid-sm">
               <div>
                 <label className="text-[10.5px] text-[var(--ink-faint)]">Default rate (%)</label>
                 <input
@@ -3691,7 +3696,7 @@ function FeesEditor({ fees, onChange }: { fees: BankFees; onChange: (fees: BankF
               ))}
             </div>
             {/* Component split for buyout+equity deals */}
-            <div className="grid grid-cols-2 gap-2 pt-1">
+            <div className="rf-form-grid-sm pt-1">
               <div title="Charged on the buyout portion only (rest uses buyout % above)">
                 <label className="text-[10.5px] text-[var(--ink-faint)]">Buyout portion (%)</label>
                 <input type="number" step="0.01" className="input input-sm mono" placeholder="—"
@@ -3708,7 +3713,7 @@ function FeesEditor({ fees, onChange }: { fees: BankFees; onChange: (fees: BankF
           {/* Pre-approval fee */}
           <div className="p-2.5 rounded-lg bg-[var(--bg2)] space-y-2">
             <div className="text-[11px] font-semibold text-[var(--ink-dim)]">Pre-Approval Fee</div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div className="rf-form-grid-sm">
               <div>
                 <label className="text-[10.5px] text-[var(--ink-faint)]">Salaried (AED)</label>
                 <input
@@ -3753,7 +3758,7 @@ function FeesEditor({ fees, onChange }: { fees: BankFees; onChange: (fees: BankF
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             <div className="p-2.5 rounded-lg bg-[var(--bg2)] space-y-2">
               <div className="text-[11px] font-semibold text-[var(--ink-dim)]">Early Settlement</div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="rf-form-grid-sm">
                 <div>
                   <label className="text-[10.5px] text-[var(--ink-faint)]">Penalty (%)</label>
                   <input
@@ -3780,7 +3785,7 @@ function FeesEditor({ fees, onChange }: { fees: BankFees; onChange: (fees: BankF
 
             <div className="p-2.5 rounded-lg bg-[var(--bg2)] space-y-2">
               <div className="text-[11px] font-semibold text-[var(--ink-dim)]">Partial Settlement</div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="rf-form-grid-sm">
                 <div>
                   <label className="text-[10.5px] text-[var(--ink-faint)]">Free / year (%)</label>
                   <input
@@ -3864,7 +3869,7 @@ function InsuranceEditor({ insurance, onChange }: { insurance: BankInsurance; on
                 <span className="text-[10.5px] text-[var(--mint)] mono">AED {previewLifeMonthly}/mo for 1.5M loan</span>
               )}
             </div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="rf-form-grid-sm">
               <div>
                 <label className="text-[10.5px] text-[var(--ink-faint)]">Calculation Basis</label>
                 <select
@@ -4144,7 +4149,7 @@ function CommTemplatesTab() {
       {commTemplates.length === 0 ? (
         <EmptyState icon={<ICheck size={20} />} title="No templates yet" body="Seed wording is used as a fallback. Add templates here to edit wording without a deploy." />
       ) : (
-        <div className="overflow-x-auto">
+        <div className="rf-scroll rf-scroll-x">
           <table className="tbl min-w-[720px]">
             <thead>
               <tr>
@@ -4184,7 +4189,7 @@ function CommTemplatesTab() {
       {editing && (
         <Modal onClose={() => setEditing(null)} title={creating ? "Add template" : `Edit ${editing.name}`}>
           <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="rf-form-grid-sm">
               <div>
                 <label className="label">Key (unique id)</label>
                 <input className="input mono" placeholder="wa-doc-list" value={editing.key}
@@ -4408,7 +4413,7 @@ function NotificationsTab() {
             </label>
           ))}
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="rf-form-grid-sm">
           <NotifInput label="From name" value={cfg.emailFromName} onChange={(v) => patch({ emailFromName: v })} />
           <NotifInput label="From address" value={cfg.emailFromAddress} onChange={(v) => patch({ emailFromAddress: v })} />
         </div>
@@ -4416,7 +4421,7 @@ function NotificationsTab() {
           <NotifInput label="Resend API key" value={cfg.resendApiKey} onChange={(v) => patch({ resendApiKey: v })} type="password" placeholder="re_…" />
         )}
         {cfg.emailProvider === "smtp" && (
-          <div className="grid grid-cols-2 gap-3">
+          <div className="rf-form-grid-sm">
             <NotifInput label="Host" value={cfg.smtpHost} onChange={(v) => patch({ smtpHost: v })} />
             <NotifInput label="Port" value={cfg.smtpPort} onChange={(v) => patch({ smtpPort: parseInt(v) || 587 })} type="number" />
             <NotifInput label="User" value={cfg.smtpUser} onChange={(v) => patch({ smtpUser: v })} />
@@ -4436,7 +4441,7 @@ function NotificationsTab() {
       {/* Global channel toggles per audience */}
       <div className="card p-5 space-y-4">
         <h3 className="font-disp font-semibold text-[14px] m-0">Notification Channels</h3>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="rf-form-grid">
           <div className="space-y-2">
             <span className="text-[11px] font-semibold text-[var(--ink-faint)] uppercase">Staff</span>
             <NotifToggle label="Push" checked={cfg.notifStaffPush} onChange={(v) => patch({ notifStaffPush: v })} />
@@ -4461,7 +4466,7 @@ function NotificationsTab() {
       {/* Staff event triggers */}
       <div className="card p-5 space-y-4">
         <h3 className="font-disp font-semibold text-[14px] m-0">Staff Events</h3>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        <div className="rf-form-grid-sm">
           <NotifToggle label="Client chat message" checked={cfg.notifStaffOnClientChat} onChange={(v) => patch({ notifStaffOnClientChat: v })} />
           <NotifToggle label="Agent chat message" checked={cfg.notifStaffOnAgentChat} onChange={(v) => patch({ notifStaffOnAgentChat: v })} />
           <NotifToggle label="Task assigned" checked={cfg.notifStaffOnTaskAssigned} onChange={(v) => patch({ notifStaffOnTaskAssigned: v })} />
@@ -4475,7 +4480,7 @@ function NotificationsTab() {
       {/* Client event triggers */}
       <div className="card p-5 space-y-4">
         <h3 className="font-disp font-semibold text-[14px] m-0">Client Events</h3>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        <div className="rf-form-grid-sm">
           <NotifToggle label="Staff reply" checked={cfg.notifClientOnStaffReply} onChange={(v) => patch({ notifClientOnStaffReply: v })} />
           <NotifToggle label="Doc request" checked={cfg.notifClientOnDocRequest} onChange={(v) => patch({ notifClientOnDocRequest: v })} />
           <NotifToggle label="Stage change" checked={cfg.notifClientOnStageChange} onChange={(v) => patch({ notifClientOnStageChange: v })} />
@@ -4485,7 +4490,7 @@ function NotificationsTab() {
       {/* Agent event triggers */}
       <div className="card p-5 space-y-4">
         <h3 className="font-disp font-semibold text-[14px] m-0">Agent Events</h3>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        <div className="rf-form-grid-sm">
           <NotifToggle label="Staff reply" checked={cfg.notifAgentOnStaffReply} onChange={(v) => patch({ notifAgentOnStaffReply: v })} />
           <NotifToggle label="Stage change" checked={cfg.notifAgentOnStageChange} onChange={(v) => patch({ notifAgentOnStageChange: v })} />
           <NotifToggle label="Commission update" checked={cfg.notifAgentOnCommission} onChange={(v) => patch({ notifAgentOnCommission: v })} />

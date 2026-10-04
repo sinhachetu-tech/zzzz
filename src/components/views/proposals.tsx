@@ -79,7 +79,9 @@ export function ProposalPipeline() {
           <EmptyState icon={<IGrid size={24} />} title="No proposals here yet" body="Run a Bank Match inside a case, then 'Generate proposal' and 'Save to case' — saved proposals land in this pipeline." />
         </div>
       ) : (
-        <div className="card anim-fade-up overflow-x-auto">
+        /* Genuinely tabular (products, banks, amounts) — keeps its columns and
+           pans sideways on a phone instead of flattening to cards. */
+        <div className="card anim-fade-up rf-scroll rf-scroll-x">
           <table className="tbl min-w-[860px]">
             <thead>
               <tr>

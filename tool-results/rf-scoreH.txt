@@ -1,0 +1,39 @@
+﻿score  lines  file
+  110   4655   src/components/views/admin.tsx 
+            fixed-cols grid x20, wide table x10, inline fixed width x4, min-width x12
+   16   1739   src/components/views/admin/rate-cards.tsx 
+            fixed-cols grid x1, wide table x2, inline fixed width x3, min-width x1
+   11    352   src/components/views/products/detail.tsx 
+            fixed-cols grid x4, wide table x1
+    5   1156   src/components/views/shell.tsx 
+            fixed-cols grid x1, inline fixed width x2
+    4    479   src/components/views/dashboard.tsx 
+            fixed-cols grid x1, min-width x1
+    4    469   src/components/views/bank-match.tsx 
+            fixed-cols grid x2
+    4    339   src/components/views/tasks.tsx 
+            wide table x1, min-width x1
+    4    271   src/components/views/admin/bank-defaults.tsx 
+            wide table x1, min-width x3
+    4    117   src/components/views/proposals.tsx 
+            wide table x1, min-width x1
+    3   2025   src/components/views/calculator.tsx 
+            fixed-cols grid x3, wide table x3, inline fixed width x8, min-width x1
+    3    841   src/components/views/case-profile-editor.tsx 
+            fixed-cols grid x1
+    3    331   src/components/views/clients.tsx 
+            fixed-cols grid x1, wide table x1, min-width x1
+    3    314   src/components/views/products/browser.tsx 
+            fixed-cols grid x1
+    3    211   src/components/views/admin/deal-exceptions.tsx 
+            fixed-cols grid x1
+    3    181   src/components/views/proposal/offer-explain.tsx 
+            fixed-cols grid x1
+    3    153   src/components/views/login.tsx 
+            fixed-cols grid x1
+    1    997   src/components/views/doc-vault.tsx 
+            fixed-cols grid x1
+    1    502   src/components/views/leads.tsx 
+            fixed-cols grid x1
+
+18 screen(s) to review, 16 already clean.

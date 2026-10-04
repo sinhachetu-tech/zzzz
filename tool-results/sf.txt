@@ -1,8 +1,5 @@
-   44: const { cases, stages, users, me, nav, userById, visibleCases, flags, tasks, banks, serviceLines } = useHfmcStore();
-   62: const raw = localStorage.getItem("hfmc.casesFilters");
-   76: try { localStorage.setItem("hfmc.casesFilters", JSON.stringify({ search, stage, status, owner, service, sort, stateTab })); } catch { /* private mode */ }
-   85: () => new Map(serviceLines.map((s) => [s.code, s.id])),
-   86: [serviceLines],
-  227: {serviceLines.filter((s) => s.active).length > 1 && (
-  231: {serviceLines.filter((s) => s.active).map((s) => <option key={s.id} value={s.code}>{s.shortName || s.name}</option>)}
-  339: <ServiceLineChip serviceLineId={c.serviceLineId} serviceLines={serviceLines} compact />
+   35: serviceLines: ServiceLineDto[];
+   40: leads: Lead[];
+   58: clients: ClientDto[];
+  238: visibleTaskIds: [], activities: [], stages: [], whyPending: [], waitingFor: [], milestoneDates: [], banks: [], serviceLines: [], leads: [],
+  240: escalations: 0, docRules: [], feeRules: [], eibor: [], stageTransitions: [], caseDocuments: [], bankProducts: [], unmatchedEmails: [], emails: [], clients: [], promotions: [], caseParties: [],

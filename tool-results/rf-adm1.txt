@@ -1,0 +1,363 @@
+﻿
+> src\components\views\admin.tsx:458:          
+<div className="grid grid-cols-1 
+sm:grid-cols-2 gap-3">
+  src\components\views\admin.tsx:459:          
+  <div className="sm:col-span-2">
+  src\components\views\admin.tsx:460:          
+    <Field label="Full name">
+  src\components\views\admin.tsx:461:          
+      <input className="input" 
+value={editing.name} onChange={(e) => 
+setEditing({ ...editing, name: e.target.value 
+})} autoFocus />
+> src\components\views\admin.tsx:937:        
+<div className="p-4 grid grid-cols-2 
+md:grid-cols-3 gap-3">
+  src\components\views\admin.tsx:938:          
+<Stat label="Documents" 
+value={String(stats?.totalDocuments ?? 0)} />
+  src\components\views\admin.tsx:939:          
+<Stat label="Files on R2" 
+value={String(stats?.filesOnR2 ?? 0)} />
+  src\components\views\admin.tsx:940:          
+<Stat label="Legacy in database" 
+value={String(stats?.legacyInDatabase ?? 0)} 
+hint="re-upload to move them across" />
+> src\components\views\admin.tsx:1412:         
+   <div className="grid grid-cols-1 
+sm:grid-cols-2 gap-3">
+  src\components\views\admin.tsx:1413:         
+     <Field label="Kind">
+  src\components\views\admin.tsx:1414:         
+       <select
+  src\components\views\admin.tsx:1415:         
+         className="select"
+> src\components\views\admin.tsx:2227:         
+   <div className="grid grid-cols-1 
+sm:grid-cols-2 gap-3">
+  src\components\views\admin.tsx:2228:         
+     <Field label="Document name">
+  src\components\views\admin.tsx:2229:         
+       <input className="input" 
+value={editing.name} placeholder="e.g. Salary 
+Certificate" onChange={(e) => setEditing({ 
+...editing, name: e.target.value })} />
+  src\components\views\admin.tsx:2230:         
+     </Field>
+> src\components\views\admin.tsx:2235:         
+   <div className="grid grid-cols-1 
+sm:grid-cols-3 gap-3">
+  src\components\views\admin.tsx:2236:         
+     <Field label="Category">
+  src\components\views\admin.tsx:2237:         
+       <select className="select" 
+value={editing.category} onChange={(e) => 
+setEditing({ ...editing, category: 
+e.target.value })}>
+  src\components\views\admin.tsx:2238:         
+         {DOC_CATEGORIES.map((c) => <option 
+key={c} value={c}>{c}</option>)}
+> src\components\views\admin.tsx:2376:        
+<div className="p-3 grid grid-cols-2 
+sm:grid-cols-4 gap-2">
+  src\components\views\admin.tsx:2377:         
+ <div className="kpi kpi-plain">
+  src\components\views\admin.tsx:2378:         
+   <div className="kpi-label">Fully 
+classified</div>
+  src\components\views\admin.tsx:2379:         
+   <KpiValue className="mono" value={clean} 
+style={{ color: "var(--mint)" }} />
+> src\components\views\admin.tsx:2577:         
+   <div className="grid grid-cols-2 gap-3">
+  src\components\views\admin.tsx:2578:         
+     <Field label="Promo name" hint='e.g. 
+"National Day Bonanza"'>
+  src\components\views\admin.tsx:2579:         
+       <input className="input" 
+value={draft.name} onChange={(e) => setDraft({ 
+...draft, name: e.target.value })} />
+  src\components\views\admin.tsx:2580:         
+     </Field>
+> src\components\views\admin.tsx:2591:         
+   <div className="grid grid-cols-2 gap-3">
+  src\components\views\admin.tsx:2592:         
+     <Field label="Rate discount (bps)" 
+hint="Negative = rate cut. -25 → 0.25% lower. 
+Blank = no rate change">
+  src\components\views\admin.tsx:2593:         
+       <input className="input mono" 
+type="number" step="1" placeholder="-25" 
+value={draft.rateDiscountBps} onChange={(e) => 
+setDraft({ ...draft, rateDiscountBps: 
+e.target.value })} />
+  src\components\views\admin.tsx:2594:         
+     </Field>
+> src\components\views\admin.tsx:2603:         
+   <div className="grid grid-cols-2 gap-3">
+  src\components\views\admin.tsx:2604:         
+     <Field label="Start date" hint="Inclusive 
+— promo applies from this day">
+  src\components\views\admin.tsx:2605:         
+       <input className="input mono" 
+type="date" value={draft.validFrom} 
+onChange={(e) => setDraft({ ...draft, 
+validFrom: e.target.value })} />
+  src\components\views\admin.tsx:2606:         
+     </Field>
+> src\components\views\admin.tsx:2807:         
+   <div className="grid grid-cols-1 
+sm:grid-cols-2 gap-3">
+  src\components\views\admin.tsx:2808:         
+     <Field label="Emirate">
+  src\components\views\admin.tsx:2809:         
+       <select
+  src\components\views\admin.tsx:2810:         
+         className="select"
+> src\components\views\admin.tsx:2835:         
+   <div className="grid grid-cols-1 
+sm:grid-cols-3 gap-3">
+  src\components\views\admin.tsx:2836:         
+     <Field label="Basis">
+  src\components\views\admin.tsx:2837:         
+       <select
+  src\components\views\admin.tsx:2838:         
+         className="select"
+> src\components\views\admin.tsx:3017:         
+     <div className="grid grid-cols-2 
+sm:grid-cols-4 gap-x-4 gap-y-1.5 mono 
+text-[12px]">
+  src\components\views\admin.tsx:3018:         
+       {p.maxLtvNational != null && <span>LTV 
+national: 
+<strong>{p.maxLtvNational}%</strong></span>}
+  src\components\views\admin.tsx:3019:         
+       {p.maxLtvExpatriate != null && 
+<span>LTV expat: 
+<strong>{p.maxLtvExpatriate}%</strong></span>}
+  src\components\views\admin.tsx:3020:         
+       {p.tenorYears != null && <span>Tenor: 
+<strong>{p.tenorYears}y</strong></span>}
+> src\components\views\admin.tsx:3027:         
+     <div className="grid grid-cols-1 
+sm:grid-cols-2 gap-3 mt-2.5">
+  src\components\views\admin.tsx:3028:         
+       <DetailBlock label="Pricing" 
+text={p.rateTable} />
+  src\components\views\admin.tsx:3029:         
+       <DetailBlock label="Stress test" 
+text={p.stressTest} />
+  src\components\views\admin.tsx:3030:         
+       <DetailBlock label="Fees" text={p.fees} 
+/>
+> src\components\views\admin.tsx:3118:         
+   <div className="grid grid-cols-2 
+sm:grid-cols-3 gap-3">
+  src\components\views\admin.tsx:3119:         
+     {NUM_FIELDS.map((f) => (
+  src\components\views\admin.tsx:3120:         
+       <Field key={String(f.key)} 
+label={`${f.label} · ${f.suffix ?? ""}`}>
+  src\components\views\admin.tsx:3121:         
+         <input
+> src\components\views\admin.tsx:3634:         
+   <div className="grid grid-cols-2 
+sm:grid-cols-4 gap-2">
+  src\components\views\admin.tsx:3635:         
+     <div>
+  src\components\views\admin.tsx:3636:         
+       <label className="text-[10.5px] 
+text-[var(--ink-faint)]">Default rate 
+(%)</label>
+  src\components\views\admin.tsx:3637:         
+       <input
+> src\components\views\admin.tsx:3694:         
+   <div className="grid grid-cols-2 gap-2 
+pt-1">
+  src\components\views\admin.tsx:3695:         
+     <div title="Charged on the buyout portion 
+only (rest uses buyout % above)">
+  src\components\views\admin.tsx:3696:         
+       <label className="text-[10.5px] 
+text-[var(--ink-faint)]">Buyout portion 
+(%)</label>
+  src\components\views\admin.tsx:3697:         
+       <input type="number" step="0.01" 
+className="input input-sm mono" placeholder="—"
+> src\components\views\admin.tsx:3711:         
+   <div className="grid grid-cols-2 
+sm:grid-cols-4 gap-2">
+  src\components\views\admin.tsx:3712:         
+     <div>
+  src\components\views\admin.tsx:3713:         
+       <label className="text-[10.5px] 
+text-[var(--ink-faint)]">Salaried (AED)</label>
+  src\components\views\admin.tsx:3714:         
+       <input
+> src\components\views\admin.tsx:3753:         
+ <div className="grid grid-cols-1 
+sm:grid-cols-2 gap-2.5">
+  src\components\views\admin.tsx:3754:         
+   <div className="p-2.5 rounded-lg 
+bg-[var(--bg2)] space-y-2">
+  src\components\views\admin.tsx:3755:         
+     <div className="text-[11px] font-semibold 
+text-[var(--ink-dim)]">Early Settlement</div>
+> src\components\views\admin.tsx:3756:         
+     <div className="grid grid-cols-2 gap-2">
+  src\components\views\admin.tsx:3757:         
+       <div>
+  src\components\views\admin.tsx:3758:         
+         <label className="text-[10.5px] 
+text-[var(--ink-faint)]">Penalty (%)</label>
+  src\components\views\admin.tsx:3759:         
+         <input
+> src\components\views\admin.tsx:3783:         
+     <div className="grid grid-cols-2 gap-2">
+  src\components\views\admin.tsx:3784:         
+       <div>
+  src\components\views\admin.tsx:3785:         
+         <label className="text-[10.5px] 
+text-[var(--ink-faint)]">Free / year 
+(%)</label>
+  src\components\views\admin.tsx:3786:         
+         <input
+> src\components\views\admin.tsx:3858:        
+<div className="grid grid-cols-1 
+sm:grid-cols-2 gap-3 pt-1">
+  src\components\views\admin.tsx:3859:         
+ {/* Life Insurance */}
+  src\components\views\admin.tsx:3860:         
+ <div className="p-2.5 rounded-lg 
+bg-[var(--bg2)] space-y-2">
+  src\components\views\admin.tsx:3861:         
+   <div className="flex items-center 
+justify-between">
+> src\components\views\admin.tsx:3867:         
+   <div className="grid grid-cols-2 gap-2">
+  src\components\views\admin.tsx:3868:         
+     <div>
+  src\components\views\admin.tsx:3869:         
+       <label className="text-[10.5px] 
+text-[var(--ink-faint)]">Calculation 
+Basis</label>
+  src\components\views\admin.tsx:3870:         
+       <select
+> src\components\views\admin.tsx:4037:         
+   <div className="grid grid-cols-1 
+sm:grid-cols-2 gap-3">
+  src\components\views\admin.tsx:4038:         
+     <div>
+  src\components\views\admin.tsx:4039:         
+       <label className="label">Fallback 
+representative name</label>
+  src\components\views\admin.tsx:4040:         
+       <input className="input" 
+placeholder="e.g. Ayesha Rahman — 
+Partnerships" value={deskName} onChange={(e) 
+=> setDeskName(e.target.value)} />
+> src\components\views\admin.tsx:4187:         
+   <div className="grid grid-cols-2 gap-3">
+  src\components\views\admin.tsx:4188:         
+     <div>
+  src\components\views\admin.tsx:4189:         
+       <label className="label">Key (unique 
+id)</label>
+  src\components\views\admin.tsx:4190:         
+       <input className="input mono" 
+placeholder="wa-doc-list" value={editing.key}
+> src\components\views\admin.tsx:4411:        
+<div className="grid grid-cols-2 gap-3">
+  src\components\views\admin.tsx:4412:         
+ <NotifInput label="From name" 
+value={cfg.emailFromName} onChange={(v) => 
+patch({ emailFromName: v })} />
+  src\components\views\admin.tsx:4413:         
+ <NotifInput label="From address" 
+value={cfg.emailFromAddress} onChange={(v) => 
+patch({ emailFromAddress: v })} />
+  src\components\views\admin.tsx:4414:        
+</div>
+> src\components\views\admin.tsx:4419:         
+ <div className="grid grid-cols-2 gap-3">
+  src\components\views\admin.tsx:4420:         
+   <NotifInput label="Host" 
+value={cfg.smtpHost} onChange={(v) => patch({ 
+smtpHost: v })} />
+  src\components\views\admin.tsx:4421:         
+   <NotifInput label="Port" 
+value={cfg.smtpPort} onChange={(v) => patch({ 
+smtpPort: parseInt(v) || 587 })} type="number" 
+/>
+  src\components\views\admin.tsx:4422:         
+   <NotifInput label="User" 
+value={cfg.smtpUser} onChange={(v) => patch({ 
+smtpUser: v })} />
+> src\components\views\admin.tsx:4439:        
+<div className="grid grid-cols-3 gap-4">
+  src\components\views\admin.tsx:4440:         
+ <div className="space-y-2">
+  src\components\views\admin.tsx:4441:         
+   <span className="text-[11px] font-semibold 
+text-[var(--ink-faint)] uppercase">Staff</span>
+  src\components\views\admin.tsx:4442:         
+   <NotifToggle label="Push" 
+checked={cfg.notifStaffPush} onChange={(v) => 
+patch({ notifStaffPush: v })} />
+> src\components\views\admin.tsx:4464:        
+<div className="grid grid-cols-2 
+sm:grid-cols-3 gap-2">
+  src\components\views\admin.tsx:4465:         
+ <NotifToggle label="Client chat message" 
+checked={cfg.notifStaffOnClientChat} 
+onChange={(v) => patch({ 
+notifStaffOnClientChat: v })} />
+  src\components\views\admin.tsx:4466:         
+ <NotifToggle label="Agent chat message" 
+checked={cfg.notifStaffOnAgentChat} 
+onChange={(v) => patch({ 
+notifStaffOnAgentChat: v })} />
+  src\components\views\admin.tsx:4467:         
+ <NotifToggle label="Task assigned" 
+checked={cfg.notifStaffOnTaskAssigned} 
+onChange={(v) => patch({ 
+notifStaffOnTaskAssigned: v })} />
+> src\components\views\admin.tsx:4478:        
+<div className="grid grid-cols-2 
+sm:grid-cols-3 gap-2">
+  src\components\views\admin.tsx:4479:         
+ <NotifToggle label="Staff reply" 
+checked={cfg.notifClientOnStaffReply} 
+onChange={(v) => patch({ 
+notifClientOnStaffReply: v })} />
+  src\components\views\admin.tsx:4480:         
+ <NotifToggle label="Doc request" 
+checked={cfg.notifClientOnDocRequest} 
+onChange={(v) => patch({ 
+notifClientOnDocRequest: v })} />
+  src\components\views\admin.tsx:4481:         
+ <NotifToggle label="Stage change" 
+checked={cfg.notifClientOnStageChange} 
+onChange={(v) => patch({ 
+notifClientOnStageChange: v })} />
+> src\components\views\admin.tsx:4488:        
+<div className="grid grid-cols-2 
+sm:grid-cols-3 gap-2">
+  src\components\views\admin.tsx:4489:         
+ <NotifToggle label="Staff reply" 
+checked={cfg.notifAgentOnStaffReply} 
+onChange={(v) => patch({ 
+notifAgentOnStaffReply: v })} />
+  src\components\views\admin.tsx:4490:         
+ <NotifToggle label="Stage change" 
+checked={cfg.notifAgentOnStageChange} 
+onChange={(v) => patch({ 
+notifAgentOnStageChange: v })} />
+  src\components\views\admin.tsx:4491:         
+ <NotifToggle label="Commission update" 
+checked={cfg.notifAgentOnCommission} 
+onChange={(v) => patch({ 
+notifAgentOnCommission: v })} />
+
+

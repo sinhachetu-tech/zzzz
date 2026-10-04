@@ -219,7 +219,10 @@ export default function Tasks() {
             body="No tasks match these filters. Open a case to log the next action."
           />
         ) : (
-          <div className="overflow-x-auto max-h-[calc(100vh-260px)] overflow-y-auto">
+          /* Genuinely tabular (owner, stage, due) — keeps its columns and pans
+             sideways on a phone. `.rf-scroll .rf-scroll-x` adds overscroll
+             containment plus the edge-fade that makes the pan discoverable. */
+          <div className="rf-scroll rf-scroll-x max-h-[calc(100vh-260px)] overflow-y-auto">
             <table className="tbl min-w-[860px]">
               <thead>
                 <tr>

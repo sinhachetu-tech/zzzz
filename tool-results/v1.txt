@@ -1,0 +1,6 @@
+﻿ M src/components/views/admin.tsx
+ M src/components/views/proposals.tsx
+ M src/components/views/tasks.tsx
+?? scripts/_diff.cjs
+?? scripts/mobile-codemod-admin-scroll.cjs
+?? scripts/mobile-codemod-admin.cjs

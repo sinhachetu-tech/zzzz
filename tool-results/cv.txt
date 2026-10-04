@@ -1,0 +1,15 @@
+  136: * safePage CLAMPS rather than resets on filter change: a search that narrows 400
+  137: * clients to 5 must not leave you on page 8 of a 1-page result (an empty table that
+  138: * reads as "search is broken"). An effect that only called setPage would trip
+  141: const [page, setPage] = useState(1);
+  142: const PAGE_SIZE = 50;
+  143: const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  144: const safePage = Math.min(page, pages);
+  145: const paged = rows.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  219: {paged.map(({ client, engagements, volume, lastAt, contact }) => (
+  273: {paged.map(({ client, engagements, volume, lastAt, contact }) => (
+  316: {/* Pager — hidden until there is more than one page, so a short client list looks
+  319: {pages > 1 && (
+  321: <button className="btn btn-ghost btn-sm" disabled={safePage <= 1} onClick={() => setPage(safePage - 1)}>Previous</button>
+  323: Page {safePage} of {pages} · {rows.length} client{rows.length === 1 ? "" : "s"}
+  325: <button className="btn btn-ghost btn-sm" disabled={safePage >= pages} onClick={() => setPage(safePage + 1)}>Next</button>

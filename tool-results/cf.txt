@@ -1,2 +1,3 @@
-   80: const statusOf = (c: LoanCase): CaseStatus => caseStatusOf(c, tasks);
-  111: const filtered = visCases
+   21: import { useEffect, useMemo, useState } from "react";
+   37: export default function Clients() {
+   62: const rows = useMemo(() => {

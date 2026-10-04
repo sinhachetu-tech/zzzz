@@ -1,0 +1,110 @@
+﻿
+> src\components\views\admin.tsx:2376:        
+<div className="p-3 grid grid-cols-2 
+sm:grid-cols-4 gap-2">
+  src\components\views\admin.tsx:2377:         
+ <div className="kpi kpi-plain">
+  src\components\views\admin.tsx:2378:         
+   <div className="kpi-label">Fully 
+classified</div>
+> src\components\views\admin.tsx:3017:         
+     <div className="grid grid-cols-2 
+sm:grid-cols-4 gap-x-4 gap-y-1.5 mono 
+text-[12px]">
+  src\components\views\admin.tsx:3018:         
+       {p.maxLtvNational != null && <span>LTV 
+national: 
+<strong>{p.maxLtvNational}%</strong></span>}
+  src\components\views\admin.tsx:3019:         
+       {p.maxLtvExpatriate != null && 
+<span>LTV expat: 
+<strong>{p.maxLtvExpatriate}%</strong></span>}
+> src\components\views\admin.tsx:3118:         
+   <div className="grid grid-cols-2 
+sm:grid-cols-3 gap-3">
+  src\components\views\admin.tsx:3119:         
+     {NUM_FIELDS.map((f) => (
+  src\components\views\admin.tsx:3120:         
+       <Field key={String(f.key)} 
+label={`${f.label} · ${f.suffix ?? ""}`}>
+> src\components\views\admin.tsx:3634:         
+   <div className="grid grid-cols-2 
+sm:grid-cols-4 gap-2">
+  src\components\views\admin.tsx:3635:         
+     <div>
+  src\components\views\admin.tsx:3636:         
+       <label className="text-[10.5px] 
+text-[var(--ink-faint)]">Default rate 
+(%)</label>
+> src\components\views\admin.tsx:3711:         
+   <div className="grid grid-cols-2 
+sm:grid-cols-4 gap-2">
+  src\components\views\admin.tsx:3712:         
+     <div>
+  src\components\views\admin.tsx:3713:         
+       <label className="text-[10.5px] 
+text-[var(--ink-faint)]">Salaried (AED)</label>
+> src\components\views\admin.tsx:3756:         
+     <div className="grid grid-cols-2 gap-2">
+  src\components\views\admin.tsx:3757:         
+       <div>
+  src\components\views\admin.tsx:3758:         
+         <label className="text-[10.5px] 
+text-[var(--ink-faint)]">Penalty (%)</label>
+> src\components\views\admin.tsx:3783:         
+     <div className="grid grid-cols-2 gap-2">
+  src\components\views\admin.tsx:3784:         
+       <div>
+  src\components\views\admin.tsx:3785:         
+         <label className="text-[10.5px] 
+text-[var(--ink-faint)]">Free / year 
+(%)</label>
+> src\components\views\admin.tsx:3867:         
+   <div className="grid grid-cols-2 gap-2">
+  src\components\views\admin.tsx:3868:         
+     <div>
+  src\components\views\admin.tsx:3869:         
+       <label className="text-[10.5px] 
+text-[var(--ink-faint)]">Calculation 
+Basis</label>
+> src\components\views\admin.tsx:4464:        
+<div className="grid grid-cols-2 
+sm:grid-cols-3 gap-2">
+  src\components\views\admin.tsx:4465:         
+ <NotifToggle label="Client chat message" 
+checked={cfg.notifStaffOnClientChat} 
+onChange={(v) => patch({ 
+notifStaffOnClientChat: v })} />
+  src\components\views\admin.tsx:4466:         
+ <NotifToggle label="Agent chat message" 
+checked={cfg.notifStaffOnAgentChat} 
+onChange={(v) => patch({ 
+notifStaffOnAgentChat: v })} />
+> src\components\views\admin.tsx:4478:        
+<div className="grid grid-cols-2 
+sm:grid-cols-3 gap-2">
+  src\components\views\admin.tsx:4479:         
+ <NotifToggle label="Staff reply" 
+checked={cfg.notifClientOnStaffReply} 
+onChange={(v) => patch({ 
+notifClientOnStaffReply: v })} />
+  src\components\views\admin.tsx:4480:         
+ <NotifToggle label="Doc request" 
+checked={cfg.notifClientOnDocRequest} 
+onChange={(v) => patch({ 
+notifClientOnDocRequest: v })} />
+> src\components\views\admin.tsx:4488:        
+<div className="grid grid-cols-2 
+sm:grid-cols-3 gap-2">
+  src\components\views\admin.tsx:4489:         
+ <NotifToggle label="Staff reply" 
+checked={cfg.notifAgentOnStaffReply} 
+onChange={(v) => patch({ 
+notifAgentOnStaffReply: v })} />
+  src\components\views\admin.tsx:4490:         
+ <NotifToggle label="Stage change" 
+checked={cfg.notifAgentOnStageChange} 
+onChange={(v) => patch({ 
+notifAgentOnStageChange: v })} />
+
+

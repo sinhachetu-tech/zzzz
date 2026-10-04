@@ -1,0 +1,2 @@
+  221: partiesOfClient: (clientId: number) => CaseParty[];
+  768: partiesOfClient: (clientId) => get().caseParties.filter((p) => p.clientId === clientId),
