@@ -73,3 +73,11 @@ export function docKey(caseId: number, docId: number, fileName: string, variant?
         ? `cases/${caseId}/${docId}/${ts}-${safe}.${variant}`
         : `cases/${caseId}/${docId}/${ts}-${safe}`;
 }
+
+/** Canonical key layout for staff chat attachments: staff-chat/{roomId}/{timestamp}-{rand}-{safeName} */
+export function staffDocKey(roomId: number, fileName: string): string {
+    const safe = fileName.replace(/[^a-zA-Z0-9._-]+/g, "-").slice(-120) || "file";
+    const ts = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
+    const rand = Math.random().toString(36).substring(2, 8);
+    return `staff-chat/${roomId}/${ts}-${rand}-${safe}`;
+}

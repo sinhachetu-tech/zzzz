@@ -1,0 +1,13 @@
+   63: // Two-level admin navigation: group row on top, tabs for the active group below.
+   70: const GROUPS: { key: string; label: string; tabs: { value: Tab; label: string }[] }[] = [
+   71: { key: "pricing", label: "Pricing", tabs: TAB_OPTIONS.filter((t) => ["ratedesk", "bankdefaults", "bankrules", "promotions", "changelog", "dataquality", "dealexceptions"].includes(t.value)) },
+   72: { key: "team", label: "Team & Access", tabs: TAB_OPTIONS.filter((t) => ["users", "designations"].includes(t.value)) },
+   73: { key: "market", label: "Marketplace", tabs: TAB_OPTIONS.filter((t) => ["banks", "partners", "channels"].includes(t.value)) },
+   74: { key: "workflow", label: "Workflow", tabs: TAB_OPTIONS.filter((t) => ["stages", "services", "masters", "sla", "portal"].includes(t.value)) },
+   75: { key: "docs", label: "Docs & Fees", tabs: TAB_OPTIONS.filter((t) => ["docrules", "feerules", "templates", "storage"].includes(t.value)) },
+   76: { key: "settings", label: "Settings", tabs: TAB_OPTIONS.filter((t) => ["notifications", "devices"].includes(t.value)) },
+  224: const group = GROUPS.find((g) => g.tabs.some((t) => t.value === tab)) ?? GROUPS[0];
+  238: onChange={(k) => setTab(GROUPS.find((g) => g.key === k)!.tabs[0].value)}
+  242: {/* level 2 — tabs within the group */}
+  247: options={group.tabs}
+ 2413: <button className="btn btn-ghost btn-sm ml-auto" onClick={() => nav({ name: "case", id: c.id })}>Open case →</button>

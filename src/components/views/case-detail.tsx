@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useHfmcStore } from "@/lib/client-store";
 import type { LoanCase, Reply, Task } from "@/lib/types";
+import { PARTY_ROLE_LABEL } from "@/lib/types";
 import {
   caseStatusOf, fmtDate, fmtDateTime, fmtDue, fmtMoney, inDaysISO, isOverdueDue, parseTaskDue, relTime,
 } from "@/lib/format";
@@ -15,6 +16,7 @@ import { DocVault, isDocOutstanding } from "@/components/views/doc-vault";
 import { StageRail } from "@/components/case/StageRail";
 import { StageDrawer } from "@/components/case/StageDrawer";
 import { CaseCommandBar } from "@/components/case/CaseCommandBar";
+import { CaseParties } from "@/components/case/CaseParties";
 import { CaseTabBar } from "@/components/case/CaseTabBar";
 import { CaseDetailsSheet, PeoplePanel } from "@/components/case/CaseDetailsSheet";
 import { ProfileStrip } from "@/components/case/ProfileStrip";
@@ -22,6 +24,7 @@ import { CollectPanel } from "@/components/case/CollectPanel";
 import { PersonDataSheet } from "@/components/person/PersonDataSheet";
 import { seedPersonSheet } from "@/lib/person-sheet";
 import type { StageKey } from "@/lib/workflow/types";
+import { isJourneyConfigured, stagesForServiceLine } from "@/lib/workflow/registry";
 import type { CaseTab } from "@/components/case/stage-parts";
 import type { ProfileSubTab } from "@/components/views/case-profile-editor";
 import { DailyMisTab } from "@/components/views/daily-mis";
@@ -178,16 +181,35 @@ function OutcomeModal({ open, onClose, caseId }: { open: boolean; onClose: () =>
   const c = cases.find((x) => x.id === caseId);
   const [status, setStatus] = useState<"Closed" | "Lost">(c?.caseStatus === "Lost" ? "Lost" : "Closed");
   const [wonBank, setWonBank] = useState(c?.wonBank ?? c?.banks[0] ?? "");
+  // The other banks on this engagement (Phase 2). Shown so the modal can say what
+  // recording this win will close, instead of the numbers changing silently.
+  const rivals = c ? cases.filter((o) => (c.parentCaseId == null ? o.parentCaseId === c.id : o.parentCaseId === c.parentCaseId) && o.id !== c.id && o.legStatus === "Active") : [];
   if (!open || !c) return null;
   const submit = async () => {
     const patch: Record<string, unknown> = { caseStatus: status };
-    if (status === "Closed") patch.wonBank = wonBank || null;
+    if (status === "Closed") {
+      patch.wonBank = wonBank || null;
+      // Booking this deal IS recording that this bank won the race. The API
+      // closes every still-Active sibling as LostRace in the same transaction and
+      // refuses a second winner — so this one field is what stops a beaten leg
+      // sitting in the pipeline forever.
+      patch.legStatus = "Won";
+    } else {
+      // Marking the deal lost does NOT mean this bank declined — leave legStatus
+      // alone and let the broker record the real reason separately.
+      patch.legStatus = "Declined";
+    }
     await updateCase(caseId, patch);
     if (status === "Closed") {
       // deal-won ritual — Shell renders the one-shot burst on this event
       window.dispatchEvent(new CustomEvent("hfmc:deal-won", { detail: { customer: c.customer } }));
     }
-    toast("success", status === "Closed" ? `Booked! Won by ${wonBank}.` : "Marked lost.");
+    toast(
+      "success",
+      status === "Closed"
+        ? `Booked! Won by ${wonBank}.${rivals.length ? ` Closed ${rivals.length} losing leg${rivals.length > 1 ? "s" : ""}.` : ""}`
+        : "Marked lost.",
+    );
     onClose();
   };
   return (
@@ -211,6 +233,16 @@ function OutcomeModal({ open, onClose, caseId }: { open: boolean; onClose: () =>
               <option value="">— select —</option>
               {banks.filter((b) => b.active).map((b) => <option key={b.id} value={b.name}>{b.name} ({b.ratePct}%)</option>)}
             </select>
+            {rivals.length > 0 && (
+              // Say what will close BEFORE it happens. A broker who books a deal
+              // and watches three pipeline rows quietly disappear would rightly
+              // stop trusting the button.
+              <p className="text-[11.5px] text-[var(--ink-faint)] mt-1.5 m-0">
+                Recording this win also closes {rivals.length} other bank leg{rivals.length > 1 ? "s" : ""} as{" "}
+                <em>lost race</em> ({rivals.map((r) => r.banks[0] ?? r.caseNumber).join(", ")}). They stay on file for the
+                buyout later.
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -553,9 +585,17 @@ const CASE_TABS: CaseTab[] = ["now", "client", "documents", "money", "chat", "ac
 export default function CaseDetail({ id }: { id: number }) {
   const {
     cases, tasks, activities, stages, users, instructions, clients, caseDocuments, caseUpdates,
-    me, nav, userById, caseById, updateCase, deleteCase, completeTask, deleteTask, toast, flags,
+    me, nav, userById, caseById, updateCase, deleteCase, completeTask, deleteTask, toast, flags, serviceLines,
+    partiesOfCase,
   } = useHfmcStore();
   const c = caseById(id);
+
+  // Phase 5: the case's service line, and the stages that belong to it. Both go
+  // through the ONE shared resolver — a stage carries its line through its
+  // StageSet, so an ad-hoc filter here is how a golden-visa case ends up showing
+  // "Valuation".
+  const line = serviceLines.find((s) => s.id === c?.serviceLineId);
+  const scopedStages = stagesForServiceLine(stages, serviceLines, c?.serviceLineId);
 
   /* TAB IN THE URL.
    *
@@ -639,7 +679,14 @@ export default function CaseDetail({ id }: { id: number }) {
   const caseTasks = useMemo(() => tasks.filter((t) => t.caseId === id), [tasks, id]);
   const caseActivities = useMemo(() => activities.filter((a) => a.caseId === id).sort((a, b) => b.at.localeCompare(a.at)), [activities, id]);
   const caseInstr = useMemo(() => instructions.filter((i) => i.caseId === id), [instructions, id]);
-  const stageList = useMemo(() => [...stages].sort((a, b) => a.sortOrder - b.sortOrder), [stages]);
+  // Phase 5: the Move-stage picker offers ONLY this case's own service line's
+  // stages. Before this it listed every stage in the book, so a golden-visa case
+  // could be moved to "Valuation" — and the mortgage-only labels below
+  // (preApprovalIdx / folIdx) simply resolved to -1 and silently did nothing.
+  const stageList = useMemo(
+    () => [...stagesForServiceLine(stages, serviceLines, c?.serviceLineId)].sort((a, b) => a.sortOrder - b.sortOrder),
+    [stages, serviceLines, c?.serviceLineId],
+  );
 
   /* BLOCKERS — one ranked list feeding BOTH the command bar's primary button and
    * its one-line strip. Derived from the same task/document/sheet rows the tab
@@ -742,7 +789,13 @@ export default function CaseDetail({ id }: { id: number }) {
 
       {/* Stage rail: one line, current stage is the button, prev/next are the
           affordances that used to require hunting for "Stage". */}
-      <StageRail c={c} onOpen={setJourneyKey} onMove={() => setShowStage(true)} />
+      <StageRail
+        c={c}
+        onOpen={setJourneyKey}
+        onMove={() => setShowStage(true)}
+        serviceLineName={line?.shortName || line?.name}
+        journeyConfigured={isJourneyConfigured(line?.code, scopedStages.length)}
+      />
 
       {/* The stage drawer hangs off the rail rather than off a tab body, so it is
           reachable from every workspace — it is about the STAGE, not the tab. */}
@@ -938,9 +991,23 @@ export default function CaseDetail({ id }: { id: number }) {
                 role="Main applicant"
                 onDirtyChange={(d) => { sheetDirtyRef.current = d; }}
               />
-              {c.secondPartyClientId && (
-                <PersonSheetCard c={c} clientId={c.secondPartyClientId} role="Co-applicant / Co-borrower" />
-              )}
+              {/* Phase B: the parties list replaces the single free-text
+                  `coApplicantName` box, which could hold one name with no profile
+                  behind it. Each person's own data sheet still renders below, one
+                  per party — the bank assesses them separately. */}
+              <CaseParties c={c} />
+              {partiesOfCase(c.id).map((p) => (
+                <PersonSheetCard
+                  key={p.id}
+                  c={c}
+                  clientId={p.clientId}
+                  role={PARTY_ROLE_LABEL[p.role]}
+                />
+              ))}
+              {c.secondPartyClientId &&
+                !partiesOfCase(c.id).some((p) => p.clientId === c.secondPartyClientId) && (
+                  <PersonSheetCard c={c} clientId={c.secondPartyClientId} role="Co-applicant / Co-borrower" />
+                )}
             </div>
           )}
 
@@ -968,7 +1035,6 @@ export default function CaseDetail({ id }: { id: number }) {
                 caseNumber={c.caseNumber}
                 customerName={c.customer}
                 userRole="STAFF"
-                allowThreadSwitch={true}
               />
             </div>
           )}

@@ -18,7 +18,7 @@
    whenever a case profile is saved, so editing it here would just be overwritten
    by the next profile save. Edit the person on their case instead. */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useHfmcStore } from "@/lib/client-store";
 import { fmtDate, fmtMoney } from "@/lib/format";
 import { Avatar, Chip, EmptyState } from "@/components/hfmc/ui";
@@ -35,22 +35,48 @@ const SORTS: { value: SortKey; label: string }[] = [
 ];
 
 export default function Clients() {
-  const { clients, cases, nav } = useHfmcStore();
+  const { clients, cases, caseParties, nav, route } = useHfmcStore();
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortKey>("recent");
+
+  // Phase B: a deep link (nav({name:"clients", clientId}) — from the parties
+  // list on a case) prefills the search with that person's name, so they are
+  // actually on screen. Without this the id would arrive and be ignored, and
+  // clicking a co-borrower's name would look like it did nothing.
+  const focusId = route.name === "clients" ? route.clientId : undefined;
+  const focusName = focusId ? clients.find((c) => c.id === focusId)?.fullName : undefined;
+  useEffect(() => {
+    if (focusName) setSearch(focusName);
+  }, [focusName]);
 
   // A client's engagements are every case they appear on — as the primary
   // applicant OR as a co-borrower / co-applicant. A co-borrower IS a client with
   // their own row, and their volume is real business, so both links count.
   const rows = useMemo(() => {
     const byClient = new Map<number, typeof cases>();
-    for (const c of cases) {
-      for (const id of [c.clientId, c.secondPartyClientId]) {
-        if (!id) continue;
-        const list = byClient.get(id);
-        if (list) list.push(c);
-        else byClient.set(id, [c]);
+    const add = (id: number | null | undefined, k: (typeof cases)[number]) => {
+      if (!id) return;
+      const list = byClient.get(id);
+      if (list) {
+        // A person can reach a case twice (primary AND party). Count it once —
+        // their lifetime volume would otherwise be double-counted.
+        if (!list.some((x) => x.id === k.id)) list.push(k);
+      } else {
+        byClient.set(id, [k]);
       }
+    };
+
+    for (const c of cases) {
+      add(c.clientId, c);
+      add(c.secondPartyClientId, c);
+    }
+    // Phase B: the repeatable party list, not just the one legacy slot. Without
+    // this a SECOND co-applicant would show zero engagements and zero volume on
+    // their own client record — the exact invisibility CaseParty was built to fix.
+    const caseById = new Map(cases.map((c) => [c.id, c]));
+    for (const p of caseParties) {
+      const k = caseById.get(p.caseId);
+      if (k) add(p.clientId, k);
     }
 
     const mapped = clients.map((cl) => {
@@ -89,7 +115,7 @@ export default function Clients() {
       if (sort === "volume") return b.volume - a.volume;
       return b.lastAt.localeCompare(a.lastAt);
     });
-  }, [clients, cases, search, sort]);
+  }, [clients, cases, caseParties, search, sort]);
 
   const totalVolume = rows.reduce((s, r) => s + r.volume, 0);
   const repeatCount = rows.filter((r) => r.engagements.length > 1).length;

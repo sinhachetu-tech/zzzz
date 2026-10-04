@@ -11,6 +11,149 @@ export type CaseSource = "Direct" | "Agent" | "Broker" | "Website" | "Referral";
 export type PartnerKind = "Agent" | "Broker" | "Referral";
 export type RepeatKind = "none" | "daily" | "weekdays";
 
+/**
+ * BANK LEG OUTCOME — the competitive result of one bank's journey.
+ *
+ * WHY THIS EXISTS ALONGSIDE `CaseState`: a multi-bank mortgage is a RACE with
+ * exactly one winner (many pre-approvals → one FOL → one loan taken). `CaseState`
+ * cannot say that, because "Lost" means "we lost this business", which is NOT
+ * what happened to the Emirates leg when Mashreq won. Without this, a beaten leg
+ * stays Active, keeps accruing commission and sits in the pipeline forever.
+ *
+ *   Active     — still in the race
+ *   Won        — this bank won. Setting it closes every sibling as LostRace.
+ *   LostRace   — another bank won. Not a failure, and NOT a lost deal.
+ *   Declined   — the bank said no to the client (a real underwrite signal)
+ *   Withdrawn  — the client or we pulled this leg before a decision
+ *
+ * Only meaningful when the service line has bankRaced = true (mortgage today).
+ */
+/** A line of business: Mortgage, Golden visa, Wills, … (Phase 1). */
+export interface ServiceLineDto {
+  id: number;
+  code: string;
+  name: string;
+  shortName: string;
+  active: boolean;
+  sortOrder: number;
+  /** True only where the work is a per-provider race with ONE winner (mortgage). */
+  bankRaced: boolean;
+  notes: string;
+  products?: ProductDto[];
+}
+
+/** A specific offering within a service line (MORT-FIRST, GV-10, WIL-DRAFT, …). */
+export interface ProductDto {
+  id: number;
+  serviceLineId: number;
+  code: string;
+  name: string;
+  active: boolean;
+  sortOrder: number;
+  notes: string;
+}
+
+/**
+ * LEAD — an expression of interest from someone we do not yet know well enough
+ * to commit a file to (Phase 4). Distinct from both Client (the human, once we
+ * know them) and LoanCase (a procedure under way).
+ *
+ * Deliberately holds ONLY: who, how to reach them, what they're asking about,
+ * roughly how much, who referred them. Anything deeper arrives after
+ * qualification and belongs on the case.
+ */
+export type LeadStatus = "New" | "Contacted" | "Qualified" | "Nurture" | "Converted" | "Lost" | "Invalid";
+
+export const LEAD_STATUSES: readonly LeadStatus[] = [
+  "New", "Contacted", "Qualified", "Nurture", "Converted", "Lost", "Invalid",
+];
+
+/** Open = still in play. Closed statuses never appear in the live funnel. */
+export const OPEN_LEAD_STATUSES: readonly LeadStatus[] = ["New", "Contacted", "Qualified", "Nurture"];
+
+export const LEAD_SOURCES: readonly string[] = [
+  "Direct", "Agent", "Broker", "Website", "Referral", "WalkIn", "Social", "Event",
+];
+
+export interface Lead {
+  id: number;
+  fullName: string;
+  /** Digits only — a MATCH HINT for the UI, never a merge key (see client-master). */
+  phone: string;
+  email: string | null;
+  /** REQUIRED — without it "how many leads do we have?" is unanswerable. */
+  serviceLineId: number;
+  /** null is valid: the prospect doesn't know which product yet. */
+  productId: number | null;
+  /** null is meaningful: "not stated". */
+  intendedAmount: number | null;
+  currency: string;
+  source: string;
+  /** Free text the enum can't hold: "met at GITEX stand", "WhatsApp ad". */
+  sourceDetail: string;
+  status: LeadStatus;
+  /** Nullable is NORMAL — an unassigned lead is not an error. */
+  ownerId: number | null;
+  /** Pointer, not a required FK: a lead may convert before it's a Client. */
+  clientId: number | null;
+  /** Set on conversion — the case this lead became. */
+  caseId: number | null;
+  lostReason: string;
+  /**
+   * The SLA clock starts HERE, not at createdAt. "Days since a human touched
+   * it" is the number a manager wants; createdAt measures arrival age and would
+   * report a lead someone called on day 1 as stale by day 4.
+   */
+  firstContactedAt: string | null;
+  convertedAt: string | null;
+  convertedById: number | null;
+  createdAt: string;
+  updatedAt: string;
+  /** Denormalised by /api/state for list rendering (not a Prisma column). */
+  serviceLineName?: string;
+  serviceLineCode?: string;
+  productName?: string | null;
+  ownerName?: string | null;
+  /** Set when this lead's phone matches an existing client — shown, never auto-merged. */
+  possibleDuplicateOf?: { id: number; name: string } | null;
+}
+
+export type LegStatus = "Active" | "Won" | "LostRace" | "Declined" | "Withdrawn";
+
+export const LEG_STATUSES: readonly LegStatus[] = ["Active", "Won", "LostRace", "Declined", "Withdrawn"];
+
+/**
+ * The role a person holds ON ONE CASE (Phase A).
+ *
+ * Deliberately NOT a field on Client. "Co-borrower" is what Ahmed's wife is on
+ * HFMC-0187 — three years on she may be the primary on her own loan, or a guarantor
+ * on someone else's, and none of that changes who she is. The person lives on
+ * Client; the role lives here.
+ */
+export type PartyRole = "CoBorrower" | "CoApplicant" | "Guarantor";
+
+export const PARTY_ROLES: readonly PartyRole[] = ["CoBorrower", "CoApplicant", "Guarantor"];
+
+export const PARTY_ROLE_LABEL: Record<PartyRole, string> = {
+  CoBorrower: "Co-borrower",
+  CoApplicant: "Co-applicant",
+  Guarantor: "Guarantor",
+};
+
+/** One person on one case, in one role. */
+export interface CaseParty {
+  id: number;
+  caseId: number;
+  clientId: number;
+  role: PartyRole;
+  sortOrder: number;
+  createdAt: string;
+  /** Denormalised by /api/state for list rendering (not a Prisma column). */
+  clientName?: string;
+  /** True when this link is the one held by LoanCase.secondPartyClientId. */
+  legacySlot?: boolean;
+}
+
 export interface CasePartner {
   kind: PartnerKind;
   name: string;
@@ -53,6 +196,15 @@ export interface LoanCase {
   bankRef: string | null;
   /** The first bank of a multi-bank deal; siblings point back at it. */
   parentCaseId: number | null;
+  /** How many sibling legs exist on this engagement (parents only carry it). */
+  legCount?: number;
+  /** This leg's competitive outcome. See LegStatus for why CaseState can't say it. */
+  legStatus: LegStatus;
+  decidedAt: string | null;
+  decidedById: number | null;
+  /** Which line of business + which offering (Phase 1). null = not classified. */
+  serviceLineId: number | null;
+  productId: number | null;
   loanAmount: number;
   /** REAL property value; null = not captured (never derived from loanAmount). */
   propertyValue: number | null;
@@ -287,6 +439,14 @@ export interface StageItem {
   sopJson: string[];        // procedure bullets (admin-editable)
   commsJson: string[];      // CommTemplate keys surfaced in the drawer Actions
   steps: StageStep[];       // ordered sub-step checklist (Phase 2)
+  /**
+   * The SET this stage belongs to — and the set is what carries the service line.
+   * A stage has NO serviceLineId of its own; scoping must go through here. Null
+   * only for a stage created before Phase 5.
+   */
+  stageSetId: number | null;
+  /** Denormalised by /api/state for convenience (resolved from the set). */
+  serviceLineId?: number | null;
 }
 
 export interface StageStep {
@@ -683,4 +843,39 @@ export interface DeviceInfo {
   deviceType: string;
   pushEndpoint: string | null;
   createdAt: string;
+}
+
+/* ── Internal staff chat ────────────────────────────────────────── */
+
+export interface StaffRoomDto {
+  id: number;
+  name: string;
+  isDirect: boolean;
+  createdAt: string;
+  createdById: number;
+  /** Total messages in this room */
+  messageCount?: number;
+  /** Messages newer than lastReadAt for the calling user */
+  unreadCount: number;
+  /** ISO string from StaffRoomMember.lastReadAt — null if never read */
+  lastReadAt: string | null;
+  /** Snippet of the last message for the room list preview */
+  lastMessage: string | null;
+  lastMessageAt: string | null;
+  lastMessageSender: string | null;
+  members: { userId: number; name: string }[];
+}
+
+export interface StaffMessageDto {
+  id: number;
+  roomId: number;
+  senderId: number;
+  senderName: string;
+  text: string | null;
+  attachmentKey?: string | null;
+  attachmentName?: string | null;
+  attachmentSize?: number | null;
+  mimeType?: string | null;
+  sentAt: string;
+  editedAt: string | null;
 }

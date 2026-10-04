@@ -16,6 +16,7 @@ import Admin from "@/components/views/admin";
 import Leads from "@/components/views/leads";
 import Clients from "@/components/views/clients";
 import { ChatBubble } from "@/components/chat/ChatBubble";
+import { StaffChatBubble } from "@/components/staff-chat/StaffChatBubble";
 import { PwaInstallBanner } from "@/components/pwa/PwaInstallBanner";
 
 export default function Page() {
@@ -74,6 +75,7 @@ export default function Page() {
         pinnedCaseNumber={currentCase ? currentCase.caseNumber : undefined}
         pinnedCustomer={currentCase ? currentCase.customer : undefined}
       />
+      <StaffChatBubble />
       <PwaInstallBanner portal="staff" />
     </Shell>
   );

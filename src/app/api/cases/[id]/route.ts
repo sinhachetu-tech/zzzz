@@ -5,6 +5,28 @@ import { currentUser, flagsFor } from "@/lib/auth";
 import { serCase } from "@/lib/ser";
 import { syncCaseVault } from "@/lib/vault";
 import { syncCaseClients } from "@/lib/client-master";
+import { LEG_STATUSES, type LegStatus } from "@/lib/types";
+
+/** Parse the `banks` JSON array defensively (legacy rows can hold anything). */
+function banksOf(raw: string | null | undefined): string[] {
+  try {
+    const a = JSON.parse(raw ?? "[]");
+    return Array.isArray(a) ? a.filter(Boolean).map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * How to name the winner in a "lost the race" note. Prefers the bank we were
+ * told won (body.wonBank), else the winning leg's own bank. Never returns an
+ * empty string — the sentence has to read sensibly in the activity log.
+ */
+function winnerName(legBanksRaw: string | null | undefined, wonBank?: unknown): string {
+  const explicit = typeof wonBank === "string" ? wonBank.trim() : "";
+  if (explicit) return explicit;
+  return banksOf(legBanksRaw)[0] ?? "another bank";
+}
 
 // DELETE /api/cases/:id — remove an accidentally-created lead/case.
 // Deliberately restricted: admin/super only, because it cascades to tasks,
@@ -60,6 +82,65 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (body.wonBank !== undefined && body.wonBank !== existing.wonBank) {
     data.wonBank = body.wonBank;
     actions.push(body.wonBank ? `won by ${body.wonBank}` : "cleared winning bank");
+  }
+
+  // --- BANK LEG OUTCOME (Phase 2) -------------------------------------------
+  // A multi-bank mortgage is a RACE with exactly one winner, so the outcome of
+  // one leg determines every other leg. That invariant is enforced HERE, in the
+  // write path, rather than left to staff discipline — otherwise a beaten leg
+  // stays Active, keeps accruing commission and sits in the pipeline forever.
+  let legClosed = 0;
+  if (body.legStatus !== undefined && body.legStatus !== existing.legStatus) {
+    const next = String(body.legStatus);
+    if (!LEG_STATUSES.includes(next as LegStatus)) {
+      return NextResponse.json({ error: `legStatus: invalid value "${next}"` }, { status: 400 });
+    }
+    data.legStatus = next;
+    data.decidedAt = new Date();
+    data.decidedById = me.id;
+    actions.push(`leg → ${next}`);
+
+    // Who else is in this race? The legacy shape has the parent row doubling as
+    // the first bank's leg, so a leg's siblings are "rows pointing at my
+    // parentCaseId" plus — when I AM the parent — every row pointing at me.
+    const parentId = existing.parentCaseId;
+    const contenders = parentId == null
+      ? (await db.loanCase.findMany({ where: { parentCaseId: caseId }, select: { id: true, caseNumber: true, banks: true, legStatus: true } }))
+      : (await db.loanCase.findMany({ where: { parentCaseId: parentId }, select: { id: true, caseNumber: true, banks: true, legStatus: true } }));
+
+    if (next === "Won") {
+      const winner = winnerName(existing.banks, body.wonBank);
+      // Refuse a second winner on the same engagement — "one FOL, one loan" is
+      // the whole premise, and two winners is the data error Phase 0 audits for.
+      const alreadyWon = contenders.find((c) => c.legStatus === "Won");
+      if (alreadyWon) {
+        return NextResponse.json(
+          { error: `${alreadyWon.caseNumber} is already recorded as the winning leg. Only one bank can win this engagement.` },
+          { status: 400 },
+        );
+      }
+      // Close every still-running sibling. Declined/Withdrawn legs are left as
+      // they are: they carry a real signal that must not be overwritten.
+      const beaten = contenders.filter((c) => c.legStatus === "Active");
+      for (const s of beaten) {
+        await db.loanCase.update({
+          where: { id: s.id },
+          data: {
+            legStatus: "LostRace",
+            decidedAt: new Date(),
+            decidedById: me.id,
+            lostReason: `Lost race — won at ${winner}`,
+          },
+        });
+        await db.activity.create({
+          data: { caseId: s.id, userId: me.id, action: `lost the race — won at ${winner}` },
+        });
+        legClosed++;
+      }
+      if (beaten.length) {
+        actions.push(`closed ${beaten.length} losing leg${beaten.length > 1 ? "s" : ""}`);
+      }
+    }
   }
   if (body.ownerId !== undefined && body.ownerId !== existing.ownerId) {
     data.ownerId = body.ownerId;
@@ -300,5 +381,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     });
   }
 
-  return NextResponse.json({ case: serCase(fresh!) });
+  return NextResponse.json({
+    case: serCase(fresh!),
+    // Set when marking a leg Won closed sibling legs in the same request. The
+    // client store re-hydrates on any mutation, so this is informational — but
+    // it lets the toast say "closed 2 losing legs" instead of silently changing
+    // numbers the user is looking at.
+    legClosed,
+  });
 }

@@ -162,6 +162,76 @@ async function main() {
   );
   console.log(`\nAPPLIED. service lines: ${now.map((r) => r.code).join(", ")}`);
   console.log(`products: ${prods.length}`);
+
+  await ensureStageSets();
+  await attachLegacyStagesToMortgage();
+  console.log("\nDONE (idempotent — re-running creates nothing).");
+}
+
+/* ---------------------------------------------------------------------------
+ * PHASE 5 — one StageSet per service line, and an HONEST "coming soon".
+ *
+ * Mortgage is the only line whose process is actually written down, so it is the
+ * only one that gets stages. The other five get an INACTIVE set: it reserves the
+ * slot, gives Admin → Workflow somewhere to build the journey, and — crucially —
+ * makes `isJourneyConfigured` false for them, so the UI says "coming soon"
+ * instead of falling back to the mortgage rail.
+ *
+ * Inventing plausible stages for a golden visa would be worse than leaving them
+ * blank: staff would follow a workflow the firm never approved, and every such
+ * case would then have to be corrected.
+ * ------------------------------------------------------------------------- */
+
+/** Lines whose journey exists today. Everything else is "coming soon". */
+const CONFIGURED = new Set(["MORTGAGE"]);
+
+async function ensureStageSets() {
+  const lines = await prisma.serviceLine.findMany({ orderBy: { sortOrder: "asc" } });
+  let made = 0;
+  for (const l of lines) {
+    const existing = await prisma.stageSet.findFirst({ where: { serviceLineId: l.id } });
+    if (existing) continue;
+    const configured = CONFIGURED.has(l.code);
+    await prisma.stageSet.create({
+      data: {
+        serviceLineId: l.id,
+        // The "coming soon" marker lives in the NAME because that is what an admin
+        // reads when picking a journey — a `notes` column nobody surfaces in the
+        // picker would be a claim the code makes and the UI never shows.
+        name: configured ? "Mortgage journey" : `${l.name} journey — coming soon`,
+        active: configured,
+        isDefault: true,
+        sortOrder: 0,
+      },
+    });
+    made++;
+  }
+  console.log(`\nstage sets created: ${made}`);
+  const sets = await prisma.stageSet.findMany({
+    include: { serviceLine: { select: { code: true } } },
+    orderBy: { serviceLineId: "asc" },
+  });
+  for (const s of sets) {
+    const stages = await prisma.stageItem.count({ where: { stageSetId: s.id, active: true } });
+    console.log(`  ${s.serviceLine.code.padEnd(15)} set="${s.name}" active=${s.active} stages=${stages}`);
+  }
+}
+
+async function attachLegacyStagesToMortgage() {
+  // Stages created before StageSet existed have stageSetId = null. They are all
+  // mortgage — the only line that existed — so attaching them is a fact, not a guess.
+  const mortgage = await prisma.serviceLine.findUnique({ where: { code: "MORTGAGE" } });
+  const set = await prisma.stageSet.findFirst({ where: { serviceLineId: mortgage.id }, orderBy: { id: "asc" } });
+  if (!set) throw new Error("Mortgage stage set missing — run the stage-set step first");
+  const orphans = await prisma.stageItem.count({ where: { stageSetId: null } });
+  if (orphans > 0) {
+    await prisma.stageItem.updateMany({ where: { stageSetId: null }, data: { stageSetId: set.id } });
+  }
+  console.log(`legacy stages attached to the mortgage set: ${orphans}`);
+  const all = await prisma.stageItem.findMany({ orderBy: { sortOrder: "asc" } });
+  for (const s of all) {
+    console.log(`  ${s.label.padEnd(24)} set=${s.stageSetId}`);
+  }
 }
 
 main()

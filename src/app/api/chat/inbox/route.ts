@@ -20,19 +20,19 @@ export async function GET() {
   const allowed = visibleCases(allCases, allUsers.map((u) => ({ ...u, password: "", createdAt: u.createdAt.toISOString() })), { ...me, active: true, password: "", createdAt: new Date().toISOString() }, flags);
   const allowedIds = new Set(allowed.map((c) => c.id));
 
-  // Fetch recent messages across visible cases
+  // Fetch recent messages across visible cases — CLIENT thread only.
+  // The AGENT (staff ↔ partner) thread has been removed.
   const messages = await db.chatMessage.findMany({
-    where: { caseId: { in: Array.from(allowedIds) } },
+    where: { caseId: { in: Array.from(allowedIds) }, threadType: "CLIENT" },
     orderBy: { sentAt: "desc" },
     take: 300,
   });
 
-  // Group by caseId and threadType
+  // Group by caseId — thread is always CLIENT now.
   const threadsMap = new Map<string, {
     caseId: number;
     caseNumber: string;
     customer: string;
-    threadType: "CLIENT" | "AGENT";
     unreadCount: number;
     lastMessage: {
       text: string | null;
@@ -44,7 +44,7 @@ export async function GET() {
   }>();
 
   for (const m of messages) {
-    const key = `${m.caseId}_${m.threadType}`;
+    const key = String(m.caseId);
     const targetCase = allowed.find((c) => c.id === m.caseId);
     if (!targetCase) continue;
 
@@ -53,7 +53,6 @@ export async function GET() {
         caseId: m.caseId,
         caseNumber: targetCase.caseNumber,
         customer: targetCase.customer,
-        threadType: m.threadType as "CLIENT" | "AGENT",
         unreadCount: 0,
         lastMessage: {
           text: m.text,

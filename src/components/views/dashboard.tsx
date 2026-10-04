@@ -5,7 +5,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useHfmcStore } from "@/lib/client-store";
-import type { BulletinItem } from "@/lib/types";
+import { OPEN_LEAD_STATUSES, type BulletinItem } from "@/lib/types";
 import { activityPerDay, computeKpis } from "@/lib/domain";
 import { TONE_HEX, caseStatusOf, dueDay, fmtDue, fmtMoney, greetingFor, isOverdueDue, parseTaskDue, relTime, todayISO } from "@/lib/format";
 import { Avatar, DueChip, KpiValue } from "@/components/hfmc/ui";
@@ -36,7 +36,7 @@ function Kpi({ label, value, format, tone, sub }: { label: string; value: number
 }
 
 export default function Dashboard() {
-  const { cases, tasks, activities, stages, banks, bankProducts, whyPending, waitingFor, users, me, nav, userById, visibleCases, visibleTasks, escalations, bulletin, visibleCaseIds, visibleTaskIds, flags, completeTask, toast } = useHfmcStore();
+  const { cases, leads, tasks, activities, stages, banks, bankProducts, whyPending, waitingFor, users, me, nav, userById, visibleCases, visibleTasks, escalations, bulletin, visibleCaseIds, visibleTaskIds, flags, completeTask, toast } = useHfmcStore();
   useTick(30000);
 
   // deps must include the data arrays (cases/visibleCaseIds/tasks/visibleTaskIds)
@@ -107,8 +107,9 @@ export default function Dashboard() {
     .map((st) => ({ label: st.label, value: visCases.filter((c) => c.caseStatus === "Active" && c.stage === st.label).length }))
     .filter((r) => r.value > 0);
 
-  // leads waiting in the funnel
-  const leadsWaiting = visCases.filter((c) => c.caseStatus === "Active" && c.stage === "Lead");
+  // Leads waiting in the funnel (Phase 4: reads the Lead table, not case stages).
+  const openLeads = leads.filter((l) => OPEN_LEAD_STATUSES.includes(l.status));
+  const leadsWaiting = openLeads;
 
   // my tasks due today (or overdue)
   // My urgent tasks — due today or overdue. Exact instant ordering (9am above 6pm).
@@ -134,7 +135,12 @@ export default function Dashboard() {
   const myOpenAll = me ? openTasks.filter((t) => t.ownerId === me.id) : [];
   const myOverdueAll = myOpenAll.filter((t) => isOverdueDue(t.dueDate));
   const myDueNowCount = me ? myOpenAll.filter((t) => !isOverdueDue(t.dueDate) && dueDay(t.dueDate) <= todayISO()).length : 0;
-  const myNewLeads = me ? visCases.filter((c) => c.stage === "Lead" && c.caseStatus === "Active" && c.ownerId === me.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 3) : [];
+  // "My new leads" — from the Lead table (Phase 4). Sorted by arrival, not by the
+  // SLA clock: this strip answers "what just landed on me", and the Leads tab
+  // is where the going-quiet ones live.
+  const myNewLeads = me
+    ? openLeads.filter((l) => l.ownerId === me.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 3)
+    : [];
   const myDayList = [...myDueToday];
   const myDayEmpty = myOverdueAll.length === 0 && myDayList.length === 0 && myNewLeads.length === 0;
 
@@ -182,9 +188,11 @@ export default function Dashboard() {
                   </div>
                 );
               })}
-              {myNewLeads.length > 0 && myDayList.length === 0 && myNewLeads.map((c) => (
-                <button key={c.id} className="rowlink w-full text-left flex items-center gap-2.5 rounded-lg px-2.5 py-2" style={{ border: "1px dashed var(--amber-line)" }} onClick={() => nav({ name: "case", id: c.id })}>
-                  <span className="text-[13px] flex-1 truncate"><strong>New lead:</strong> {c.customer} <span className="mono text-[10.5px] text-[var(--ink-faint)]">{c.caseNumber} · {relTime(c.createdAt)}</span></span>
+              {myNewLeads.length > 0 && myDayList.length === 0 && myNewLeads.map((l) => (
+                // A lead is NOT a case (Phase 4) — it has no case number and no
+                // Case 360 to open, so this navigates to the FUNNEL instead.
+                <button key={l.id} className="rowlink w-full text-left flex items-center gap-2.5 rounded-lg px-2.5 py-2" style={{ border: "1px dashed var(--amber-line)" }} onClick={() => nav({ name: "leads" })}>
+                  <span className="text-[13px] flex-1 truncate"><strong>New lead:</strong> {l.fullName} <span className="mono text-[10.5px] text-[var(--ink-faint)]">{l.serviceLineName ?? ""} · {relTime(l.createdAt)}</span></span>
                   <span className="text-[11.5px] font-semibold" style={{ color: "var(--amber)" }}>Qualify →</span>
                 </button>
               ))}
@@ -319,7 +327,7 @@ export default function Dashboard() {
                 <span className="text-[12px] text-[var(--ink-dim)]">lead{leadsWaiting.length === 1 ? "" : "s"} waiting to be qualified</span>
               </div>
               <p className="text-[11.5px] text-[var(--ink-faint)] m-0 mt-1.5 mb-0 truncate">
-                {leadsWaiting[0].customer}{leadsWaiting.length > 1 ? ` +${leadsWaiting.length - 1} more` : ""}
+                {leadsWaiting[0].fullName}{leadsWaiting.length > 1 ? ` +${leadsWaiting.length - 1} more` : ""}
               </p>
               <button className="btn btn-ghost btn-sm mt-3 w-full justify-center" onClick={() => nav({ name: "leads" })}>
                 Open the funnel <IArrowR size={13} />

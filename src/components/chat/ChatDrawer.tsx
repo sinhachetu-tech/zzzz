@@ -8,7 +8,6 @@ interface InboxThread {
   caseId: number;
   caseNumber: string;
   customer: string;
-  threadType: "CLIENT" | "AGENT";
   unreadCount: number;
   lastMessage: {
     text: string | null;
@@ -22,7 +21,7 @@ interface InboxThread {
 interface ChatDrawerProps {
   isOpen: boolean;
   onClose: () => void;
-  userRole: "STAFF" | "CLIENT" | "AGENT";
+  userRole: "STAFF" | "CLIENT";
   pinnedCaseId?: number | null;
   pinnedCaseNumber?: string;
   pinnedCustomer?: string;
@@ -39,9 +38,6 @@ export function ChatDrawer({
   const [activeCaseId, setActiveCaseId] = useState<number | null>(pinnedCaseId ?? null);
   const [activeCaseNumber, setActiveCaseNumber] = useState<string | undefined>(pinnedCaseNumber);
   const [activeCustomer, setActiveCustomer] = useState<string | undefined>(pinnedCustomer);
-  // FIX: inbox rows carry threadType (CLIENT vs AGENT) — remember it so the
-  // panel opens on the thread the user actually clicked.
-  const [activeThread, setActiveThread] = useState<"CLIENT" | "AGENT">("CLIENT");
 
   // For Staff Global Mini-Inbox
   const [inboxThreads, setInboxThreads] = useState<InboxThread[]>([]);
@@ -59,7 +55,8 @@ export function ChatDrawer({
   const effectiveCaseId = pinnedCaseId ?? activeCaseId;
   const effectiveCaseNumber = pinnedCaseId ? pinnedCaseNumber : activeCaseNumber;
   const effectiveCustomer = pinnedCaseId ? pinnedCustomer : activeCustomer;
-  const effectiveThread: "CLIENT" | "AGENT" = pinnedCaseId ? "CLIENT" : activeThread;
+  // thread is always CLIENT — AGENT thread removed.
+  const effectiveThread = "CLIENT" as const;
 
   // Load inbox threads if staff is on global view.
   // `inboxLoaded` flips only inside async callbacks (never synchronously in
@@ -103,13 +100,11 @@ export function ChatDrawer({
     >
       {effectiveCaseId ? (
         <ChatPanel
-          key={`${effectiveCaseId}_${effectiveThread}`}
+          key={`${effectiveCaseId}`}
           caseId={effectiveCaseId}
           caseNumber={effectiveCaseNumber}
           customerName={effectiveCustomer}
           userRole={userRole}
-          initialThread={effectiveThread}
-          allowThreadSwitch={userRole === "STAFF"}
           onClose={onClose}
           onBack={!pinnedCaseId ? () => setActiveCaseId(null) : undefined}
         />
@@ -163,19 +158,18 @@ export function ChatDrawer({
             ) : (
               filteredThreads.map((thread) => (
                 <button
-                  key={`${thread.caseId}_${thread.threadType}`}
+                  key={thread.caseId}
                   type="button"
                   onClick={() => {
                     setActiveCaseId(thread.caseId);
                     setActiveCaseNumber(thread.caseNumber);
                     setActiveCustomer(thread.customer);
-                    setActiveThread(thread.threadType);
                   }}
                   className="w-full text-left p-3 hover:bg-[var(--tint)] transition-colors flex items-center gap-2.5"
                 >
                   <div
                     className="w-9 h-9 rounded-full flex items-center justify-center font-disp font-semibold text-[12px] shrink-0"
-                    style={{ background: thread.threadType === "AGENT" ? "var(--amber, #f2b04c)" : "var(--brand-mint, #10b981)", color: "#fff" }}
+                    style={{ background: "var(--brand-mint, #10b981)", color: "#fff" }}
                   >
                     {thread.customer.slice(0, 2).toUpperCase()}
                   </div>
@@ -183,15 +177,6 @@ export function ChatDrawer({
                     <div className="flex items-center justify-between gap-1">
                       <span className="font-semibold text-[13px] truncate">
                         {thread.customer}
-                        <span
-                          className="ml-1.5 text-[10.5px] font-bold uppercase tracking-wide px-1 py-px rounded"
-                          style={{
-                            background: thread.threadType === "AGENT" ? "rgba(242,176,76,0.16)" : "rgba(16,185,129,0.12)",
-                            color: thread.threadType === "AGENT" ? "var(--amber)" : "var(--mint, #10b981)",
-                          }}
-                        >
-                          {thread.threadType === "AGENT" ? "partner" : "client"}
-                        </span>
                       </span>
                       <span className="text-[10.5px] text-[var(--ink-faint)] mono shrink-0">
                         {new Date(thread.lastMessage.sentAt).toLocaleDateString([], {

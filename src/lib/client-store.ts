@@ -2,8 +2,8 @@
 
 import { create } from "zustand";
 import type {
-  Activity, BankItem, BankProduct, BulletinItem, CaseDocument, CasePartner, CaseSource, ChannelItem, ClientDto, CommTemplate, Designation, DocRule,
-  CaseUpdate, EmailLog, FeeRule, Proposal, Instruction, LoanCase, MasterItem, PartnerItem, SlaRule, StageItem, StageTransitionDto, Task, UnmatchedEmail, User,
+  Activity, BankItem, BankProduct, BulletinItem, CaseDocument, CasePartner, CaseParty, CaseSource, ChannelItem, ClientDto, CommTemplate, Designation, DocRule,
+  CaseUpdate, EmailLog, FeeRule, Proposal, Instruction, Lead, LoanCase, MasterItem, PartnerItem, PartyRole, ServiceLineDto, SlaRule, StageItem, StageTransitionDto, Task, UnmatchedEmail, User,
 } from "./types";
 import type { RoleFlags } from "./domain";
 import { confirmDiscard, setUnsavedChanges } from "./leave-guard";
@@ -31,6 +31,13 @@ interface StateSnapshot {
   waitingFor: MasterItem[];
   milestoneDates: MasterItem[];
   banks: BankItem[];
+  /** Lines of business + their products (Phase 1). Populated by /api/state. */
+  serviceLines: ServiceLineDto[];
+  /**
+   * Leads (Phase 4) — the funnel's own entity. Deliberately separate from
+   * `cases`: a lead is cheap to create and cheap to kill, a case is not.
+   */
+  leads: Lead[];
   partners: PartnerItem[];
   channels: ChannelItem[];
   slaRules: SlaRule[];
@@ -49,6 +56,11 @@ interface StateSnapshot {
   unmatchedEmails: UnmatchedEmail[];
   emails: EmailLog[];
   clients: ClientDto[];
+  /**
+   * Case parties (Phase A) — everyone on a case in a role. Already filtered to
+   * the cases this user may see, so the UI never has to re-check visibility.
+   */
+  caseParties: CaseParty[];
   promotions: import("./types").Promotion[]; // Tier-4 promo overlay — applied on top of base pricing
 }
 
@@ -62,7 +74,7 @@ export type Route =
   | { name: "dashboard" }
   | { name: "cases" }
   | { name: "leads" }
-  | { name: "clients" }
+  | { name: "clients"; clientId?: number }
   | { name: "case"; id: number }
   | { name: "tasks" }
   | { name: "bulletin" }
@@ -100,6 +112,22 @@ interface HfmcState extends StateSnapshot {
     employmentProfile?: string; propertyType?: string; residency?: string;
   }) => Promise<LoanCase>;
   updateCase: (id: number, patch: Record<string, unknown>) => Promise<void>;
+
+  /* ── LEADS (Phase 4) ─────────────────────────────────────────────────────
+   * A lead is NOT a case. It is cheap to create, cheap to kill, and carries no
+   * stage, no documents and no commission. Everything service-specific lives on
+   * the case it becomes — see the Placement Rule in MIGRATION-NOTES.md. */
+  createLead: (input: {
+    fullName: string; phone?: string; email?: string;
+    /** Required. A lead without a service line cannot be counted in any funnel. */
+    serviceLineId: number; productId?: number | null; intendedAmount?: number | null;
+    source?: string; sourceDetail?: string; ownerId?: number | null;
+  }) => Promise<Lead>;
+  updateLead: (id: number, patch: Record<string, unknown>) => Promise<void>;
+  deleteLead: (id: number) => Promise<void>;
+  /** Turn a qualified lead into a live case. Returns the new case number so the
+   *  toast can say where the lead went. Idempotent server-side. */
+  convertLead: (id: number, input?: { loanAmount?: number; propertyValue?: number; statusNote?: string }) => Promise<{ id: number; caseNumber: string }>;
   /** Shop an existing case to another bank — creates a SIBLING case for that
    *  bank (own case number, own document rules), not a second name on one row.
    *  POSTs to /api/cases/:id/add-bank. */
@@ -178,13 +206,31 @@ interface HfmcState extends StateSnapshot {
   visibleCases: () => LoanCase[];
   visibleTasks: () => Task[];
   canInstruct: () => boolean;
+  /** Everyone on a case, in display order (Phase A). */
+  partiesOfCase: (caseId: number) => CaseParty[];
+  /** Every case a person is a party on, in any role (Phase A). This is what makes a
+   *  co-borrower's OWN view show the case — `secondPartyCases` only covers the one
+   *  legacy slot, so a second co-applicant would be invisible to themselves. */
+  partiesOfClient: (clientId: number) => CaseParty[];
+  /** The role this person holds on a case, or null if they are not a party.
+   *  Falls back to the legacy secondPartyClientId column so a co-borrower still
+   *  reads correctly on any case written before the backfill ran. */
+  roleOnCase: (clientId: number, caseId: number) => PartyRole | null;
+  /**
+   * Add / re-role / remove a party on a case (Phase B). Each re-hydrates, because
+   * the legacy secondPartyClientId slot moves with the list and several views read
+   * it — patching one row locally would leave them disagreeing.
+   */
+  addParty: (caseId: number, input: { clientId?: number; role?: PartyRole; fullName?: string; phone?: string; eidNo?: string; email?: string }) => Promise<{ createdClient: boolean; matchedBy: string | null }>;
+  updateParty: (caseId: number, partyId: number, role: PartyRole) => Promise<void>;
+  removeParty: (caseId: number, partyId: number) => Promise<void>;
 }
 
 const empty: StateSnapshot = {
   me: null, flags: null, users: [], designations: [], cases: [], visibleCaseIds: [], tasks: [],
-  visibleTaskIds: [], activities: [], stages: [], whyPending: [], waitingFor: [], milestoneDates: [], banks: [],
+  visibleTaskIds: [], activities: [], stages: [], whyPending: [], waitingFor: [], milestoneDates: [], banks: [], serviceLines: [], leads: [],
   partners: [], channels: [], slaRules: [], commTemplates: [], instructions: [], bulletin: [], caseUpdates: [], caseProposals: [],
-  escalations: 0, docRules: [], feeRules: [], eibor: [], stageTransitions: [], caseDocuments: [], bankProducts: [], unmatchedEmails: [], emails: [], clients: [], promotions: [],
+  escalations: 0, docRules: [], feeRules: [], eibor: [], stageTransitions: [], caseDocuments: [], bankProducts: [], unmatchedEmails: [], emails: [], clients: [], promotions: [], caseParties: [],
 };
 
 let toastSeq = 1;
@@ -268,6 +314,49 @@ export const useHfmcStore = create<HfmcState>((set, get) => ({
       throw new Error(e.error || "Save failed — check your connection and try again.");
     }
     get().hydrate().catch(() => {}); // fire-and-forget — UI must not wait on the full-state reload
+  },
+  /* ── LEADS (Phase 4) ─────────────────────────────────────────────────────── */
+  createLead: async (input) => {
+    const res = await fetch("/api/leads", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input),
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error(e.error || "Could not save the lead");
+    }
+    const data = await res.json();
+    get().hydrate().catch(() => {});
+    return data.lead as Lead;
+  },
+  updateLead: async (id, patch) => {
+    const res = await fetch("/api/leads", {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, ...patch }),
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error(e.error || "Save failed — check your connection and try again.");
+    }
+    get().hydrate().catch(() => {});
+  },
+  deleteLead: async (id) => {
+    const res = await fetch(`/api/leads?id=${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error(e.error || "Could not delete the lead.");
+    }
+    get().hydrate().catch(() => {});
+  },
+  convertLead: async (id, input) => {
+    const res = await fetch(`/api/leads/${id}/convert`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input ?? {}),
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error(e.error || "Could not convert the lead.");
+    }
+    const data = await res.json();
+    get().hydrate().catch(() => {});
+    return { id: data.caseId, caseNumber: data.caseNumber };
   },
   addBankToCase: async (id, input) => {
     const res = await fetch(`/api/cases/${id}/add-bank`, {
@@ -664,6 +753,49 @@ export const useHfmcStore = create<HfmcState>((set, get) => ({
     const { tasks, visibleTaskIds } = get();
     const set_ = new Set(visibleTaskIds);
     return tasks.filter((t) => set_.has(t.id));
+  },
+  partiesOfCase: (caseId) =>
+    get().caseParties
+      .filter((p) => p.caseId === caseId)
+      .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id),
+  partiesOfClient: (clientId) => get().caseParties.filter((p) => p.clientId === clientId),
+  roleOnCase: (clientId, caseId) => {
+    const hit = get().caseParties.find((p) => p.caseId === caseId && p.clientId === clientId);
+    if (hit) return hit.role;
+    // Legacy fallback. Only reached for a case whose secondPartyClientId was never
+    // backfilled, so it can be removed once phase5-backfill has run everywhere.
+    const c = get().cases.find((k) => k.id === caseId);
+    return c && c.secondPartyClientId === clientId ? "CoBorrower" : null;
+  },
+  addParty: async (caseId, input) => {
+    const res = await fetch(`/api/cases/${caseId}/parties`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input),
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error(e.error || "Could not add this person to the case");
+    }
+    const data = await res.json();
+    get().hydrate().catch(() => {});
+    return { createdClient: !!data.createdClient, matchedBy: data.matchedBy ?? null };
+  },
+  updateParty: async (caseId, partyId, role) => {
+    const res = await fetch(`/api/cases/${caseId}/parties`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ partyId, role }),
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error(e.error || "Could not change their role");
+    }
+    get().hydrate().catch(() => {});
+  },
+  removeParty: async (caseId, partyId) => {
+    const res = await fetch(`/api/cases/${caseId}/parties?partyId=${partyId}`, { method: "DELETE" });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error(e.error || "Could not remove this person from the case");
+    }
+    get().hydrate().catch(() => {});
   },
   canInstruct: () => {
     const f = get().flags;

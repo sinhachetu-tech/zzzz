@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { currentUser, flagsFor } from "@/lib/auth";
-import { currentClient } from "@/lib/client-auth";
+import { currentClient, clientOwnsCase } from "@/lib/client-auth";
 import { requireDocManager } from "@/lib/domain";
 import { r2Configured, r2Put, docKey } from "@/lib/r2";
 import { driveConfigured, driveArchiveFile } from "@/lib/drive";
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     byKind = "staff";
     byId = staff.id;
     useR2 = r2Configured();
-  } else if (client && client.caseId === doc.caseId) {
+  } else if (client && (await clientOwnsCase(client, doc.caseId))) {
     if (!doc.visibleToClient || !doc.clientCanUpload) {
       return NextResponse.json({ error: "This document must be handled by your advisor." }, { status: 403 });
     }

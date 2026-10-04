@@ -33,8 +33,12 @@ export async function PATCH(req: NextRequest) {
   if (profileJson) {
     try { JSON.parse(profileJson); } catch { return NextResponse.json({ error: "invalid profile data" }, { status: 400 }); }
   }
-  const c = await db.loanCase.findUnique({ where: { id: me.caseId } });
+  if (!me.caseId) return NextResponse.json({ error: "case not found" }, { status: 404 });
+  const c = await db.loanCase.findUnique({ where: { id: me.caseId }, select: { id: true, clientId: true } });
   if (!c) return NextResponse.json({ error: "case not found" }, { status: 404 });
+  // Session clientId wins over the case's — after Phase 3 the session is the
+  // person's identity, and the anchor case may be a sibling leg.
+  const clientId = me.clientId ?? c.clientId ?? null;
 
   if (profileJson) {
     await db.loanCase.update({
@@ -45,8 +49,8 @@ export async function PATCH(req: NextRequest) {
   }
 
   // The answer sheet goes on the PERSON, so it carries to every future case.
-  if (personData && c.clientId) {
-    const cl = await db.client.findUnique({ where: { id: c.clientId }, select: { personJson: true } });
+  if (personData && clientId) {
+    const cl = await db.client.findUnique({ where: { id: clientId }, select: { personJson: true } });
     let current: Record<string, unknown> = {};
     try {
       const parsed = JSON.parse(cl?.personJson ?? "{}");
@@ -57,7 +61,7 @@ export async function PATCH(req: NextRequest) {
       if (v === null) delete next[k]; // explicit null clears one field
       else next[k] = v;
     }
-    await db.client.update({ where: { id: c.clientId }, data: { personJson: JSON.stringify(next) } });
+    await db.client.update({ where: { id: clientId }, data: { personJson: JSON.stringify(next) } });
   }
 
   return NextResponse.json({ ok: true, verifiedAt: new Date().toISOString() });

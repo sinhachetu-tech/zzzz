@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { currentUser, flagsFor } from "@/lib/auth";
 import { currentClient } from "@/lib/client-auth";
-import { currentAgent } from "@/lib/agent-auth";
 import { r2Configured, r2Put, docKey } from "@/lib/r2";
 import { serCaseDocument, serChatMessage } from "@/lib/ser";
 import { sendPushNotification } from "@/lib/push";
+
 
 const MAX_BYTES = 25 * 1024 * 1024; // 25 MB
 
@@ -19,15 +19,15 @@ export async function POST(
 
   const staff = await currentUser();
   const client = await currentClient();
-  const agent = await currentAgent();
 
-  if (!staff && !client && !agent) {
+  if (!staff && !client) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const formData = await req.formData();
   const file = formData.get("file");
-  const threadType = (formData.get("threadType") === "AGENT" ? "AGENT" : "CLIENT") as "CLIENT" | "AGENT";
+  // threadType is always CLIENT — the AGENT thread has been removed.
+  const threadType = "CLIENT" as const;
   const text = formData.get("text") ? String(formData.get("text")).trim() : null;
 
   if (!(file instanceof File)) {
@@ -38,7 +38,7 @@ export async function POST(
     return NextResponse.json({ error: "File exceeds 25 MB limit." }, { status: 400 });
   }
 
-  let senderType: "STAFF" | "CLIENT" | "AGENT" = "STAFF";
+  let senderType: "STAFF" | "CLIENT" = "STAFF";
   let senderId: number | null = null;
   let senderName = "HFMC Team";
 
@@ -50,24 +50,14 @@ export async function POST(
     }
     senderType = "STAFF";
     senderId = staff.id;
-    senderName = `${staff.name} (HFMC)`;
+    senderName = staff.name;
   } else if (client) {
     const { clientCanAccessCase } = await import("@/lib/chat-auth");
     if (!(await clientCanAccessCase(client, caseId)))
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    if (threadType === "AGENT") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     senderType = "CLIENT";
     senderId = null;
-    senderName = client.customer || "Client";
-  } else if (agent) {
-    const c = await db.loanCase.findUnique({ where: { id: caseId }, select: { partnerName: true } });
-    if (!c || c.partnerName?.toLowerCase() !== agent.name.toLowerCase()) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-    if (threadType === "CLIENT") return NextResponse.json({ error: "Forbidden thread" }, { status: 403 });
-    senderType = "AGENT";
-    senderId = null;
-    senderName = `${agent.name} (Partner)`;
+    senderName = client.customer || "You";
   }
 
   const bytes = Buffer.from(await file.arrayBuffer());
@@ -158,29 +148,11 @@ export async function POST(
         sendPushNotification(
           { caseId: targetCaseId },
           {
-            title: `📎 ${senderName} sent a document`,
+            title: `📎 ${senderName} — HFMC sent a document`,
             body: pushBody,
             url: `/client`,
           }
         ).catch(() => {});
-      }
-    } else if (senderType === "AGENT") {
-      const c = await db.loanCase.findUnique({
-        where: { id: caseId },
-        select: { ownerId: true, advisorId: true, caseNumber: true },
-      });
-      if (c) {
-        const recipients = [c.ownerId, c.advisorId].filter((id): id is number => id != null);
-        for (const recipientId of recipients) {
-          sendPushNotification(
-            { userId: recipientId },
-            {
-              title: `📎 ${senderName} uploaded document (${c.caseNumber})`,
-              body: pushBody,
-              url: `/`,
-            }
-          ).catch(() => {});
-        }
       }
     }
   } catch {}

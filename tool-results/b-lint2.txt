@@ -1,0 +1,231 @@
+=== npx eslint src : FAIL (exit 1) ===
+C:\Users\Lenovo\Desktop\zzzz\src\app\agent\login.tsx
+  19:14  warning  Do not use `window.location.href` to navigate to internal Next.js pages. Use `redirect()` in the render phase, or `useRouter().push()` in Client Components' event handlers instead. See: https://nextjs.org/docs/messages/no-location-assign-relative-destination  @next/next/no-location-assign-relative-destination
+
+C:\Users\Lenovo\Desktop\zzzz\src\app\client\login.tsx
+   72:9   warning  Do not use `window.location.href` to navigate to internal Next.js pages. Use `redirect()` in the render phase, or `useRouter().push()` in Client Components' event handlers instead. See: https://nextjs.org/docs/messages/no-location-assign-relative-destination  @next/next/no-location-assign-relative-destination
+  115:14  warning  Do not use `window.location.href` to navigate to internal Next.js pages. Use `redirect()` in the render phase, or `useRouter().push()` in Client Components' event handlers instead. See: https://nextjs.org/docs/messages/no-location-assign-relative-destination  @next/next/no-location-assign-relative-destination
+
+C:\Users\Lenovo\Desktop\zzzz\src\components\case\StageRail.tsx
+  80:22  error  React Hook "useMemo" is called conditionally. React Hooks must be called in the exact same order in every component render  react-hooks/rules-of-hooks
+  88:22  error  React Hook "useMemo" is called conditionally. React Hooks must be called in the exact same order in every component render  react-hooks/rules-of-hooks
+
+C:\Users\Lenovo\Desktop\zzzz\src\components\pwa\PwaInstallBanner.tsx
+  34:5  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+C:\Users\Lenovo\Desktop\zzzz\src\components\pwa\PwaInstallBanner.tsx:34:5
+  32 |     const isSmall = window.innerWidth < 768;
+  33 |     const currentDevice = isSmall && isTouch ? "mobile" : "desktop";
+> 34 |     setDeviceType(currentDevice);
+     |     ^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  35 |
+  36 |     // 3. Detect iOS Safari
+  37 |     const ua = window.navigator.userAgent.toLowerCase();  react-hooks/set-state-in-effect
+
+C:\Users\Lenovo\Desktop\zzzz\src\components\staff-chat\StaffChatDrawer.tsx
+  46:7  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+C:\Users\Lenovo\Desktop\zzzz\src\components\staff-chat\StaffChatDrawer.tsx:46:7
+  44 |   useEffect(() => {
+  45 |     if (isOpen) {
+> 46 |       loadRooms();
+     |       ^^^^^^^^^ Avoid calling setState() directly within an effect
+  47 |       setView({ type: "list" });
+  48 |     }
+  49 |   }, [isOpen, loadRooms]);  react-hooks/set-state-in-effect
+
+C:\Users\Lenovo\Desktop\zzzz\src\components\ui\carousel.tsx
+  98:5  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+C:\Users\Lenovo\Desktop\zzzz\src\components\ui\carousel.tsx:98:5
+   96 |   React.useEffect(() => {
+   97 |     if (!api) return
+>  98 |     onSelect(api)
+      |     ^^^^^^^^ Avoid calling setState() directly within an effect
+   99 |     api.on("reInit", onSelect)
+  100 |     api.on("select", onSelect)
+  101 |  react-hooks/set-state-in-effect
+
+C:\Users\Lenovo\Desktop\zzzz\src\components\views\case-detail.tsx
+  649:34  error  Compilation Skipped: Existing memoization could not be preserved
+
+React Compiler has skipped optimizing this component because the existing manual memoization could not be preserved. The inferred dependencies did not match the manually specified dependencies, which could cause the value to change more or less frequently than expected. The inferred dependency was `setPendingTab`, but the source dependencies were [setCaseTabRaw]. Inferred different dependency than source.
+
+C:\Users\Lenovo\Desktop\zzzz\src\components\views\case-detail.tsx:649:34
+  647 |   const [pendingTab, setPendingTab] = useState<CaseTab | null>(null);
+  648 |
+> 649 |   const setCaseTab = useCallback((t: CaseTab) => {
+      |                                  ^^^^^^^^^^^^^^^^^
+> 650 |     if (sheetDirtyRef.current && t !== "client") { setPendingTab(t); return; }
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 651 |     setCaseTabRaw(t);
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 652 |   }, [setCaseTabRaw]);
+      | ^^^^ Could not preserve existing manual memoization
+  653 |
+  654 |   // Browser-level guard: a refresh or back-navigation loses the draft too.
+  655 |   useEffect(() => {  react-hooks/preserve-manual-memoization
+  686:21  error  Compilation Skipped: Existing memoization could not be preserved
+
+React Compiler has skipped optimizing this component because the existing manual memoization could not be preserved. This value was memoized in source but not in compilation output.
+
+C:\Users\Lenovo\Desktop\zzzz\src\components\views\case-detail.tsx:686:21
+  684 |   // could be moved to "Valuation" — and the mortgage-only labels below
+  685 |   // (preApprovalIdx / folIdx) simply resolved to -1 and silently did nothing.
+> 686 |   const stageList = useMemo(
+      |                     ^^^^^^^^
+> 687 |     () => [...stagesForServiceLine(stages, serviceLines, c?.serviceLineId)].sort((a, b) => a.sortOrder - b.sortOrder),
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 688 |     [stages, serviceLines, c?.serviceLineId],
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 689 |   );
+      | ^^^^ Could not preserve existing memoization
+  690 |
+  691 |   /* BLOCKERS — one ranked list feeding BOTH the command bar's primary button and
+  692 |    * its one-line strip. Derived from the same task/document/sheet rows the tab       react-hooks/preserve-manual-memoization
+  688:28  error  Compilation Skipped: Existing memoization could not be preserved
+
+React Compiler has skipped optimizing this component because the existing manual memoization could not be preserved. This dependency may be mutated later, which could cause the value to change unexpectedly.
+
+C:\Users\Lenovo\Desktop\zzzz\src\components\views\case-detail.tsx:688:28
+  686 |   const stageList = useMemo(
+  687 |     () => [...stagesForServiceLine(stages, serviceLines, c?.serviceLineId)].sort((a, b) => a.sortOrder - b.sortOrder),
+> 688 |     [stages, serviceLines, c?.serviceLineId],
+      |                            ^ This dependency may be modified later
+  689 |   );
+  690 |
+  691 |   /* BLOCKERS — one ranked list feeding BOTH the command bar's primary button and                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          react-hooks/preserve-manual-memoization
+  700:20  error  Compilation Skipped: Existing memoization could not be preserved
+
+React Compiler has skipped optimizing this component because the existing manual memoization could not be preserved. This value was memoized in source but not in compilation output.
+
+C:\Users\Lenovo\Desktop\zzzz\src\components\views\case-detail.tsx:700:20
+  698 |    * only shows up when a case is deleted mid-session, which is exactly when you
+  699 |    * do not want a white screen. */
+> 700 |   const blockers = useMemo(() => {
+      |                    ^^^^^^^^^^^^^^^
+> 701 |     if (!c) return [];
+      | ^^^^^^^^^^^^^^^^^^^^^^
+> 702 |     const docs = caseDocuments.filter((d) => d.caseId === id);
+      …
+      | ^^^^^^^^^^^^^^^^^^^^^^
+> 711 |     });
+      | ^^^^^^^^^^^^^^^^^^^^^^
+> 712 |   }, [c, id, caseTasks, caseDocuments, clients, caseInstr, caseUpdates]);
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Could not preserve existing memoization
+  713 |
+  714 |   /* Stage-conditional money panels. Pre-approval and FOL figures only become
+  715 |    * relevant once the case has reached those stages — the same rule the                                                                                                                      react-hooks/preserve-manual-memoization
+  712:7   error  Compilation Skipped: Existing memoization could not be preserved
+
+React Compiler has skipped optimizing this component because the existing manual memoization could not be preserved. This dependency may be mutated later, which could cause the value to change unexpectedly.
+
+C:\Users\Lenovo\Desktop\zzzz\src\components\views\case-detail.tsx:712:7
+  710 |       updatedOn: caseUpdates.filter((u) => u.caseId === id).map((u) => u.date),
+  711 |     });
+> 712 |   }, [c, id, caseTasks, caseDocuments, clients, caseInstr, caseUpdates]);
+      |       ^ This dependency may be modified later
+  713 |
+  714 |   /* Stage-conditional money panels. Pre-approval and FOL figures only become
+  715 |    * relevant once the case has reached those stages — the same rule the                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                react-hooks/preserve-manual-memoization
+
+C:\Users\Lenovo\Desktop\zzzz\src\components\views\case-profile-editor.tsx
+  82:7  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+C:\Users\Lenovo\Desktop\zzzz\src\components\views\case-profile-editor.tsx:82:7
+  80 |   useEffect(() => {
+  81 |     if (initialTab) {
+> 82 |       setActiveTab(initialTab);
+     |       ^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  83 |     }
+  84 |   }, [initialTab]);
+  85 |   const [saving, setSaving] = useState(false);  react-hooks/set-state-in-effect
+
+C:\Users\Lenovo\Desktop\zzzz\src\components\views\clients.tsx
+  49:20  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+C:\Users\Lenovo\Desktop\zzzz\src\components\views\clients.tsx:49:20
+  47 |   const focusName = focusId ? clients.find((c) => c.id === focusId)?.fullName : undefined;
+  48 |   useEffect(() => {
+> 49 |     if (focusName) setSearch(focusName);
+     |                    ^^^^^^^^^ Avoid calling setState() directly within an effect
+  50 |   }, [focusName]);
+  51 |
+  52 |   // A client's engagements are every case they appear on — as the primary  react-hooks/set-state-in-effect
+
+C:\Users\Lenovo\Desktop\zzzz\src\components\views\doc-vault.tsx
+  164:24  error  Compilation Skipped: Existing memoization could not be preserved
+
+React Compiler has skipped optimizing this component because the existing manual memoization could not be preserved. This value was memoized in source but not in compilation output.
+
+C:\Users\Lenovo\Desktop\zzzz\src\components\views\doc-vault.tsx:164:24
+  162 |   }, [docs]);
+  163 |
+> 164 |   const filteredDocs = useMemo(() => {
+      |                        ^^^^^^^^^^^^^^^
+> 165 |     if (selectedCategory === "All") return docs;
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 166 |     return docs.filter((d) => d.category === selectedCategory);
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 167 |   }, [docs, selectedCategory]);
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Could not preserve existing memoization
+  168 |
+  169 |   const grouped = useMemo(() => {
+  170 |     const map = new Map<string, CaseDocument[]>();  react-hooks/preserve-manual-memoization
+
+C:\Users\Lenovo\Desktop\zzzz\src\components\views\shell.tsx
+  796:51  warning  Expected an assignment or function call and instead saw an expression  @typescript-eslint/no-unused-expressions
+  887:45  warning  Expected an assignment or function call and instead saw an expression  @typescript-eslint/no-unused-expressions
+
+C:\Users\Lenovo\Desktop\zzzz\src\hooks\use-mobile.ts
+  14:5  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+C:\Users\Lenovo\Desktop\zzzz\src\hooks\use-mobile.ts:14:5
+  12 |     }
+  13 |     mql.addEventListener("change", onChange)
+> 14 |     setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
+     |     ^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  15 |     return () => mql.removeEventListener("change", onChange)
+  16 |   }, [])
+  17 |  react-hooks/set-state-in-effect
+
+C:\Users\Lenovo\Desktop\zzzz\src\lib\graph.ts
+  280:21  error  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+
+✖ 20 problems (15 errors, 5 warnings)

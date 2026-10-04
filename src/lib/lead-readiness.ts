@@ -35,8 +35,21 @@ export interface ReadinessInput {
   passportNo?: string | null;
   /** Resolved owner name, or null/undefined when unassigned. */
   ownerName?: string | null;
-  loanAmount: number;
+  /**
+   * The amount the prospect is asking about. Optional and possibly null — a
+   * lead legitimately has "not stated" (Phase 4 makes that a real value on the
+   * Lead row rather than a zero), and a golden-visa enquiry has no loan figure at
+   * all. Callers pass `intendedAmount ?? 0`.
+   */
+  loanAmount?: number | null;
   customer?: string;
+  /**
+   * Optional: is the money figure meaningful for what they asked about? A will
+   * or a golden visa has no "loan amount", so requiring one would block a
+   * conversion that is perfectly ready. When false the amount is scored but not
+   * treated as a hard gap.
+   */
+  amountMatters?: boolean;
 }
 
 export function isValidEmail(s: string): boolean {
@@ -48,13 +61,14 @@ export function phoneDigits(s: string): string {
 }
 
 export function computeReadiness(input: ReadinessInput): Readiness {
-  const { phone, email, eidNo, passportNo, ownerName, loanAmount } = input;
+  const { phone, email, eidNo, passportNo, ownerName, amountMatters = true } = input;
+  const amount = input.loanAmount ?? 0;
 
   const phoneOk = phoneDigits(phone).length >= 7;
   const emailOk = isValidEmail(email);
   const kycId = (eidNo || passportNo || "").trim();
   const ownerOk = !!ownerName && ownerName.trim().length > 0;
-  const amountOk = loanAmount > 0;
+  const amountOk = amount > 0;
 
   const items: ReadinessItem[] = [
     {
@@ -74,8 +88,18 @@ export function computeReadiness(input: ReadinessInput): Readiness {
       hint: ownerOk ? (ownerName as string) : "Unassigned files are how cases go quiet for 3 weeks",
     },
     {
-      key: "amount", label: "Loan amount captured", ok: amountOk, soft: false,
-      hint: amountOk ? `AED ${loanAmount.toLocaleString()}` : "Needed before the match engine can quote anything",
+      // Amount is only a HARD gap where money is the thing being asked about. A
+      // golden-visa or will enquiry has no loan figure to capture, and demanding
+      // one would leave a perfectly ready lead permanently "not ready".
+      key: "amount",
+      label: amountMatters ? "Amount captured" : "Amount captured (optional here)",
+      ok: amountOk,
+      soft: !amountMatters,
+      hint: amountOk
+        ? `AED ${amount.toLocaleString()}`
+        : amountMatters
+          ? "Needed before the match engine can quote anything"
+          : "Not applicable to this service — convert without it",
     },
   ];
 

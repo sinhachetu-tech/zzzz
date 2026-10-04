@@ -30,6 +30,8 @@ function parseBag(json: string | null | undefined): Record<string, unknown> {
 async function resolve() {
   const me = await currentClient();
   if (!me) return null;
+  if (me.clientId != null) return me.clientId;
+  if (!me.caseId) return null;
   const c = await db.loanCase.findUnique({ where: { id: me.caseId }, select: { clientId: true } });
   return c?.clientId ?? null;
 }

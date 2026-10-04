@@ -4,6 +4,8 @@ import { create } from "zustand";
 import { confirmDiscard, setUnsavedChanges } from "@/lib/leave-guard";
 
 interface ClientUser {
+  /** The person (Phase 3). Null only for a session predating the backfill. */
+  clientId: number | null;
   caseId: number;
   phone: string;
   caseNumber: string;
@@ -12,6 +14,12 @@ interface ClientUser {
 
 interface Engagement {
   id: number; caseNumber: string; banks: string[]; stage: string; caseStatus: string; loanAmount: number; wonBank: string | null;
+  /** Which line of business this journey belongs to (Phase 1). */
+  serviceLineId: number | null;
+  /** Resolved server-side — the client portal can't read the admin catalogue. */
+  serviceLine: string | null;
+  /** A leg beaten by another bank: still on file, but not a live journey (Phase 2). */
+  legStatus: string;
 }
 
 interface ClientState {

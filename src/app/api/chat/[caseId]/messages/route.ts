@@ -2,16 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { currentUser, flagsFor } from "@/lib/auth";
 import { currentClient } from "@/lib/client-auth";
-import { currentAgent } from "@/lib/agent-auth";
 import { serCaseDocument, serChatMessage } from "@/lib/ser";
 import { sendPushNotification } from "@/lib/push";
 
+
 // GET /api/chat/[caseId]/messages
 // Query params:
-// - thread: 'CLIENT' | 'AGENT' (default 'CLIENT')
 // - after: ISO date string (fetch messages newer than this)
 // - limit: number (default 50)
 // - stream: 'true' (returns SSE text/event-stream)
+//
+// NOTE: the AGENT thread (staff ↔ partner) has been removed. This route
+// only serves the CLIENT thread. Agent sessions receive 403.
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ caseId: string }> }
@@ -21,37 +23,25 @@ export async function GET(
   if (isNaN(caseId)) return NextResponse.json({ error: "Invalid case ID" }, { status: 400 });
 
   const url = new URL(req.url);
-  const threadType = (url.searchParams.get("thread")?.toUpperCase() === "AGENT" ? "AGENT" : "CLIENT") as "CLIENT" | "AGENT";
+  // threadType is locked to CLIENT — the AGENT thread has been removed.
+  const threadType = "CLIENT" as const;
   const isStream = url.searchParams.get("stream") === "true";
   const after = url.searchParams.get("after");
   const limit = Math.min(parseInt(url.searchParams.get("limit") || "60", 10), 200);
 
-  // Authenticate participant
+  // Authenticate participant — staff sessions win (a laptop can hold BOTH a
+  // staff cookie and a stale client cookie; the client check must not 403 staff).
   const staff = await currentUser();
   const client = await currentClient();
-  const agent = await currentAgent();
 
-  if (!staff && !client && !agent) {
+  if (!staff && !client) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Authorization checks — staff sessions win (a laptop can hold BOTH a
-  // staff cookie and a stale client cookie; the client check must not 403
-  // staff). Clients may read sibling bank journeys of the same person.
-  if (staff) {
-    // staff may read both threads on any case they can see
-  } else if (client) {
+  if (client && !staff) {
     const { clientCanAccessCase } = await import("@/lib/chat-auth");
     if (!(await clientCanAccessCase(client, caseId)))
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    if (threadType === "AGENT") return NextResponse.json({ error: "Forbidden thread" }, { status: 403 });
-  } else if (agent) {
-    // Check if agent is partner on this case
-    const c = await db.loanCase.findUnique({ where: { id: caseId }, select: { partnerName: true, partnerKind: true } });
-    if (!c || c.partnerName?.toLowerCase() !== agent.name.toLowerCase()) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-    if (threadType === "CLIENT") return NextResponse.json({ error: "Forbidden thread" }, { status: 403 });
   }
 
   // Server-Sent Events (SSE) mode
@@ -159,7 +149,7 @@ export async function GET(
 }
 
 // POST /api/chat/[caseId]/messages
-// Sends a new message and optional attachment
+// Sends a new message. threadType is always CLIENT — the AGENT thread has been removed.
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ caseId: string }> }
@@ -170,15 +160,15 @@ export async function POST(
 
   const staff = await currentUser();
   const client = await currentClient();
-  const agent = await currentAgent();
 
-  if (!staff && !client && !agent) {
+  if (!staff && !client) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const body = await req.json().catch(() => ({}));
   const text = body.text ? String(body.text).trim() : null;
-  const threadType = (body.threadType === "AGENT" ? "AGENT" : "CLIENT") as "CLIENT" | "AGENT";
+  // threadType is always CLIENT — AGENT thread has been removed.
+  const threadType = "CLIENT" as const;
   const attachmentKey = body.attachmentKey ? String(body.attachmentKey) : null;
   const attachmentName = body.attachmentName ? String(body.attachmentName) : null;
   const attachmentSize = body.attachmentSize ? Number(body.attachmentSize) : null;
@@ -188,9 +178,9 @@ export async function POST(
     return NextResponse.json({ error: "Message text or attachment is required" }, { status: 400 });
   }
 
-  let senderType: "STAFF" | "CLIENT" | "AGENT" = "STAFF";
+  let senderType: "STAFF" | "CLIENT" = "STAFF";
   let senderId: number | null = null;
-  let senderName = "HFMC Mortgage Team";
+  let senderName = "HFMC Team";
 
   // Staff session wins — same laptop can hold a stale client cookie.
   if (staff) {
@@ -200,24 +190,14 @@ export async function POST(
     }
     senderType = "STAFF";
     senderId = staff.id;
-    senderName = `${staff.name} (HFMC)`;
+    senderName = staff.name; // shown under messages the client receives — just the name, no tag
   } else if (client) {
     const { clientCanAccessCase } = await import("@/lib/chat-auth");
     if (!(await clientCanAccessCase(client, caseId)))
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    if (threadType === "AGENT") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     senderType = "CLIENT";
     senderId = null;
-    senderName = client.customer || "Client";
-  } else if (agent) {
-    const c = await db.loanCase.findUnique({ where: { id: caseId }, select: { partnerName: true } });
-    if (!c || c.partnerName?.toLowerCase() !== agent.name.toLowerCase()) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-    if (threadType === "CLIENT") return NextResponse.json({ error: "Forbidden thread" }, { status: 403 });
-    senderType = "AGENT";
-    senderId = null;
-    senderName = `${agent.name} (Partner)`;
+    senderName = client.customer || "You"; // "You" is the fallback if no name is on record
   }
 
   // 1. Create chat message
@@ -302,29 +282,11 @@ export async function POST(
         sendPushNotification(
           { caseId: targetCaseId },
           {
-            title: `💬 ${senderName}`,
+            title: `💬 ${senderName} — HFMC`,
             body: pushBody,
             url: `/client`,
           }
         ).catch(() => {});
-      }
-    } else if (senderType === "AGENT") {
-      const c = await db.loanCase.findUnique({
-        where: { id: caseId },
-        select: { ownerId: true, advisorId: true, caseNumber: true },
-      });
-      if (c) {
-        const recipients = [c.ownerId, c.advisorId].filter((id): id is number => id != null);
-        for (const recipientId of recipients) {
-          sendPushNotification(
-            { userId: recipientId },
-            {
-              title: `💬 ${senderName} (${c.caseNumber})`,
-              body: pushBody,
-              url: `/`,
-            }
-          ).catch(() => {});
-        }
       }
     }
   } catch {}

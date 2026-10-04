@@ -3,9 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useHfmcStore } from "@/lib/client-store";
-import type { BankItem, CaseSource, LoanCase, User } from "@/lib/types";
-import { SOURCES } from "@/lib/types";
-import { computeEscalations, activityPerDay } from "@/lib/domain";
+import type { BankItem, CaseSource, Lead, LoanCase, User } from "@/lib/types";
+import { OPEN_LEAD_STATUSES, SOURCES } from "@/lib/types";
+import { computeEscalations, activityPerDay, engagementsOnly, computeWinRates } from "@/lib/domain";
 import {
   TONE_HEX, ageDays, commissionFor, downloadCSV, fmtDate, fmtDue, fmtMoney, fmtMoneyFull, fmtRate,
   primaryBank, todayISO, caseStatusOf,
@@ -103,11 +103,18 @@ function ProjectedRevenue({ visCases, userById, banks }: {
   const active = visCases.filter((c) => c.caseStatus === "Active");
   const booked = visCases.filter((c) => c.caseStatus === "Closed" && c.wonBank);
 
-  // group open cases into engagements (client + amount + creation day)
+  // Group open cases into engagements.
+  //
+  // Phase 2: this used to GROUP BY client+amount+created-day and guess which rows
+  // were the same deal. Now the parent row genuinely IS the engagement, so we
+  // group on parentCaseId: a leg with no parent is its own engagement, and a leg
+  // with a parent joins that parent's group. Deterministic — and, unlike the
+  // old key, it stays correct now that the firm sells more than one service
+  // (two same-day golden-visa applications for one client no longer collapse).
   const groups = useMemo(() => {
-    const map = new Map<string, LoanCase[]>();
+    const map = new Map<number, LoanCase[]>();
     for (const c of active) {
-      const key = (c.clientId ?? "c" + c.customer) + "|" + c.loanAmount + "|" + c.createdAt.slice(0, 10);
+      const key = c.parentCaseId ?? c.id;
       map.set(key, [...(map.get(key) ?? []), c]);
     }
     return [...map.values()];
@@ -311,8 +318,8 @@ function DailyMisReport({ visCases, userById, toast }: {
 
 export default function Reports() {
   const {
-    cases, tasks, activities, banks, partners, users, stages, slaRules, flags, caseUpdates,
-    nav, userById, visibleCases, visibleTasks, toast, updateCase,
+    cases, leads, tasks, activities, banks, partners, users, stages, slaRules, flags, caseUpdates,
+    nav, userById, visibleCases, visibleTasks, toast, updateCase, updateLead,
   } = useHfmcStore();
   const canRevenue = !!flags?.viewRevenue;
   const isHead = !!flags && (flags.super || flags.admin || flags.scope === "all");
@@ -320,10 +327,17 @@ export default function Reports() {
   const visCases = useMemo(() => visibleCases(), [visibleCases]);
   const visTasks = useMemo(() => visibleTasks(), [visibleTasks]);
 
-  /* ---- slice cases by lifecycle state ---- */
-  const active = useMemo(() => visCases.filter((c) => c.caseStatus === "Active"), [visCases]);
-  const booked = useMemo(() => visCases.filter((c) => c.caseStatus === "Closed"), [visCases]);
+  /* ---- slice cases by lifecycle state ----
+     MONEY SLICES COUNT ENGAGEMENTS, not bank legs (Phase 2). Three banks on one
+     mortgage is one deal worth one loan amount and one commission — summing the
+     legs would triple every headline figure on this page. `dedupeEngagements` used
+     to GUESS which rows were the same deal by client+amount+day; the parent row is
+     that relationship, so `engagementsOnly` is now deterministic. */
+  const activeLegs = useMemo(() => visCases.filter((c) => c.caseStatus === "Active"), [visCases]);
+  const bookedLegs = useMemo(() => visCases.filter((c) => c.caseStatus === "Closed"), [visCases]);
   const lost = useMemo(() => visCases.filter((c) => c.caseStatus === "Lost"), [visCases]);
+  const active = useMemo(() => engagementsOnly(activeLegs), [activeLegs]);
+  const booked = useMemo(() => engagementsOnly(bookedLegs), [bookedLegs]);
 
   /* ---- 1 · pipeline by stage ---- */
   const sortedStages = useMemo(
@@ -519,15 +533,46 @@ export default function Reports() {
     return [...map.entries()].map(([label, e]) => ({ label, ...e })).sort((a, b) => b.v - a.v).slice(0, 6);
   }, [lost]);
   const lostValue = useMemo(() => lost.reduce((s, c) => s + c.loanAmount, 0), [lost]);
+  /* ---- bank win rate (Phase 2) ----
+     The metric this whole phase exists to make computable: of the banks we raced,
+     which ones actually win? Reads LEGS (the race is per bank), never
+     engagements. Declines are shown separately rather than folded into the
+     denominator — "this bank said no" is not "we lost to this bank", and mixing
+     them would understate the win rate of banks we simply did not get approved
+     by. */
+  const winRates = useMemo(() => computeWinRates(visCases), [visCases]);
+  const overallWin = useMemo(() => {
+    const won = winRates.reduce((s, r) => s + r.won, 0);
+    const lost = winRates.reduce((s, r) => s + r.lostRace, 0);
+    return won + lost > 0 ? Math.round((won / (won + lost)) * 100) : 0;
+  }, [winRates]);
+  // Lead funnel (Phase 4: reads the Lead table, not case stages).
+  //
+  // CONVERSION RATE IS NOW COMPUTED, NOT ASSUMED. Before this, "conversion" was
+  // read off a heuristic. It is now the real ratio of converted leads to everything
+  // that reached a decision — and Lost is kept OUT of the denominator while
+  // Invalid is kept IN, because a spam enquiry and a competitor who beat us are
+  // different failures with different fixes.
   const leadFunnel = useMemo(() => {
-    const leads = visCases.filter((c) => c.stage === "Lead" && c.caseStatus === "Active");
+    const openL = leads.filter((l) => OPEN_LEAD_STATUSES.includes(l.status));
+    const converted = leads.filter((l) => l.status === "Converted").length;
+    const lost = leads.filter((l) => l.status === "Lost").length;
+    const invalid = leads.filter((l) => l.status === "Invalid").length;
+    // "Days since a human touched it" — an untouched lead is stale by definition.
+    const since = (l: Lead) => new Date(l.firstContactedAt ?? l.createdAt).getTime();
     return {
-      total: leads.length,
-      fresh: leads.filter((c) => ageDays(c.createdAt) < 1).length,
-      aging: leads.filter((c) => ageDays(c.createdAt) >= 1 && ageDays(c.createdAt) < 3).length,
-      stale: leads.filter((c) => ageDays(c.createdAt) >= 3).length,
+      total: openL.length,
+      untouched: openL.filter((l) => !l.firstContactedAt).length,
+      fresh: openL.filter((l) => l.firstContactedAt && (Date.now() - since(l)) / 86_400_000 < 1).length,
+      aging: openL.filter((l) => l.firstContactedAt && (Date.now() - since(l)) / 86_400_000 >= 1 && (Date.now() - since(l)) / 86_400_000 < 3).length,
+      stale: openL.filter((l) => !l.firstContactedAt || (Date.now() - since(l)) / 86_400_000 >= 3).length,
+      converted, lost, invalid,
+      // Only leads that reached a real decision count as "closed".
+      conversionPct: converted + lost + invalid > 0
+        ? Math.round((converted / (converted + lost + invalid)) * 100)
+        : 0,
     };
-  }, [visCases]);
+  }, [leads]);
   const teamPulse = useMemo(() => {
     const teams = [...new Set(users.map((u) => u.team).filter(Boolean))];
     return teams.map((t) => {
@@ -1069,6 +1114,68 @@ export default function Reports() {
           )}
         </ReportCard>
 
+        {/* 9b · bank win rate (Phase 2) */}
+        <ReportCard
+          title="Bank win rate"
+          sub={`${overallWin}% overall — which banks we win when we race them. Declines excluded: a bank saying no is not a bank we lost to.`}
+          icon={<ITrophy size={15} />}
+          extra={
+            winRates.length > 0 ? (
+              <button
+                className="btn btn-ghost btn-sm !px-2"
+                onClick={() => {
+                  const header = ["Bank", "Won", "Lost race", "Declined", "Withdrawn", "Decided", "Win %"];
+                  const rows = winRates.map((r) => [
+                    r.bank, r.won, r.lostRace, r.declined, r.withdrawn, r.decided, `${r.winPct}%`,
+                  ]);
+                  downloadCSV("hfmc-bank-win-rate.csv", header, rows);
+                  toast("success", "Bank win rate exported.");
+                }}
+              >
+                <IDownload size={13} /> Export
+              </button>
+            ) : undefined
+          }
+        >
+          {winRates.length === 0 ? (
+            <p className="text-[12.5px] text-[var(--ink-faint)] m-0">
+              No decided bank races yet. Mark a leg <strong>Won</strong> or <strong>Lost race</strong> in Case 360
+              and this fills in — closing the losers is automatic when you record a win.
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="tbl min-w-[520px]">
+                <thead>
+                  <tr>
+                    <th>Bank</th>
+                    <th className="text-right">Won</th>
+                    <th className="text-right">Lost race</th>
+                    <th className="text-right">Declined</th>
+                    <th className="text-right">Win %</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {winRates.map((r) => (
+                    <tr key={r.bank} style={{ cursor: "default" }}>
+                      <td className="font-medium">{r.bank}</td>
+                      <td className="mono text-right" style={{ color: r.won ? "var(--mint)" : undefined }}>{r.won}</td>
+                      <td className="mono text-right">{r.lostRace}</td>
+                      <td className="mono text-right" style={{ color: r.declined ? "var(--coral)" : undefined }}>
+                        {r.declined || "—"}
+                      </td>
+                      <td className="mono text-right">
+                        <span style={{ color: r.winPct >= 50 ? "var(--mint)" : r.winPct > 0 ? "var(--amber)" : "var(--ink-faint)" }}>
+                          {r.decided > 0 ? `${r.winPct}%` : "—"}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </ReportCard>
+
         {/* 10 · lead funnel aging */}
         <ReportCard
           title="Lead funnel"
@@ -1083,6 +1190,16 @@ export default function Reports() {
           <FunnelBar label="Fresh <24h" value={leadFunnel.fresh} total={Math.max(leadFunnel.total, 1)} color={TONE_HEX.mint} />
           <FunnelBar label="Aging 1–3d" value={leadFunnel.aging} total={Math.max(leadFunnel.total, 1)} color={TONE_HEX.amber} />
           <FunnelBar label="Stale 3d+" value={leadFunnel.stale} total={Math.max(leadFunnel.total, 1)} color={TONE_HEX.coral} />
+          {/* "Never contacted" is broken out rather than folded into stale: a lead
+              nobody has rung is a different failure from one we chased and dropped.
+              The conversion line is the real ratio, not a heuristic. */}
+          <p className="text-[11.5px] text-[var(--ink-faint)] m-0 mt-2.5">
+            {leadFunnel.untouched > 0 && <><strong style={{ color: "var(--coral)" }}>{leadFunnel.untouched}</strong> never contacted · </>}
+            <strong style={{ color: "var(--mint)" }}>{leadFunnel.converted}</strong> converted ·{" "}
+            <strong style={{ color: "var(--amber)" }}>{leadFunnel.lost}</strong> lost ·{" "}
+            <strong>{leadFunnel.invalid}</strong> invalid ·{" "}
+            <strong>{leadFunnel.conversionPct}%</strong> conversion
+          </p>
         </ReportCard>
 
         {/* 11 · team pulse */}
@@ -1130,14 +1247,21 @@ export default function Reports() {
 /* ---------- sub-components ---------- */
 
 function HeadCommand() {
-  const { tasks, users, slaRules, nav, visibleCases, toast, updateCase } = useHfmcStore();
+  const { tasks, users, slaRules, nav, visibleCases, toast, updateCase, leads, updateLead } = useHfmcStore();
   const visCases = useMemo(() => visibleCases(), [visibleCases]);
   const active = visCases.filter((c) => c.caseStatus === "Active");
   const booked = visCases.filter((c) => c.caseStatus === "Closed");
   const esc = useMemo(() => computeEscalations(visCases, slaRules), [visCases, slaRules]);
   const slaTop = esc.map((e) => ({ e, c: visCases.find((x) => x.id === e.caseId)! })).filter((r) => r.c).sort((a, b) => b.e.breachDays - a.e.breachDays).slice(0, 3);
   const noAction = active.filter((c) => caseStatusOf(c, tasks) === "No Action" && ageDays(c.createdAt) >= 7).slice(0, 2);
-  const stale = visCases.filter((c) => c.stage === "Lead" && c.caseStatus === "Active" && ageDays(c.createdAt) >= 3).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).slice(0, 2);
+  // Leads going quiet — from the Lead table (Phase 4), measured from
+  // firstContactedAt so an untouched lead is flagged on day one.
+  const stale = leads
+    .filter((l) => OPEN_LEAD_STATUSES.includes(l.status))
+    .map((l) => ({ l, quiet: (Date.now() - new Date(l.firstContactedAt ?? l.createdAt).getTime()) / 86_400_000 }))
+    .filter((r) => r.quiet >= 3)
+    .sort((a, b) => b.quiet - a.quiet)
+    .slice(0, 2);
   return (
     <div className="card p-4 anim-fade-up" style={{ borderLeft: "3px solid var(--coral)" }}>
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1169,14 +1293,20 @@ function HeadCommand() {
             <button className="btn btn-ghost btn-sm !px-2 shrink-0" onClick={() => nav({ name: "case", id: c.id })}>Open</button>
           </div>
         ))}
-        {stale.map((c) => (
-          <div key={c.id} className="flex items-center gap-2.5 rounded-lg px-2.5 py-2" style={{ background: "var(--tint)", border: "1px solid var(--line-soft)" }}>
+        {stale.map(({ l, quiet }) => (
+          <div key={l.id} className="flex items-center gap-2.5 rounded-lg px-2.5 py-2" style={{ background: "var(--tint)", border: "1px solid var(--line-soft)" }}>
             <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: "var(--amber)" }} />
             <button className="min-w-0 flex-1 text-left" onClick={() => nav({ name: "leads" })}>
-              <span className="block text-[12.5px] font-medium truncate">Stale lead: {c.customer} — {ageDays(c.createdAt)}d</span>
+              {/* "Quiet" counts from the last human touch, not arrival — a lead
+                  chased on day 2 and ignored since is 4 days quiet, not 6. */}
+              <span className="block text-[12.5px] font-medium truncate">
+                Quiet lead: {l.fullName} — {Math.floor(quiet)}d
+                {!l.firstContactedAt && " (never contacted)"}
+              </span>
             </button>
-            <select className="select !w-auto !py-1 text-[11px] shrink-0" value={String(c.ownerId)} title="Reassign"
-              onChange={async (e2) => { await updateCase(c.id, { ownerId: Number(e2.target.value) }); toast("success", "Reassigned."); }}>
+            <select className="select !w-auto !py-1 text-[11px] shrink-0" value={String(l.ownerId ?? "")} title="Reassign"
+              onChange={async (e2) => { await updateLead(l.id, { ownerId: e2.target.value ? Number(e2.target.value) : null }); toast("success", "Reassigned."); }}>
+              <option value="">Unassigned</option>
               {users.filter((u) => u.active).map((u) => <option key={u.id} value={u.id}>{u.name.split(" ")[0]}</option>)}
             </select>
           </div>

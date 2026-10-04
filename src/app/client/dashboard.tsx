@@ -177,7 +177,7 @@ export function ClientDashboard() {
 function JourneyTab({ c, greeting, progressPct, engagements, switchCase, advisor, advisorWhatsapp, activeStages, currentIdx, showPreApproval, showFOL, stageTransitions, verified }: {
   c: NonNullable<ReturnType<typeof useClientStore.getState>["case"]>;
   greeting: string; progressPct: number;
-  engagements: { id: number; caseNumber: string; banks: string[]; stage: string; caseStatus: string; loanAmount: number; wonBank: string | null }[];
+  engagements: { id: number; caseNumber: string; banks: string[]; stage: string; caseStatus: string; loanAmount: number; wonBank: string | null; serviceLine: string | null; serviceLineId: number | null; legStatus: string }[];
   switchCase: (id: number) => Promise<void>;
   advisor: { name: string; role: string } | null;
   advisorWhatsapp: string | null;
@@ -246,29 +246,50 @@ function JourneyTab({ c, greeting, progressPct, engagements, switchCase, advisor
         </div>
       )}
 
-      {/* parallel journeys */}
+      {/* Your journeys with us — across EVERY service line, not just banks (Phase 3).
+          The old heading said "N banks in parallel", which was true when a
+          mortgage was the only thing we sold. It is wrong now: several of these may
+          be one mortgage shopped to several banks, and the rest are different
+          products entirely. A leg beaten by another bank is shown dimmed and
+          marked "lost race" — still reachable, because the client may be looking
+          for that bank's valuation later. */}
       {engagements.length > 1 && (
         <div className="anim-fade-up">
           <div className="text-[10.5px] uppercase tracking-[0.12em] font-disp font-semibold text-[var(--ink-faint)] mb-2">
-            Your finance journeys · {engagements.length} banks in parallel
+            Your journeys with us · {engagements.length} in progress
           </div>
           <div className="flex gap-2 overflow-x-auto pb-1.5">
             {engagements.map((e) => {
               const on = e.id === c.id;
+              const beaten = e.legStatus === "LostRace" || e.legStatus === "Declined" || e.legStatus === "Withdrawn";
+              // Service line leads when the firm sells more than one thing; the
+              // bank is the sub-label. A golden-visa journey has no bank at all,
+              // so showing "Bank TBC" for it would be actively misleading.
+              const title = e.serviceLine ?? (e.banks?.length ? e.banks.join(" + ") : null);
               return (
                 <button key={e.id}
                   onClick={() => switchCase(e.id)}
                   className="shrink-0 rounded-xl px-3.5 py-2.5 text-left transition-all"
-                  style={on
-                    ? { background: "linear-gradient(135deg, color-mix(in srgb, var(--amber) 18%, var(--raised)), var(--raised))", border: "1.5px solid var(--amber)", boxShadow: "0 4px 14px -6px rgba(242,176,76,0.4)" }
-                    : { background: "var(--raised)", border: "1px solid var(--line)" }}>
+                  style={{
+                    ...(on
+                      ? { background: "linear-gradient(135deg, color-mix(in srgb, var(--amber) 18%, var(--raised)), var(--raised))", border: "1.5px solid var(--amber)", boxShadow: "0 4px 14px -6px rgba(242,176,76,0.4)" }
+                      : { background: "var(--raised)", border: "1px solid var(--line)" }),
+                    // A beaten leg stays clickable — history matters — but never
+                    // reads as something still happening.
+                    opacity: beaten && !on ? 0.55 : 1,
+                  }}>
                   <div className="font-disp text-[12.5px] font-semibold" style={{ color: on ? "var(--amber)" : "var(--ink-dim)" }}>
-                    {e.banks && e.banks.length ? e.banks.join(" + ") : "Bank TBC"}
+                    {title ?? "Service TBC"}
                   </div>
+                  {e.serviceLine && e.banks?.length > 0 && (
+                    <div className="text-[10.5px] text-[var(--ink-faint)]">{e.banks.join(" + ")}</div>
+                  )}
                   <div className="text-[10.5px] text-[var(--ink-faint)] mono">{e.caseNumber}</div>
                   <div className="text-[10.5px] mt-0.5 flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: e.caseStatus === "Active" ? "var(--mint)" : "var(--ink-faint)" }} />
-                    <span style={{ color: on ? "var(--ink-dim)" : "var(--ink-faint)" }}>{e.stage}</span>
+                    <span style={{ color: on ? "var(--ink-dim)" : "var(--ink-faint)" }}>
+                      {e.legStatus === "LostRace" ? "Lost race — another bank won" : e.stage}
+                    </span>
                   </div>
                 </button>
               );

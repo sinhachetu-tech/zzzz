@@ -1,13 +1,56 @@
 "use client";
 
 import type { ReactNode } from "react";
-import type { CaseState, CaseSource, LoanCase } from "@/lib/types";
+import type { CaseState, CaseSource, LegStatus, LoanCase, ServiceLineDto } from "@/lib/types";
 import { commissionFor, fmtMoney, fmtRate } from "@/lib/format";
 import { useHfmcStore } from "@/lib/client-store";
 import { Chip } from "./ui";
 import { Avatar } from "./ui";
 import { BankLogo } from "@/components/case/ContactBits";
 import { IWhatsapp, IX } from "../icons";
+
+/**
+ * The service line a case belongs to, as a chip (Phase 1).
+ *
+ * Renders nothing when the case has no line or when there is only ONE active
+ * line in the catalogue — a chip that says "Mortgage" on every row is noise. It
+ * only appears once the firm genuinely sells more than one thing, which is the
+ * moment the distinction starts carrying information.
+ */
+export function ServiceLineChip({ serviceLineId, serviceLines, compact }: {
+  serviceLineId: number | null;
+  serviceLines: ServiceLineDto[];
+  compact?: boolean;
+}) {
+  const sl = serviceLines.find((s) => s.id === serviceLineId);
+  if (!sl) return null;
+  if (serviceLines.filter((s) => s.active).length <= 1) return null;
+  return (
+    <Chip tone="sky" title={sl.name}>
+      {compact ? sl.shortName || sl.name : sl.name}
+    </Chip>
+  );
+}
+
+/**
+ * BANK LEG OUTCOME chip (Phase 2).
+ *
+ * Renders nothing at all for an Active leg, so a normal single-bank case looks
+ * exactly as it did before. Only a DECIDED leg gets a mark — the point is that a
+ * leg beaten by another bank is visibly out of the race rather than looking like
+ * live work.
+ *
+ * "Lost race" is deliberately NOT the coral "Lost" tone: losing a bank race is
+ * the expected outcome of shopping a deal to several banks, not a lost customer.
+ * Confusing the two is exactly what made the old numbers unreadable.
+ */
+export function LegStatusChip({ status }: { status: LegStatus }) {
+  if (status === "Active") return null;
+  if (status === "Won") return <Chip tone="mint">Won</Chip>;
+  if (status === "LostRace") return <Chip tone="slate" title="Another bank won this engagement">Lost race</Chip>;
+  if (status === "Declined") return <Chip tone="coral" title="This bank declined the client">Declined</Chip>;
+  return <Chip tone="slate" title="This leg was withdrawn before a decision">Withdrawn</Chip>;
+}
 
 export function CaseStateChip({ state }: { state: CaseState }) {
   if (state === "Active") return <Chip tone="mint">Active</Chip>;

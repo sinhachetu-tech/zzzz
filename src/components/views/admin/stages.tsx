@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useHfmcStore } from "@/lib/client-store";
 import type { StageItem, StageStep, CommTemplate } from "@/lib/types";
+import { stagesForServiceLine } from "@/lib/workflow/registry";
 import { Chip, EmptyState, Modal } from "@/components/hfmc/ui";
 import { ConfirmModal } from "@/components/hfmc/bits";
 import {
@@ -88,7 +89,7 @@ const COMMON_DOC_CATEGORIES = [
 ];
 
 export function StagesManager() {
-  const { stages, commTemplates, milestoneDates, hydrate, toast } = useHfmcStore();
+  const { stages, serviceLines, commTemplates, milestoneDates, hydrate, toast } = useHfmcStore();
   const [editingStage, setEditingStage] = useState<StageDraft | null>(null);
   const [creatingStage, setCreatingStage] = useState(false);
   const [deletingStage, setDeletingStage] = useState<StageItem | null>(null);
@@ -174,9 +175,23 @@ export function StagesManager() {
 
   const [busy, setBusy] = useState(false);
 
+  /* PHASE 5 — this editor is per service line. Before this it showed one flat
+   * list, which meant "the workflow" was a single global thing: a stage added
+   * for a golden visa would appear on every mortgage case, and nobody could tell
+   * which journey a stage belonged to. Tabs make the scoping visible and make
+   * the "coming soon" state a first-class thing an admin can fill in. */
+  const activeLineList = serviceLines.filter((s) => s.active);
+  const [lineTab, setLineTab] = useState<string>(() => activeLineList[0]?.code ?? "MORTGAGE");
+  const currentLine = activeLineList.find((s) => s.code === lineTab) ?? activeLineList[0];
+
+  // Phase 5: the set id for the tab being edited, so a new stage is filed under
+  // the right service line. The admin editor resolves it from the stages already
+  // on file rather than fetching sets separately — every set that matters has at
+  // least one stage, except the reserved "coming soon" ones, which are resolved
+  // by the API defaulting to the line's default set.
   const sortedStages = useMemo(
-    () => [...stages].sort((a, b) => a.sortOrder - b.sortOrder),
-    [stages]
+    () => stagesForServiceLine(stages, serviceLines, currentLine?.id).sort((a, b) => a.sortOrder - b.sortOrder),
+    [stages, serviceLines, currentLine?.id],
   );
 
   const saveStage = async () => {
@@ -195,6 +210,11 @@ export function StagesManager() {
       exitGateSummary: editingStage.exitGateSummary.trim(),
       sopJson: JSON.stringify(editingStage.sopJson),
       commsJson: JSON.stringify(editingStage.commsJson),
+      // Phase 5: the new stage belongs to the tab's service line. The set id is
+      // resolved SERVER-side because a reserved "coming soon" line has a set but
+      // no stages yet — so there is no stage on file to read a set id from, and
+      // sending null there would block the very first stage of a new journey.
+      serviceLineId: creatingStage ? (currentLine?.id ?? null) : undefined,
     };
 
     try {
@@ -310,10 +330,32 @@ export function StagesManager() {
 
   return (
     <div className="space-y-4 anim-fade-up">
+      {/* Per-service-line journey tabs (Phase 5). One flat stage list made "the
+          workflow" a global thing — a stage written for a golden visa would show
+          up on every mortgage case. */}
+      <div className="flex gap-1.5 flex-wrap">
+        {activeLineList.map((s) => {
+          const n = stagesForServiceLine(stages, serviceLines, s.id).length;
+          const on = currentLine?.code === s.code;
+          return (
+            <button key={s.id} className="chip transition-all" onClick={() => setLineTab(s.code)}
+              style={on ? { background: "rgba(67,214,155,0.12)", borderColor: "var(--mint)", color: "var(--mint)" } : undefined}
+              title={n === 0 ? `${s.name}: no stages yet — add the first one below` : `${s.name}: ${n} stage${n === 1 ? "" : "s"}`}>
+              {s.shortName || s.name}
+              {n === 0
+                ? <span style={{ opacity: 0.7 }}> · coming soon</span>
+                : <span style={{ opacity: 0.7 }}> · {n}</span>}
+            </button>
+          );
+        })}
+      </div>
+
       <div className="card p-4">
         <CardHeader
-          title={`Workflow Stages & Case Engine (${sortedStages.length})`}
-          sub="Admin control of case journey: configure owners, communications, data/dates collected, procedures, and exit blockers."
+          title={`${currentLine?.name ?? "Workflow"} stages & case engine (${sortedStages.length})`}
+          sub={sortedStages.length === 0
+            ? "No stages written for this service yet. Add the first one to switch its journey on — until then cases are tracked by status only."
+            : "Admin control of case journey: configure owners, communications, data/dates collected, procedures, and exit blockers."}
           action={
             <button
               className="btn btn-primary sm:btn-sm"
@@ -339,8 +381,8 @@ export function StagesManager() {
         {sortedStages.length === 0 ? (
           <EmptyState
             icon={<ITrophy size={20} />}
-            title="No workflow stages"
-            body="Create your first pipeline stage to start controlling the case workflow."
+            title={`${currentLine?.name ?? "This service"} — coming soon`}
+            body="No workflow has been written for this service yet. Add its first stage below; cases will then run on their own journey instead of being tracked by status alone."
           />
         ) : (
           <div className="space-y-3 mt-4">

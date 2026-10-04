@@ -1,7 +1,7 @@
 // GET /api/client/state — returns the client's case + stage history + documents.
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { currentClient } from "@/lib/client-auth";
+import { currentClient, clientOwnsCase } from "@/lib/client-auth";
 import { serCase, serCaseDocument } from "@/lib/ser";
 import { getPortalSettings } from "@/lib/portal-settings";
 
@@ -9,29 +9,61 @@ export async function GET(req: Request) {
   const me = await currentClient();
   if (!me) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  // One client, many bank journeys: a per-bank split creates several cases for
-  // the same client. The portal shows them ALL under one login — the requested
-  // case (default: the login case) must share the client, or it is refused.
+  // ONE CLIENT, MANY JOURNEYS (Phase 3).
+  //
+  // A session used to be pinned to a single case and this route then hand-rolled
+  // a sibling check. Now the session is CLIENT-SCOPED, so the rule is simply
+  // "is this case one of theirs" — clientOwnsCase — and the engagement list is
+  // every case the CLIENT holds, across every service line. That is what makes
+  // the portal able to show a mortgage AND a golden visa AND a will under one
+  // login, which is the whole point of Phase 1–3.
   const url = new URL(req.url);
   const requestedId = Number(url.searchParams.get("caseId")) || me.caseId;
 
-  const anchor = await db.loanCase.findUnique({ where: { id: me.caseId }, select: { clientId: true, customer: true, whatsapp: true } });
-  if (!anchor) return NextResponse.json({ error: "case not found" }, { status: 404 });
-
-  let selectedId = me.caseId;
-  if (requestedId !== me.caseId) {
-    const requested = await db.loanCase.findUnique({ where: { id: requestedId }, select: { clientId: true, customer: true, whatsapp: true } });
-    const sameClient = requested && (
-      (anchor.clientId && requested.clientId === anchor.clientId) ||
-      (!anchor.clientId && !requested.clientId && anchor.customer === requested.customer && anchor.whatsapp === requested.whatsapp)
-    );
-    if (!sameClient) return NextResponse.json({ error: "case not linked to this client" }, { status: 403 });
-    selectedId = requestedId;
+  // LEAD-ONLY REGISTRANT (Phase 4). They have a session and a Client row but no
+  // case yet — the lead has not been converted. Returning a 404 here would look
+  // broken to the person who just signed up, so they get an explicit empty state
+  // and the portal tells them their enquiry is with an advisor.
+  if (requestedId == null) {
+    return NextResponse.json({
+      me: { ...me, caseId: null, caseNumber: null },
+      engagements: [],
+      case: null,
+      awaitingConversion: true,
+      stages: [],
+      stageTransitions: [],
+      documents: [],
+      vaultDocuments: [],
+      advisor: null,
+      advisorWhatsapp: null,
+      profile: null,
+      profileClientVerifiedAt: null,
+    });
   }
 
-  // engagement list: every case of this client (any bank journey)
-  const engagements = anchor.clientId
-    ? await db.loanCase.findMany({ where: { clientId: anchor.clientId }, orderBy: { id: "asc" }, select: { id: true, caseNumber: true, banks: true, stage: true, caseStatus: true, loanAmount: true, wonBank: true } })
+  if (requestedId !== me.caseId && !(await clientOwnsCase(me, requestedId))) {
+    return NextResponse.json({ error: "case not linked to this client" }, { status: 403 });
+  }
+  const selectedId = requestedId;
+
+  // The anchor's clientId defines the scope for the engagement list.
+  const anchor = await db.loanCase.findUnique({ where: { id: selectedId }, select: { clientId: true } });
+  const clientId = me.clientId ?? anchor?.clientId ?? null;
+
+  // Service-line names for the journey switcher labels. Cheap lookup (6 rows).
+  const serviceLines = await db.serviceLine.findMany({ select: { id: true, name: true, shortName: true } });
+
+  // Every journey this person holds. Grouped by service line in the UI so a
+  // person with four products sees four labelled journeys, not one flat list.
+  const engagements = clientId
+    ? await db.loanCase.findMany({
+        where: { clientId },
+        orderBy: { id: "asc" },
+        select: {
+          id: true, caseNumber: true, banks: true, stage: true, caseStatus: true,
+          loanAmount: true, wonBank: true, serviceLineId: true, legStatus: true,
+        },
+      })
     : [];
 
   const c = await db.loanCase.findUnique({
@@ -78,6 +110,18 @@ export async function GET(req: Request) {
       id: e.id, caseNumber: e.caseNumber,
       banks: (() => { try { return JSON.parse(e.banks); } catch { return []; } })(),
       stage: e.stage, caseStatus: e.caseStatus, loanAmount: e.loanAmount, wonBank: e.wonBank,
+      // Phase 3: the portal labels each journey by service line, so a person with
+      // a mortgage and a golden visa can tell the two apart at a glance. The label
+      // is resolved server-side — the client portal has no access to the admin
+      // catalogue endpoint.
+      serviceLineId: e.serviceLineId,
+      serviceLine: e.serviceLineId
+        ? (serviceLines.find((s) => s.id === e.serviceLineId)?.shortName ??
+           serviceLines.find((s) => s.id === e.serviceLineId)?.name ?? null)
+        : null,
+      // A leg beaten by another bank is still on file, but it is not a live
+      // journey — the switcher shows it dimmed rather than hiding the history.
+      legStatus: e.legStatus,
     })),
     case: caseDto,
     stages: stages.map((s) => ({ id: s.id, label: s.label, sortOrder: s.sortOrder, active: s.active })),

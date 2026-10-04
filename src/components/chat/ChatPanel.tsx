@@ -9,9 +9,7 @@ interface ChatPanelProps {
   caseId: number;
   caseNumber?: string;
   customerName?: string;
-  userRole: "STAFF" | "CLIENT" | "AGENT";
-  initialThread?: "CLIENT" | "AGENT";
-  allowThreadSwitch?: boolean;
+  userRole: "STAFF" | "CLIENT";
   onClose?: () => void;
   onBack?: () => void;
 }
@@ -31,12 +29,11 @@ export function ChatPanel({
   caseNumber,
   customerName,
   userRole,
-  initialThread = "CLIENT",
-  allowThreadSwitch = false,
   onClose,
   onBack,
 }: ChatPanelProps) {
-  const [threadType, setThreadType] = useState<"CLIENT" | "AGENT">(initialThread);
+  // threadType is always CLIENT — the AGENT thread has been removed.
+  const threadType = "CLIENT" as const;
   const [messages, setMessages] = useState<ChatMessageDto[]>([]);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -51,19 +48,13 @@ export function ChatPanel({
     messagesEndRef.current?.scrollIntoView({ behavior: smooth ? "smooth" : "auto" });
   }, []);
 
-  // NOTE: no sync-effect for initialThread here on purpose — ChatDrawer
-  // remounts this panel via key={`${caseId}_${thread}`} so useState picks
-  // up the clicked thread on mount (avoids set-state-in-effect cascades).
-
-  // Fetch initial messages & presence — re-runs on thread switch so the two
-  // threads never bleed into each other.
   useEffect(() => {
     let cancelled = false;
 
     async function loadData() {
       try {
         const [msgRes, presRes] = await Promise.all([
-          fetch(`/api/chat/${caseId}/messages?thread=${threadType}&limit=60`),
+          fetch(`/api/chat/${caseId}/messages?limit=60`),
           fetch(`/api/chat/${caseId}/heartbeat`),
         ]);
 
@@ -87,19 +78,17 @@ export function ChatPanel({
       fetch(`/api/chat/${caseId}/heartbeat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ markRead: true, threadType }),
+        body: JSON.stringify({ markRead: true }),
       }).catch(() => {});
     };
 
     sendHeartbeat();
     const heartbeatTimer = setInterval(sendHeartbeat, 30000);
 
-    // Setup SSE connection + polling fallback (some browsers/proxies kill
-    // SSE silently — polling keeps staff→client delivery visible and flips
-    // sent → received → seen ticks as the other side reads).
+    // Setup SSE connection + polling fallback.
     let eventSource: EventSource | null = null;
     try {
-      eventSource = new EventSource(`/api/chat/${caseId}/messages?thread=${threadType}&stream=true`);
+      eventSource = new EventSource(`/api/chat/${caseId}/messages?stream=true`);
 
       eventSource.addEventListener("message", (e) => {
         try {
@@ -109,8 +98,7 @@ export function ChatPanel({
             // Play notification sound if message is from the other side
             const isMe =
               (userRole === "STAFF" && newMsg.senderType === "STAFF") ||
-              (userRole === "CLIENT" && newMsg.senderType === "CLIENT") ||
-              (userRole === "AGENT" && newMsg.senderType === "AGENT");
+              (userRole === "CLIENT" && newMsg.senderType === "CLIENT");
             if (!isMe) {
               playNotificationChime();
             }
@@ -123,7 +111,7 @@ export function ChatPanel({
 
     const pollTimer = setInterval(async () => {
       try {
-        const res = await fetch(`/api/chat/${caseId}/messages?thread=${threadType}&limit=60`);
+        const res = await fetch(`/api/chat/${caseId}/messages?limit=60`);
         if (!res.ok || cancelled) return;
         const data = await res.json();
         const items: ChatMessageDto[] = data.items || [];
@@ -135,8 +123,7 @@ export function ChatPanel({
               (m) =>
                 !(
                   (userRole === "STAFF" && m.senderType === "STAFF") ||
-                  (userRole === "CLIENT" && m.senderType === "CLIENT") ||
-                  (userRole === "AGENT" && m.senderType === "AGENT")
+                  (userRole === "CLIENT" && m.senderType === "CLIENT")
                 )
             );
             if (otherSide) playNotificationChime();
@@ -156,7 +143,7 @@ export function ChatPanel({
       clearInterval(pollTimer);
       if (eventSource) eventSource.close();
     };
-  }, [caseId, threadType, userRole, scrollToBottom]);
+  }, [caseId, userRole, scrollToBottom]);
 
   // Send message — never swallow failures (a 403 means "no chat
   // permission" and must surface, not look like "not reaching").
@@ -317,33 +304,8 @@ export function ChatPanel({
         </div>
       </div>
 
-      {/* Staff Thread Sub-tabs (Client vs Agent) */}
-      {allowThreadSwitch && userRole === "STAFF" && (
-        <div className="flex border-b bg-[var(--bg2)] text-[12px] font-medium" style={{ borderColor: "var(--line-soft)" }}>
-          <button
-            type="button"
-            className="flex-1 py-1.5 text-center transition-all border-b-2"
-            style={{
-              borderColor: threadType === "CLIENT" ? "var(--mint, #10b981)" : "transparent",
-              color: threadType === "CLIENT" ? "var(--mint, #10b981)" : "var(--ink-faint)",
-            }}
-            onClick={() => setThreadType("CLIENT")}
-          >
-            Client Thread
-          </button>
-          <button
-            type="button"
-            className="flex-1 py-1.5 text-center transition-all border-b-2"
-            style={{
-              borderColor: threadType === "AGENT" ? "var(--mint, #10b981)" : "transparent",
-              color: threadType === "AGENT" ? "var(--mint, #10b981)" : "var(--ink-faint)",
-            }}
-            onClick={() => setThreadType("AGENT")}
-          >
-            Agent / Partner
-          </button>
-        </div>
-      )}
+      {/* Staff sub-tabs (Client / Agent) were removed — only the CLIENT thread
+          exists now. Staff always chat with the client on this panel. */}
 
       {/* Messages Scroll Area */}
       <div className="flex-1 p-3.5 overflow-y-auto space-y-2.5">
@@ -361,8 +323,7 @@ export function ChatPanel({
           messages.map((m) => {
             const isMe =
               (userRole === "STAFF" && m.senderType === "STAFF") ||
-              (userRole === "CLIENT" && m.senderType === "CLIENT") ||
-              (userRole === "AGENT" && m.senderType === "AGENT");
+              (userRole === "CLIENT" && m.senderType === "CLIENT");
 
             const timeStr = new Date(m.sentAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 

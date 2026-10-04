@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { currentUser } from "@/lib/auth";
-import { currentClient } from "@/lib/client-auth";
+import { currentClient, clientOwnsCase } from "@/lib/client-auth";
 import { r2Configured, r2PresignGet, r2Get } from "@/lib/r2";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -23,7 +23,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const staff = await currentUser();
   const client = staff ? null : await currentClient();
   if (!staff && !client) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  if (client && client.caseId !== doc.caseId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  // Client-scope check, not case equality — the session may now span several
+  // journeys of the same person (Phase 3).
+  if (client && !(await clientOwnsCase(client, doc.caseId))) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (client && !doc.visibleToClient) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
   const url = new URL(req.url);

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { currentUser } from "@/lib/auth";
 import { currentClient } from "@/lib/client-auth";
-import { currentAgent } from "@/lib/agent-auth";
+
 
 const LIVE_THRESHOLD_MS = 60 * 1000; // 60 seconds
 
@@ -59,9 +59,8 @@ export async function POST(
 
   const staff = await currentUser();
   const client = await currentClient();
-  const agent = await currentAgent();
 
-  if (!staff && !client && !agent) {
+  if (!staff && !client) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -91,11 +90,10 @@ export async function POST(
       });
     }
 
-    // Mark messages read by staff
+    // Mark messages read by staff — always the CLIENT thread.
     if (body.markRead) {
-      const threadType = body.threadType === "AGENT" ? "AGENT" : "CLIENT";
       await db.chatMessage.updateMany({
-        where: { caseId, threadType, readByStaff: false },
+        where: { caseId, threadType: "CLIENT", readByStaff: false },
         data: { readByStaff: true },
       });
     }
@@ -129,13 +127,6 @@ export async function POST(
     if (body.markRead) {
       await db.chatMessage.updateMany({
         where: { caseId, threadType: "CLIENT", readByExternal: false },
-        data: { readByExternal: true },
-      });
-    }
-  } else if (agent) {
-    if (body.markRead) {
-      await db.chatMessage.updateMany({
-        where: { caseId, threadType: "AGENT", readByExternal: false },
         data: { readByExternal: true },
       });
     }

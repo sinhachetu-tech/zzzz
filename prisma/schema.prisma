@@ -54,6 +54,10 @@ model User {
   // staff who owns a Lead row / converted it into a case
   ownedLeads      Lead[]          @relation("LeadOwner")
   convertedLeads  Lead[]          @relation("LeadConverter")
+  // internal staff-only group chat (Phase 4)
+  createdRooms     StaffRoom[]         @relation("RoomCreator")
+  staffRooms       StaffRoomMember[]
+  sentStaffMessages StaffMessage[]
 }
 
 model Designation {
@@ -238,11 +242,54 @@ model Client {
 
   primaryCases     LoanCase[] @relation("PrimaryClient")
   secondPartyCases LoanCase[] @relation("SecondPartyClient")
+  // every case this person is a party on, in any role (Phase A). This is the
+  // relation that makes a co-borrower visible to their OWN person view —
+  // secondPartyCases only covers the single legacy slot.
+  caseParties      CaseParty[]
   // leads that resolved to this known person (Phase 4)
   leads            Lead[]
+  // portal sessions for this person (Phase 3 — client-scoped, not case-scoped)
+  clientSessions   ClientSession[]
 
   @@index([phone])
   @@index([passportNo])
+}
+
+// Phase A — the people ON a case, each in a role.
+//
+// THE RULE: the person is a Client, the role is on this link. Putting "CoBorrower"
+// on the Client would make it look like a permanent fact about a human — it isn't.
+// Ahmed's wife is a co-borrower on HFMC-0187; three years later she may be the
+// primary on her own loan, or sign as a guarantor on someone else's, and none of
+// that changes who she is.
+//
+// Why a table rather than more columns on LoanCase: `secondPartyClientId` is ONE
+// slot. A real file has a primary, a co-borrower, sometimes two co-applicants and a
+// guarantor. "secondParty2Id" was the wrong answer waiting to happen.
+//
+// The boundary that keeps this honest (would this still be true about Ahmed in
+// three years, on a different service?):
+//   Client  → demographics, KYC, contact, income, assets, liabilities
+//   CaseParty → ONLY the role. Nothing about the person is duplicated here.
+model CaseParty {
+  id        Int      @id @default(autoincrement())
+  caseId    Int
+  clientId  Int
+  role      String   @default("CoBorrower") // CoBorrower | CoApplicant | Guarantor
+  // Display order within the case's party list. Separate from id so removing the
+  // first co-applicant doesn't reshuffle everyone else's position.
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  case   LoanCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  client Client   @relation(fields: [clientId], references: [id])
+
+  // One person holds one role per case. Without this, "Add co-borrower" run twice
+  // silently produces two rows for the same human on the same file, and the
+  // KYC sheet double-counts them.
+  @@unique([caseId, clientId])
+  @@index([clientId])
+  @@index([caseId, sortOrder])
 }
 
 model LoanCase {
@@ -415,6 +462,11 @@ model LoanCase {
   devices          UserDevice[]
   client           Client?  @relation("PrimaryClient", fields: [clientId], references: [id])
   secondPartyClient Client? @relation("SecondPartyClient", fields: [secondPartyClientId], references: [id])
+  // repeatable party list (Phase A). `secondPartyClientId` above stays exactly as
+  // it is — one legacy slot, still read and written by client-master.ts — but it
+  // can only ever hold ONE person. A case with two co-applicants plus a guarantor
+  // is normal, so the full list lives here instead.
+  caseParties       CaseParty[]
   // Admin-defined flexible stage data fields (Phase 3). Shape:
   // { [stageLabel: string]: { [fieldKey: string]: string | number | boolean | null } }
   // Existing typed columns (preApprovalDate, folDate, etc.) remain canonical for now;
@@ -1033,14 +1085,38 @@ model StageTransition {
 }
 
 // Client portal session — separate from team sessions.
-// Clients log in with case number + last 4 digits of their phone, not a password.
+//
+// PHASE 3 — WHY THIS IS CLIENT-SCOPED NOW: a session used to be pinned to ONE
+// case (`caseId` required). The moment the firm sells more than one service, a
+// person can hold a mortgage AND a golden-visa case AND a will, and a session
+// bound to a single case means the portal can only ever show one of them — and a
+// person who has registered as a LEAD has no case at all to log in with.
+//
+// So `clientId` is the real identity and `caseId` is only the ANCHOR (the case
+// they happened to log in on). Both are kept during the transition: `clientId` is
+// nullable so existing session rows keep working, and every access check goes
+// through `clientOwnsCase` (lib/client-auth.ts) which resolves client-scope with
+// a legacy fallback — never by trusting `caseId` alone.
 model ClientSession {
   id        String   @id @default(cuid())
-  caseId    Int
+  // The PERSON. Nullable only while legacy rows are being backfilled.
+  clientId  Int?
+  // The case the client logged in on — the journey the portal opens by default.
+  // NULLABLE as of Phase 4: a lead-only registrant has NO case yet. Their session
+  // is still valid (clientId identifies them); the portal shows an empty state
+  // until staff convert the lead, at which point the case appears automatically.
+  // Before Phase 4 this was required, which is exactly why registration had to
+  // invent a throwaway LoanCase just to hang a session off.
+  caseId    Int?
   phone     String
   createdAt DateTime @default(now())
   expiresAt DateTime
-  case      LoanCase @relation(fields: [caseId], references: [id])
+
+  client Client?   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  case   LoanCase? @relation(fields: [caseId], references: [id])
+
+  @@index([clientId])
+  @@index([caseId])
 }
 
 // Client-uploaded documents — metadata only; files live in storage/G-Drive.
@@ -1228,3 +1304,60 @@ model UserDevice {
   @@index([caseId])
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// INTERNAL STAFF CHAT (staff-only; zero overlap with the client ChatMessage)
+//
+// WHY SEPARATE MODELS: ChatMessage is client-scoped (caseId is not optional)
+// and carries client auth logic.  Staff rooms are person-to-person — no case
+// required — so a different model tree prevents the auth rules from bleeding.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model StaffRoom {
+  id          Int      @id @default(autoincrement())
+  // Human-readable name set by creator.  For DM rooms the API auto-generates
+  // "<nameA> & <nameB>" but the UI can override at render time.
+  name        String
+  isDirect    Boolean  @default(false)  // true = 2-person DM, no add/remove members
+  createdAt   DateTime @default(now())
+  createdById Int
+
+  createdBy User              @relation("RoomCreator", fields: [createdById], references: [id])
+  members   StaffRoomMember[]
+  messages  StaffMessage[]
+
+  @@index([createdById])
+}
+
+model StaffRoomMember {
+  roomId     Int
+  userId     Int
+  joinedAt   DateTime  @default(now())
+  // Cursor: last time this member opened the room. Messages after this = unread.
+  lastReadAt DateTime?
+
+  room StaffRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([roomId, userId])
+  @@index([userId])
+}
+
+model StaffMessage {
+  id             Int       @id @default(autoincrement())
+  roomId         Int
+  senderId       Int
+  text           String?
+  attachmentKey  String?
+  attachmentName String?
+  attachmentSize Int?
+  mimeType       String?
+  fileData       Bytes?
+  sentAt         DateTime  @default(now())
+  editedAt       DateTime?  // set when sender edits (reserved for future)
+
+  room   StaffRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  sender User      @relation(fields: [senderId], references: [id])
+
+  @@index([roomId, sentAt])
+  @@index([senderId])
+}

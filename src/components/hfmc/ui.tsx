@@ -72,10 +72,10 @@ const CHIP_STYLES: Record<Tone, { fg: string; bg: string; bd: string }> = {
   slate: { fg: "var(--slate)", bg: "rgba(100,116,139,0.08)", bd: "rgba(100,116,139,0.3)" },
 };
 
-export function Chip({ tone, children, dot }: { tone: Tone; children: ReactNode; dot?: boolean }) {
+export function Chip({ tone, children, dot, title }: { tone: Tone; children: ReactNode; dot?: boolean; title?: string }) {
   const s = CHIP_STYLES[tone];
   return (
-    <span className="chip" style={{ color: s.fg, background: s.bg, borderColor: s.bd }}>
+    <span className="chip" title={title} style={{ color: s.fg, background: s.bg, borderColor: s.bd }}>
       {dot && <span className="w-[6px] h-[6px] rounded-full" style={{ background: s.fg }} />}
       {children}
     </span>

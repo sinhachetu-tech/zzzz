@@ -1,5 +1,5 @@
-// Generate the ADDITIVE SQL for Phase 1 by diffing the LIVE database against the
-// updated schema datamodel. This is deliberately NOT `prisma migrate dev`:
+// Generate the ADDITIVE SQL for the current schema change by diffing the LIVE
+// database against the updated datamodel. Deliberately NOT `prisma migrate dev`:
 //
 //   prisma migrate dev reported "Drift detected… We need to reset the public
 //   schema. All data will be lost."
@@ -11,15 +11,15 @@
 // Instead we diff live-DB → datamodel and apply only the CREATE TABLE /
 // ALTER TABLE ADD COLUMN statements, which are additive by construction.
 //
-//   node scripts/phase1-gen-sql.cjs
+//   node scripts/phase3-gen-sql.cjs
 
 const { execSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 
 const root = path.resolve(__dirname, "..");
+const SQL_OUT = process.env.SQL_OUT || "prisma/phase3_client_sessions.sql";
 
-// DATABASE_URL comes from .env (same file prisma itself reads).
 function envUrl() {
   const envFile = fs.readFileSync(path.join(root, ".env"), "utf8");
   const m = envFile.match(/^DATABASE_URL\s*=\s*(.+)$/m);
@@ -32,10 +32,9 @@ const out = execSync(
   { cwd: root, encoding: "utf8", maxBuffer: 32 * 1024 * 1024 },
 );
 
-const dest = path.join(root, "prisma", "phase1_service_lines.sql");
+const dest = path.join(root, SQL_OUT);
 fs.writeFileSync(dest, out, "utf8");
 
-// Sanity gate: this migration must never contain a destructive statement.
 const destructive = out
   .split("\n")
   .filter((l) => /^\s*(DROP|TRUNCATE|DELETE FROM|ALTER COLUMN.*TYPE)\b/i.test(l));

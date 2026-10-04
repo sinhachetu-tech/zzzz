@@ -1,9 +1,10 @@
 import { parseCaseProfile } from "./case-profile";
 // Serialization: Prisma row → API DTO matching the original HFMC types.
 import type {
-  Activity, BankItem, BulletinItem, CasePartner, ClientDto, CommTemplate, Instruction, LoanCase,
-  BankProduct, Proposal, CaseDocument, CaseUpdate, DocRule, FeeRule, MasterItem, PartnerItem, Promotion, Reply, SlaRule, StageItem, StageTransition, StageTransitionDto, Task, User,
+  Activity, BankItem, BulletinItem, CasePartner, CaseParty, PartyRole, ClientDto, CommTemplate, Instruction, LoanCase,
+  BankProduct, Proposal, CaseDocument, CaseUpdate, DocRule, FeeRule, Lead, MasterItem, PartnerItem, ProductDto, Promotion, Reply, ServiceLineDto, SlaRule, StageItem, StageTransition, StageTransitionDto, Task, User,
 } from "./types";
+import { PARTY_ROLES } from "./types";
 
 type PrismaUser = {
   id: number; name: string; email: string; password: string; role: string; team: string;
@@ -97,9 +98,96 @@ type PrismaCase = {
   // per-bank journey identity
   bankRef?: string | null;
   parentCaseId?: number | null;
+  // bank leg outcome (Phase 2)
+  legStatus?: string | null;
+  decidedAt?: Date | string | null;
+  decidedById?: number | null;
+  // service line (Phase 1)
+  serviceLineId?: number | null;
+  productId?: number | null;
+  /** Sibling leg count, injected by the state route (not a Prisma column). */
+  legCount?: number;
 };
 
+// Service lines & products (Phase 1)
+export function serServiceLine(
+  s: { id: number; code: string; name: string; shortName: string; active: boolean; sortOrder: number; bankRaced: boolean; notes: string },
+  products?: ProductDto[],
+): ServiceLineDto {
+  return {
+    id: s.id, code: s.code, name: s.name, shortName: s.shortName || s.name,
+    active: s.active, sortOrder: s.sortOrder, bankRaced: s.bankRaced, notes: s.notes || "",
+    products,
+  };
+}
+
+// Leads (Phase 4)
+export function serLead(
+  l: {
+    id: number; fullName: string; phone: string; email: string | null;
+    serviceLineId: number; productId: number | null; intendedAmount: number | null;
+    currency: string; source: string; sourceDetail: string; status: string;
+    ownerId: number | null; clientId: number | null; caseId: number | null;
+    lostReason: string; firstContactedAt?: Date | string | null;
+    convertedAt?: Date | string | null; convertedById: number | null;
+    createdAt: Date | string; updatedAt?: Date | string;
+  },
+  extra?: Partial<Lead>,
+): Lead {
+  return {
+    id: l.id, fullName: l.fullName, phone: l.phone ?? "", email: l.email ?? null,
+    serviceLineId: l.serviceLineId, productId: l.productId ?? null,
+    intendedAmount: l.intendedAmount ?? null, currency: l.currency || "AED",
+    source: l.source || "Direct", sourceDetail: l.sourceDetail || "",
+    status: (l.status || "New") as Lead["status"],
+    ownerId: l.ownerId ?? null, clientId: l.clientId ?? null, caseId: l.caseId ?? null,
+    lostReason: l.lostReason || "",
+    firstContactedAt: l.firstContactedAt ? new Date(l.firstContactedAt).toISOString() : null,
+    convertedAt: l.convertedAt ? new Date(l.convertedAt).toISOString() : null,
+    convertedById: l.convertedById ?? null,
+    createdAt: new Date(l.createdAt).toISOString(),
+    updatedAt: l.updatedAt ? new Date(l.updatedAt).toISOString() : new Date(l.createdAt).toISOString(),
+    ...extra,
+  };
+}
+
+// Case parties (Phase A) — the people on a case, each in a role.
+//
+// Takes a plain structural shape rather than the Prisma model so it is trivially
+// testable and cannot drift if the model gains a column.
+export function serCaseParty(
+  p: {
+    id: number; caseId: number; clientId: number; role: string;
+    sortOrder?: number; createdAt?: Date | string;
+  },
+  extra?: Partial<CaseParty>,
+): CaseParty {
+  // Unknown role falls back to CoBorrower rather than throwing: a bad value should
+  // never stop the case page from rendering, and CoBorrower is the safe default
+  // (it is the role that actually affects bank assessment).
+  const role = (PARTY_ROLES as readonly string[]).includes(p.role)
+    ? (p.role as PartyRole)
+    : "CoBorrower";
+  return {
+    id: p.id,
+    caseId: p.caseId,
+    clientId: p.clientId,
+    role,
+    sortOrder: p.sortOrder ?? 0,
+    createdAt: p.createdAt ? new Date(p.createdAt).toISOString() : new Date(0).toISOString(),
+    ...extra,
+  };
+}
+
+// NOTE: deliberately ONE parameter. This is passed bare to `array.map(serCase)`
+// in /api/agent/state and /api/chat/inbox, and a second parameter would receive
+// the array INDEX there and silently corrupt the output. Anything that needs to
+// override a derived field goes through serCaseWith() below.
 export function serCase(c: PrismaCase): LoanCase {
+  return serCaseWith(c);
+}
+
+export function serCaseWith(c: PrismaCase, extra?: Partial<LoanCase>): LoanCase {
   let banks: string[] = [];
   try { banks = JSON.parse(c.banks); } catch { banks = []; }
   let partner: CasePartner | null = null;
@@ -111,6 +199,15 @@ export function serCase(c: PrismaCase): LoanCase {
     // Per-bank journey identity (the bank's own reference + sibling linkage)
     bankRef: c.bankRef ?? null,
     parentCaseId: c.parentCaseId ?? null,
+    // Bank leg outcome (Phase 2). Defaulting to "Active" keeps legacy rows —
+    // which the migration left at the DB default — behaving exactly as before.
+    legStatus: (c.legStatus ?? "Active") as LoanCase["legStatus"],
+    decidedAt: c.decidedAt ? new Date(c.decidedAt).toISOString() : null,
+    decidedById: c.decidedById ?? null,
+    // Service line / product (Phase 1)
+    serviceLineId: c.serviceLineId ?? null,
+    productId: c.productId ?? null,
+    legCount: c.legCount,
     loanAmount: c.loanAmount,
     propertyValue: c.propertyValue ?? null,
     stage: c.stage, caseStatus: c.caseStatus as LoanCase["caseStatus"],
@@ -127,7 +224,13 @@ export function serCase(c: PrismaCase): LoanCase {
     vrmId: c.vrmId ?? null,
     transactionType: c.transactionType ?? "",
     propertyLocation: c.propertyLocation ?? null,
-    coApplicantName: c.coApplicantName ?? null,
+    // Phase B: prefer the name of the person actually linked to the case. The
+    // column stays the fallback for a co-applicant typed into the case form
+    // before parties existed — a guarantor entered as free text is exactly the
+    // invisible person CaseParty was introduced to fix, so the linked name wins
+    // whenever there is one. `extra.coApplicantName` is supplied by /api/state,
+    // which is the only place that can join Client.
+    coApplicantName: extra?.coApplicantName ?? c.coApplicantName ?? null,
     partnerRm: (c as unknown as { partnerRm?: string | null }).partnerRm ?? null,
     onHold: c.onHold ?? false,
     holdReason: c.holdReason ?? null,
@@ -191,6 +294,8 @@ export function serCase(c: PrismaCase): LoanCase {
       if (!raw) return {};
       try { return typeof raw === "string" ? JSON.parse(raw) : raw; } catch { return {}; }
     })(),
+    // Spread LAST so a caller can override a derived field, matching serLead.
+    ...extra,
   };
 }
 
@@ -324,6 +429,9 @@ function serStep(s: PrismaStageStep): import("./types").StageStep {
 type PrismaStage = {
   id: number; label: string; active: boolean; sortOrder: number;
   ownerRole: string; exitGateSummary: string; sopJson: string; commsJson: string;
+  /** Phase 5: the set is what carries the service line. */
+  stageSetId?: number | null;
+  serviceLineId?: number | null;
   steps?: PrismaStageStep[];
 };
 export function serStage(s: PrismaStage): import("./types").StageItem {
@@ -339,6 +447,10 @@ export function serStage(s: PrismaStage): import("./types").StageItem {
     id: s.id, label: s.label, active: s.active, sortOrder: s.sortOrder,
     ownerRole: s.ownerRole ?? "", exitGateSummary: s.exitGateSummary ?? "",
     sopJson: sop, commsJson: comms, steps,
+    stageSetId: s.stageSetId ?? null,
+    // Null for a legacy stage with no set — those all belong to MORTGAGE, which
+    // is the only journey that predates the set.
+    serviceLineId: s.serviceLineId ?? null,
   };
 }
 

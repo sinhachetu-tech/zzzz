@@ -44,7 +44,7 @@ function getLabelDismissed() {
 }
 
 interface ChatBubbleProps {
-  userRole: "STAFF" | "CLIENT" | "AGENT";
+  userRole: "STAFF" | "CLIENT";
   pinnedCaseId?: number | null;
   pinnedCaseNumber?: string;
   pinnedCustomer?: string;
@@ -104,8 +104,7 @@ export function ChatBubble({
             }
           }
         } else if (pinnedCaseId) {
-          const threadQuery = userRole === "AGENT" ? "&thread=AGENT" : "&thread=CLIENT";
-          const res = await fetch(`/api/chat/${pinnedCaseId}/messages?limit=20${threadQuery}`);
+          const res = await fetch(`/api/chat/${pinnedCaseId}/messages?limit=20`);
           if (!cancelled && res.ok) {
             const data = await res.json();
             const unread = (data.items || []).filter(

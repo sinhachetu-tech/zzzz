@@ -24,7 +24,7 @@
 import { useMemo } from "react";
 import { useHfmcStore } from "@/lib/client-store";
 import type { LoanCase } from "@/lib/types";
-import { LABEL_TO_KEY } from "@/lib/workflow/registry";
+import { LABEL_TO_KEY, stagesForServiceLine } from "@/lib/workflow/registry";
 import { ageDays } from "@/lib/format";
 import type { StageKey } from "@/lib/workflow/types";
 
@@ -32,17 +32,50 @@ export function StageRail({
   c,
   onOpen,
   onMove,
+  serviceLineName,
+  journeyConfigured,
 }: {
   c: LoanCase;
   onOpen: (key: StageKey) => void;
   onMove: () => void;
+  /** Name of the case's service line, for the coming-soon message. */
+  serviceLineName?: string;
+  /**
+   * Phase 5: false when this service line has no journey written yet. The rail
+   * then says so instead of rendering the MORTGAGE stages — showing a valuation
+   * stage on a will would be a lie about how the work actually runs.
+   */
+  journeyConfigured?: boolean;
 }) {
-  const { stages, stageTransitions, slaRules } = useHfmcStore();
+  const { stages, stageTransitions, slaRules, serviceLines } = useHfmcStore();
 
+  // Stages are scoped to the case's OWN service line (Phase 5), via the one
+  // shared resolver — duplicating that join here is how a golden-visa case ends
+  // up rendering "Valuation".
   const activeStages = useMemo(
-    () => [...stages].filter((s) => s.active).sort((a, b) => a.sortOrder - b.sortOrder),
-    [stages]
+    () => stagesForServiceLine(stages, serviceLines, c.serviceLineId),
+    [stages, serviceLines, c.serviceLineId],
   );
+
+  // No stages for this line yet → the honest empty state.
+  if (journeyConfigured === false || activeStages.length === 0) {
+    return (
+      <div
+        className="card px-3.5 py-2.5 flex items-center gap-2.5 anim-fade-up"
+        style={{ borderLeft: "3px solid var(--ink-faint)" }}
+      >
+        <span className="mono text-[10.5px] uppercase font-bold tracking-wider shrink-0" style={{ color: "var(--ink-faint)" }}>
+          Workflow
+        </span>
+        <span className="font-disp font-semibold text-[13.5px] truncate">
+          {serviceLineName ?? "This service"} — coming soon
+        </span>
+        <span className="text-[11.5px] text-[var(--ink-faint)] truncate">
+          No stage list has been written for this service yet, so the case is tracked by status only.
+        </span>
+      </div>
+    );
+  }
 
   const currentIdx = useMemo(() => {
     const idx = activeStages.findIndex((s) => s.label === c.stage);

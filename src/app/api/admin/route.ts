@@ -62,10 +62,44 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ item: serChannel(item) });
     }
     if (kind === "stage") {
-      const max = await db.stageItem.aggregate({ _max: { sortOrder: true } });
+      // Phase 5: sortOrder is scoped to the SET, not global. A golden-visa stage
+      // numbered 1 must not collide with mortgage's stage 1 — they are different
+      // journeys that happen to both start at one.
+      //
+      // The SET is resolved from the service line rather than sent by the client,
+      // because a reserved "coming soon" line has a set but no stages yet — so the
+      // editor has no stage on file to read a set id from, and sending null would
+      // block the very first stage of a new journey.
+      const serviceLineId = Number(body.serviceLineId);
+      const line = serviceLineId
+        ? await db.serviceLine.findUnique({ where: { id: serviceLineId } })
+        : null;
+      if (!line) {
+        return NextResponse.json(
+          { error: "A stage must belong to a journey (service line). Reload and pick the service line first." },
+          { status: 400 },
+        );
+      }
+      const set = await db.stageSet.findFirst({
+        where: { serviceLineId: line.id },
+        orderBy: [{ isDefault: "desc" }, { sortOrder: "asc" }, { id: "asc" }],
+      });
+      if (!set) {
+        return NextResponse.json(
+          { error: `No journey set exists for ${line.name}. Run scripts/seed-service-lines.cjs --apply first.` },
+          { status: 400 },
+        );
+      }
+      const stageSetId = set.id;
+
+      const max = await db.stageItem.aggregate({
+        where: { stageSetId },
+        _max: { sortOrder: true },
+      });
       const item = await db.stageItem.create({
         data: {
           label: body.label, active: true,
+          stageSetId,
           sortOrder: body.sortOrder ?? (max._max.sortOrder ?? 0) + 1,
           ownerRole: body.ownerRole ?? "",
           exitGateSummary: body.exitGateSummary ?? "",
@@ -74,6 +108,12 @@ export async function POST(req: NextRequest) {
         },
         include: { steps: true },
       });
+      // The first stage written for a reserved "coming soon" line switches that
+      // journey on — otherwise the line would stay blank forever with nobody
+      // noticing it had been configured.
+      if (!set.active) {
+        await db.stageSet.update({ where: { id: set.id }, data: { active: true } });
+      }
       return NextResponse.json({ item: serStage(item) });
     }
     if (kind === "stage_step") {

@@ -10,7 +10,8 @@ import { useHfmcStore } from "@/lib/client-store";
 import type { CaseStatus, LoanCase } from "@/lib/types";
 import { ageDays, caseStatusOf, fmtDate, fmtMoney } from "@/lib/format";
 import { Avatar, Chip, EmptyState, StatusChip, Tabs } from "@/components/hfmc/ui";
-import { BankChips, CaseStateChip, SourceChip } from "@/components/hfmc/bits";
+import { isBeatenLeg } from "@/lib/domain";
+import { BankChips, CaseStateChip, LegStatusChip, ServiceLineChip, SourceChip } from "@/components/hfmc/bits";
 import { BankLogo } from "@/components/case/ContactBits";
 import { useChangedIds } from "@/hooks/use-changed-ids";
 import { IBriefcase, IInbox } from "@/components/icons";
@@ -40,11 +41,15 @@ const SAVED_VIEWS: { label: string; apply: (patch: { stateTab: (typeof STATE_TAB
 ];
 
 export default function Cases() {
-  const { cases, stages, users, me, nav, userById, visibleCases, flags, tasks, banks } = useHfmcStore();
+  const { cases, stages, users, me, nav, userById, visibleCases, flags, tasks, banks, serviceLines } = useHfmcStore();
   const [search, setSearch] = useState("");
   const [stage, setStage] = useState("All");
   const [status, setStatus] = useState("All");
   const [owner, setOwner] = useState("All");
+  // Service-line filter (Phase 1). Stored as the service line CODE, not the id:
+  // ids are database-assigned and would break the persisted filter if the DB were
+  // ever rebuilt, while MORTGAGE is a stable contract.
+  const [service, setService] = useState("All");
   const [sort, setSort] = useState("urgency");
   const [stateTab, setStateTab] = useState<(typeof STATE_TABS)[number]>("Active");
   const [activeView, setActiveView] = useState<string | null>(null);
@@ -61,17 +66,25 @@ export default function Cases() {
       if (f.stage) setStage(f.stage);
       if (f.status) setStatus(f.status);
       if (f.owner) setOwner(f.owner);
+      if (f.service) setService(f.service);
       if (f.sort) setSort(f.sort);
       if (f.stateTab && (STATE_TABS as string[]).includes(f.stateTab)) setStateTab(f.stateTab);
     } catch { /* private mode */ }
   }, []);
   /* eslint-enable react-hooks/set-state-in-effect */
   useEffect(() => {
-    try { localStorage.setItem("hfmc.casesFilters", JSON.stringify({ search, stage, status, owner, sort, stateTab })); } catch { /* private mode */ }
-  }, [search, stage, status, owner, sort, stateTab]);
+    try { localStorage.setItem("hfmc.casesFilters", JSON.stringify({ search, stage, status, owner, service, sort, stateTab })); } catch { /* private mode */ }
+  }, [search, stage, status, owner, service, sort, stateTab]);
 
   const visCases = useMemo(() => visibleCases(), [visibleCases, cases]);
   const statusOf = (c: LoanCase): CaseStatus => caseStatusOf(c, tasks);
+
+  // code → id, so the persisted filter survives a DB rebuild (ids are not stable,
+  // codes are). Rebuilt only when the catalogue changes.
+  const serviceIdByCode = useMemo(
+    () => new Map(serviceLines.map((s) => [s.code, s.id])),
+    [serviceLines],
+  );
 
   /* Flash the row when its status/stage/owner actually changes, so a row that
      moved under you is findable instead of silently re-sorted. Uses `statusOf`
@@ -102,6 +115,10 @@ export default function Cases() {
       if (stateTab === "Booked" && c.caseStatus !== "Closed") return false;
       if (stateTab === "Lost" && c.caseStatus !== "Lost") return false;
       if (stage !== "All" && c.stage !== stage) return false;
+      // Service-line filter. Matched on CODE via the catalogue, so a case whose
+      // serviceLineId is null (legacy row before the backfill) still shows under
+      // "All" rather than vanishing from every view.
+      if (service !== "All" && c.serviceLineId !== serviceIdByCode.get(service)) return false;
       if (owner === "mine" && c.ownerId !== me?.id) return false;
       else if (owner === "unassigned" && c.ownerId !== 1) return false;
       else if (owner !== "All" && owner !== "mine" && owner !== "unassigned" && c.ownerId !== parseInt(owner, 10)) return false;
@@ -166,7 +183,7 @@ export default function Cases() {
                 onClick={() => {
                   if (on) { setActiveView(null); return; }
                   const p = v.apply({ stateTab, stage, status, owner, sort });
-                  setStateTab(p.stateTab); setStage(p.stage); setStatus(p.status); setOwner(p.owner); setSort(p.sort);
+                  setStateTab(p.stateTab); setStage(p.stage); setStatus(p.status); setOwner(p.owner); setService("All"); setSort(p.sort);
                   setActiveView(v.label);
                 }}>
                 {v.label}
@@ -175,7 +192,7 @@ export default function Cases() {
           })}
           {(search || stage !== "All" || status !== "All" || owner !== "All" || activeView) && (
             <button className="text-[11.5px] ml-1 text-[var(--ink-faint)] hover:text-[var(--coral)] transition-colors"
-              onClick={() => { setSearch(""); setStage("All"); setStatus("All"); setOwner("All"); setSort("urgency"); setStateTab("Active"); setActiveView(null); }}>
+              onClick={() => { setSearch(""); setStage("All"); setStatus("All"); setOwner("All"); setService("All"); setSort("urgency"); setStateTab("Active"); setActiveView(null); }}>
               Clear ×
             </button>
           )}
@@ -205,6 +222,15 @@ export default function Cases() {
             <option value="unassigned">Unassigned</option>
             {users.filter((u) => u.role !== "Head of Company" && u.role !== "PA to HoC").map((u) => <option key={u.id} value={u.id}>{u.name.split(" ")[0]}</option>)}
           </select>
+          {/* Service-line filter — only rendered once the firm actually sells more than one
+              thing. A "Service: All" dropdown next to a single service is noise. */}
+          {serviceLines.filter((s) => s.active).length > 1 && (
+            <select className="select w-full sm:!w-[150px]" value={service}
+              onChange={(e) => { setService(e.target.value); setActiveView(null); }}>
+              <option value="All">All services</option>
+              {serviceLines.filter((s) => s.active).map((s) => <option key={s.id} value={s.code}>{s.shortName || s.name}</option>)}
+            </select>
+          )}
           <select className="select w-full sm:!w-[140px] sm:ml-auto" value={sort} onChange={(e) => setSort(e.target.value)}>
             <option value="urgency">Most urgent</option>
             <option value="newest">Newest</option>
@@ -248,6 +274,11 @@ export default function Cases() {
                     <tr
                       key={c.id}
                       className={changedIds.has(c.id) ? "row-changed" : undefined}
+                      // A leg beaten by another bank stays in the list — the bank
+                      // still has its valuation history, which matters for the
+                      // buyout in two years — but dimmed so it never reads as live
+                      // work. `Lost race` is not the coral "Lost" state.
+                      style={isBeatenLeg(c) ? { opacity: 0.55 } : undefined}
                       onClick={() => nav({ name: "case", id: c.id })}
                     >
                       <td className="mono text-[12.5px]" style={{ color: "var(--amber)" }}>{c.caseNumber}</td>
@@ -303,7 +334,13 @@ export default function Cases() {
                         </div>
                       </td>
                       <td className="mono text-[12.5px] text-[var(--ink-dim)]">{ageDays(c.createdAt)}d</td>
-                      <td>{c.caseStatus === "Active" ? <StatusChip status={st} /> : <CaseStateChip state={c.caseStatus} />}</td>
+                      <td>
+                        <span className="flex items-center gap-1.5">
+                          <ServiceLineChip serviceLineId={c.serviceLineId} serviceLines={serviceLines} compact />
+                          <LegStatusChip status={c.legStatus} />
+                          {c.caseStatus === "Active" ? <StatusChip status={st} /> : <CaseStateChip state={c.caseStatus} />}
+                        </span>
+                      </td>
                       <td className="hidden md:table-cell text-[12px] text-[var(--ink-dim)]">{c.transactionType || <span className="text-[var(--ink-faint)]">—</span>}</td>
                       <td className="hidden md:table-cell text-[12px] text-[var(--ink-dim)]">{c.propertyLocation || <span className="text-[var(--ink-faint)]">—</span>}</td>
                       <td className="hidden md:table-cell text-[12px] text-[var(--ink-dim)]">{c.bankRm || <span className="text-[var(--ink-faint)]">—</span>}</td>
@@ -327,7 +364,7 @@ export default function Cases() {
           {filtered.slice(0, 60).map((c) => {
             const st = statusOf(c);
             return (
-              <button key={c.id} className="w-full text-left px-3.5 py-3 flex items-center gap-3 active:bg-[var(--tint)]" onClick={() => nav({ name: "case", id: c.id })}>
+              <button key={c.id} className="w-full text-left px-3.5 py-3 flex items-center gap-3 active:bg-[var(--tint)]" style={isBeatenLeg(c) ? { opacity: 0.55 } : undefined} onClick={() => nav({ name: "case", id: c.id })}>
                 <div className="flex items-start gap-3">
                   {(() => {
                     // Bank mark leads on mobile: "which bank is this with" is the
@@ -357,7 +394,10 @@ export default function Cases() {
                     <span className="block mono text-[10.5px] text-[var(--ink-faint)] mt-0.5 truncate">{c.caseNumber} · {fmtMoney(c.loanAmount)} · {c.stage} · {ageDays(c.createdAt)}d</span>
                   </span>
                 </div>
-                {c.caseStatus === "Active" ? <StatusChip status={st} /> : <CaseStateChip state={c.caseStatus} />}
+                <span className="flex items-center gap-1.5">
+                  <LegStatusChip status={c.legStatus} />
+                  {c.caseStatus === "Active" ? <StatusChip status={st} /> : <CaseStateChip state={c.caseStatus} />}
+                </span>
               </button>
             );
           })}
